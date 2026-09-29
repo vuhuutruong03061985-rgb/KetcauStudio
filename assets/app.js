@@ -969,7 +969,7 @@ if(!clean&&mode==='select'&&selectedObjectIds().size<2){
  if(!clean&&mode==='curve'&&second)el('circle',{cx:second.x,cy:second.y,r:6,fill:'#15889c','pointer-events':'none'});
  if(!clean&&mode==='support')renderSupportPlacement();
  if(!clean&&mode==='bar')renderBarConstraintPreview();
- if(!clean){renderThinReferenceHighlight();if(mode==='thin')renderThinConstraintPreview();renderSupportReference()}
+ if(!clean){renderThinReferenceHighlight();if(mode==='thin')renderThinConstraintPreview();renderSupportReference();renderLoadReference()}
  if(!clean&&first&&hover&&['dashed','udl','linkBar'].includes(mode)){const g=el('g',{'pointer-events':'none',stroke:'#087d95','stroke-dasharray':'5 4'});line(g,first.x,first.y,hover.x,hover.y);}
  if(!clean&&mode==='joint'&&typeof drawJointHandles==='function')drawJointHandles();
  if(!clean)renderRigidControls();
@@ -1723,7 +1723,46 @@ function constructionSnap(e){
 autoHideSecondary(secondaryTools,()=>[$('tools').querySelector(`[data-mode="${secondaryTools.dataset.anchorMode}"]`)],()=>!secondaryTools.hidden,closeSecondaryTools);
 
 var loadPlacement=null;
-function cancelLoadPlacement(){if(typeof endLoadNumericInput==='function')endLoadNumericInput();loadPlacement=null;svg.querySelector('[data-load-preview]')?.remove()}
+function loadReferenceCandidates(){
+ const session=loadPlacement;if(!session?.referenceCandidates)return [];
+ const ids=new Set(session.referenceCandidates.map(c=>c.barId));
+ return collectReferenceBars({bars:items.filter(o=>ids.has(o.id)),anchorPoint:session.a,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/Math.abs(svg.getScreenCTM().a)});
+}
+function loadReferenceFrame(){
+ const session=loadPlacement;if(!session?.referenceBarId)return null;
+ const candidate=loadReferenceCandidates().find(c=>c.barId===session.referenceBarId);
+ if(candidate)return getReferenceBarFrame(candidate.bar);
+ session.referenceBarId=null;session.referenceCandidates=[];session.uiAngle.value=session.globalPlacementAngle;
+ svg.querySelector('[data-load-reference]')?.remove();return null;
+}
+function loadReferenceOverrideAt(cursorPoint){
+ const candidates=loadReferenceCandidates();if(candidates.length<2)return null;
+ const bar=hitReferenceOverride({bars:candidates.map(c=>c.bar),anchorPoint:loadPlacement.a,cursorPoint,screenScale:Math.abs(svg.getScreenCTM().a)});
+ return bar?.id!==loadPlacement.referenceBarId?bar:null;
+}
+function resolveLoadUserAngle(){
+ const session=loadPlacement,frame=loadReferenceFrame();
+ const global=frame?referenceAngleToGlobalPlacementAngle(session.uiAngle.value,frame):session.uiAngle.value;
+ session.globalPlacementAngle=global;session.angle=loadUIToInternal(session.type,global,session.rotation);
+}
+function setLoadReference(barId){
+ const session=loadPlacement,global=session.globalPlacementAngle;
+ session.referenceBarId=barId;const frame=loadReferenceFrame();
+ if(session.uiAngle.mode==='locked')resolveLoadUserAngle();
+ else session.uiAngle.value=frame?globalPlacementAngleToReferenceAngle(global,frame):global;
+}
+function beginLoadReference(){
+ const session=loadPlacement;session.globalPlacementAngle=0;session.referenceBarId=null;
+ session.referenceCandidates=collectReferenceBars({bars:items,anchorPoint:session.a,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/Math.abs(svg.getScreenCTM().a)});
+ if(session.referenceCandidates.length===1)setLoadReference(session.referenceCandidates[0].barId);
+}
+function renderLoadReference(){
+ svg.querySelector('[data-load-reference]')?.remove();
+ if(!loadReferenceFrame())return;
+ const bar=items.find(o=>o.id===loadPlacement.referenceBarId);
+ line(svg,bar.x,bar.y,bar.x2,bar.y2,{class:'thin-reference-highlight','data-load-reference':'true','pointer-events':'none','aria-hidden':'true'});
+}
+function cancelLoadPlacement(){svg.querySelector('[data-load-reference]')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));if(typeof endLoadNumericInput==='function')endLoadNumericInput();loadPlacement=null;svg.querySelector('[data-load-preview]')?.remove()}
 // UI ray follows the visible body. Force tail = anchor - 75 * loadVector,
 // so its internal tail-to-head vector is opposite the ray; moment uses SVG rotation.
 function loadUIToInternal(type,angle,rotation='cw'){
@@ -1734,14 +1773,17 @@ function loadUIToInternal(type,angle,rotation='cw'){
 }
 function updateLoadOrientation(e){
  const session=loadPlacement;if(!session||!session.uiAngle)return false;
+ loadReferenceFrame();
  if(typeof readLoadNumericEdit==='function')readLoadNumericEdit();
- if(session.uiAngle.mode==='locked')return true;
+ if(session.uiAngle.mode==='locked'){resolveLoadUserAngle();return true}
  if(session.type==='udl')return updateUDLOrientation(e);
  const p=rawPoint(e),dx=p.x-session.a.x,dy=p.y-session.a.y;
+ if(!session.referenceBarId){const candidate=resolveReferenceBar({candidates:loadReferenceCandidates(),anchorPoint:session.a,cursorPoint:p,screenScale:Math.abs(svg.getScreenCTM().a),activationThresholdPx:THIN_REFERENCE_ACTIVATION_PX});if(candidate)setLoadReference(candidate.barId)}
+ if(loadReferenceOverrideAt(p))return false;
  let angle=solveSupportAngle(session.a,p);if(angle===null)return false;
 
  if(e.shiftKey){angle=Math.round(angle/90)*90;if(angle===-180)angle=180}
- session.uiAngle.value=angle;session.angle=loadUIToInternal(session.type,angle,session.rotation);return true;
+ session.globalPlacementAngle=angle;const frame=loadReferenceFrame();session.uiAngle.value=frame?globalPlacementAngleToReferenceAngle(angle,frame):angle;session.angle=loadUIToInternal(session.type,angle,session.rotation);return true;
 }
 function cancelConcentratedLoadPlacement(){if(loadPlacement?.uiAngle||loadPlacement?.type==='udl')cancelLoadPlacement()}
 // UDL arrowheads stay on the span; tails extend opposite the stored load vector.
@@ -1761,7 +1803,7 @@ function placeLoadObject(){
  checkpoint();const o=make(p.type,a.x,a.y,b?.x,b?.y,{loadAngle:p.angle,rotation:p.rotation});
  items.push(o);selected=o.id;cancelLoadPlacement();render();
 }
-function paintLoadPreview(){
+function paintLoadPreview(){renderLoadReference();
  svg.querySelector('[data-load-preview]')?.remove();if(!loadPlacement)return;
  const p=loadPlacement,g=el('g',{'data-load-preview':'true','pointer-events':'none',stroke:'#087d95',fill:'none','stroke-width':1.5});
  const {x,y}=p.a;el('circle',{cx:x,cy:y,r:4,fill:'white'},g);
@@ -1776,13 +1818,13 @@ function paintLoadPreview(){
 svg.addEventListener('pointerdown',e=>{
  if(e.button!==0||!['force','moment','udl'].includes(mode)||typeof panEnabled!=='undefined'&&panEnabled)return;
  e.preventDefault();e.stopImmediatePropagation();
- if(!loadPlacement){loadPlacement={type:mode,a:snapToBar(rawPoint(e))||point(e),angle:mode==='moment'?0:270,rotation:mode==='moment'?currentMomentRotation:$('rotation').value};if(mode!=='udl'){loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=loadUIToInternal(mode,0,loadPlacement.rotation);beginLoadNumericInput(e)}}
+ if(!loadPlacement){loadPlacement={type:mode,a:snapToBar(rawPoint(e))||point(e),angle:mode==='moment'?0:270,rotation:mode==='moment'?currentMomentRotation:$('rotation').value};if(mode!=='udl'){loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=loadUIToInternal(mode,0,loadPlacement.rotation);beginLoadReference();beginLoadNumericInput(e)}}
  else if(mode==='udl'&&!loadPlacement.b){const b=snapToBar(rawPoint(e))||point(e);if(Math.hypot(b.x-loadPlacement.a.x,b.y-loadPlacement.a.y)<1)return;loadPlacement.b=b;loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=90;beginLoadNumericInput(e)}
- else{if(loadPlacement.uiAngle){if(!confirmLoadNumericInput()||!updateLoadOrientation(e))return}else if(loadPlacement.type==='udl'&&!updateUDLOrientation(e))return;placeLoadObject();return}
+ else{const override=loadReferenceOverrideAt(rawPoint(e));if(override){setLoadReference(override.id);updateLoadNumericInput(e);paintLoadPreview();return}if(loadPlacement.uiAngle){if(!confirmLoadNumericInput()||!updateLoadOrientation(e))return}else if(loadPlacement.type==='udl'&&!updateUDLOrientation(e))return;placeLoadObject();return}
  paintLoadPreview();
 },true);
 svg.addEventListener('pointermove',e=>{
- if(!loadPlacement)return;e.stopImmediatePropagation();
+ if(!loadPlacement)return;if(loadPlacement.type==='udl')e.stopImmediatePropagation();
  if(loadPlacement.uiAngle){updateLoadOrientation(e);updateLoadNumericInput(e);paintLoadPreview();return}
  if(loadPlacement.type==='udl'&&!loadPlacement.b){loadPlacement.hover=drawingPoint(e);paintLoadPreview();return}
 

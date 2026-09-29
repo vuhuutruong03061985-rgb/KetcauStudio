@@ -107,8 +107,8 @@ svg.addEventListener('pointermove',e=>{
   const constrained=drawingPoint(e);if(Math.hypot(constrained.x-p.x,constrained.y-p.y)>0.01)return;
  }
  const size=6/Math.abs(svg.getScreenCTM().a);
- const override=mode==='thin'&&first&&thinReferenceSession?thinReferenceOverrideAt(raw):mode==='support'&&supportPlacementSession?supportReferenceOverrideAt(raw):null;
- const markerClass=override&&override.id!==(mode==='support'?supportPlacementSession?.referenceBarId:thinReferenceSession?.referenceBarId)?'reference-override':'';
+ const override=mode==='thin'&&first&&thinReferenceSession?thinReferenceOverrideAt(raw):mode==='support'&&supportPlacementSession?supportReferenceOverrideAt(raw):['force','moment'].includes(mode)&&loadPlacement?loadReferenceOverrideAt(raw):null;
+ const markerClass=override&&override.id!==(mode==='support'?supportPlacementSession?.referenceBarId:['force','moment'].includes(mode)?loadPlacement?.referenceBarId:thinReferenceSession?.referenceBarId)?'reference-override':'';
  if(extra){
   const g=el('g',{'data-extra-snap-hint':extra,class:markerClass,'pointer-events':'none',stroke:'#087d95',fill:'white','stroke-width':1.5});
   if(extra==='perpendicular')el('path',{d:`M${p.x-size} ${p.y-size}V${p.y+size}H${p.x+size}M${p.x-size} ${p.y}H${p.x}V${p.y+size}`,fill:'none','vector-effect':'non-scaling-stroke'},g);
@@ -1680,8 +1680,8 @@ function lockLoadNumericAngle(value){
  if(!loadNumericSession||!Number.isFinite(value))return;
  const session=loadNumericSession.session;
  let angle=value%360;if(angle<=-180)angle+=360;if(angle>180)angle-=360;
- session.uiAngle.mode='locked';session.uiAngle.value=angle===0?0:angle;
- session.angle=loadUIToInternal(session.type,angle,session.rotation);paintLoadPreview();
+ loadReferenceFrame();session.uiAngle.mode='locked';session.uiAngle.value=angle===0?0:angle;
+ resolveLoadUserAngle();paintLoadPreview();
 }
 function readLoadNumericEdit(){
  if(!loadNumericSession||!$('dynamicInputValue').dataset.editing)return;
