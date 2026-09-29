@@ -13,8 +13,8 @@ const near=(a,b)=>assert(Math.abs(a-b)<.003,`${a} != ${b}`);
   const snapshot=()=>p.evaluate(()=>({doc:documentText(),past:copy(past),future:copy(future),selected,first:copy(first),saved:savedDocument}));
   const check=async id=>{
    assert.equal(await count(),1);
-   const r=await p.evaluate(id=>{const l=svg.querySelector('.thin-reference-highlight'),bar=items.find(o=>o.id===id),g=svg.querySelector(`[data-id="${id}"]`),css=getComputedStyle(l);return {actual:['x1','y1','x2','y2'].map(k=>Number(l.getAttribute(k))),expected:[bar.x,bar.y,bar.x2,bar.y2],pointer:css.pointerEvents,opacity:css.strokeOpacity,width:css.strokeWidth,before:!!(l.compareDocumentPosition(g)&Node.DOCUMENT_POSITION_FOLLOWING),itemId:l.getAttribute('data-id')}},id);
-   r.actual.forEach((v,i)=>near(v,r.expected[i]));assert.equal(r.pointer,'none');assert.equal(r.itemId,null);assert(r.before);assert.equal(r.width,'7px');assert.equal(r.opacity,'0.3');
+   const r=await p.evaluate(id=>{const l=svg.querySelector('.thin-reference-highlight'),bar=items.find(o=>o.id===id),g=svg.querySelector(`[data-id="${id}"]`),css=getComputedStyle(l);return {actual:['x1','y1','x2','y2'].map(k=>Number(l.getAttribute(k))),expected:[bar.x,bar.y,bar.x2,bar.y2],pointer:css.pointerEvents,opacity:css.opacity,width:css.strokeWidth,stroke:css.stroke,dash:css.strokeDasharray,cap:css.strokeLinecap,before:!!(l.compareDocumentPosition(g)&Node.DOCUMENT_POSITION_PRECEDING),itemId:l.getAttribute('data-id')}},id);
+   r.actual.forEach((v,i)=>near(v,r.expected[i]));assert.equal(r.pointer,'none');assert.equal(r.itemId,null);assert(r.before);assert.equal(r.width,'5px');assert.equal(r.opacity,'1');assert.equal(r.stroke,'rgb(245, 158, 11)');assert.equal(r.dash,'8px, 5px');assert.equal(r.cap,'round');
   };
   await seed(1);await check('h');const before=await snapshot();await p.evaluate(()=>{render();render()});await check('h');assert.deepEqual(await snapshot(),before);
   const exportResult=await p.evaluate(()=>{const clean=exportSVG();render(true);const cleanCount=svg.querySelectorAll('.thin-reference-highlight').length;render();return {clean,cleanCount,json:documentText()}});
@@ -43,6 +43,6 @@ const near=(a,b)=>assert(Math.abs(a-b)<.003,`${a} != ${b}`);
    assert.equal(await count(),0);assert.deepEqual(await snapshot(),old);
    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();
   }
-  assert.deepEqual(errors,[]);await context.close();console.log(`PASS reference highlight ${touch?'touch (emulated)':'mouse'}: single/auto/override, exact fresh geometry, behind member/pointer safety, no items/history, clean export, cleanup/stale/chaining/rollback`);
+  assert.deepEqual(errors,[]);await context.close();console.log(`PASS reference highlight ${touch?'touch (emulated)':'mouse'}: single/auto/override, exact fresh geometry, above member/pointer safety, no items/history, clean export, cleanup/stale/chaining/rollback`);
  }
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});

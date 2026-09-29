@@ -126,7 +126,9 @@ button.icon-button.active,button.icon-button[aria-pressed="true"]{background:#cc
 #drawingScales label{display:grid;grid-template-columns:7ch 7ch auto 6ch auto;align-items:center;gap:5px}
 #drawingScales label span{display:block;white-space:nowrap}
 
-.thin-reference-highlight{stroke:#607d8b;stroke-width:7;stroke-opacity:.3;fill:none;pointer-events:none}
+.thin-reference-highlight{stroke:#f59e0b;stroke-width:5;stroke-dasharray:8 5;stroke-linecap:round;opacity:1;fill:none;pointer-events:none}
+.reference-override,.reference-override [stroke]{stroke:#f59e0b}
+.reference-override [fill="#087d95"]{fill:#f59e0b}
 
 /* Let the drawing use all space below the existing toolbars. */
 body{height:100dvh;display:flex;flex-direction:column}
@@ -137,3 +139,17 @@ article{display:flex;flex-direction:column;min-height:0}
 #actions,#viewTools{flex:none}
 .canvas-wrap{flex:1;min-height:0}
 @media(max-width:700px){aside{flex:0 1 auto;max-height:24dvh}article{flex:1}}
+/* Toolbox edge controls and floating auto-hide palette never resize the drawing on hover. */
+main[data-toolbox-mode]{position:relative;--toolbox-width:260px;--toolbox-inset:16px;padding-left:44px}
+main[data-toolbox-mode="pinned-open"]{grid-template-columns:var(--toolbox-width) minmax(0,1fr)}
+main[data-toolbox-mode="auto-hide"],main[data-toolbox-mode="collapsed"]{grid-template-columns:minmax(0,1fr)}
+.toolbox-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.toolbox-heading h2{margin:0}
+#toolboxPin{width:44px;height:44px;padding:10px;margin:0;flex:none}
+#toolboxPin svg{width:22px;height:22px;border:0;fill:none;stroke:currentColor;stroke-width:1.7;pointer-events:none}
+#toolboxPin[aria-pressed="true"]{background:#cce3e8;box-shadow:inset 1px 1px 3px #143a5540;color:#075c6a}
+#toolboxPin[aria-pressed="false"] svg{transform:rotate(35deg)}
+#toggleTools.toolbox-edge-handle{position:absolute;top:calc(var(--toolbox-inset) + 8px);left:0;width:40px;min-height:56px;margin:0;padding:0;border-radius:0 6px 6px 0;font-size:28px;z-index:901;color:#36566c;background:#fff;box-shadow:1px 2px 4px #183e5526}
+main[data-toolbox-mode="auto-hide"] #toolPanel{position:absolute;left:44px;top:var(--toolbox-inset);bottom:var(--toolbox-inset);width:min(var(--toolbox-width),calc(100% - 54px));max-height:none;z-index:900;box-shadow:3px 3px 12px #183e5533}
+@media(max-width:1000px){main[data-toolbox-mode]{--toolbox-width:220px;--toolbox-inset:10px}}
+@media(max-width:700px){main[data-toolbox-mode="pinned-open"] #toolPanel{width:auto}main[data-toolbox-mode="auto-hide"] #toolPanel{flex:none}main[data-toolbox-mode]{--toolbox-width:260px}}

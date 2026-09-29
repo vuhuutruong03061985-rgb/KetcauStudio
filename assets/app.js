@@ -569,7 +569,7 @@ function getThinConstrainedGeometry(referenceBar,rawCursorPoint=thinReferenceSes
  return resolveThinConstrainedGeometry({anchorPoint:thinReferenceSession?.anchorPoint,referenceBar,rawCursorPoint,screenScale:Math.abs(svg.getScreenCTM()?.a),valueMode:numeric?.valueMode||'live',internalForceValue:numeric?.value,internalForceScale});
 }
 var thinReferenceSession=null;
-function endThinReferenceSession(){thinReferenceSession=null;svg.querySelector('.thin-reference-highlight')?.remove()}
+function endThinReferenceSession(){thinReferenceSession=null;svg.querySelector('.thin-reference-highlight')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'))}
 function beginThinReferenceSession(){
  endThinReferenceSession();
  if(mode!=='thin'||!first)return;
@@ -708,8 +708,6 @@ function render(clean=false){
  if(autosaveReady&&!clean){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(saveDraft,200)}
 svg.replaceChildren();const defs=el('defs'),marker=el('marker',{id:'arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto'},defs);el('path',{d:'M0 0L10 5L0 10Z',fill:'black'},marker);const momentMarker=el('marker',{id:'momentArrow',viewBox:'0 0 10 10',refX:0,refY:5,markerWidth:7,markerHeight:7,orient:'auto',overflow:'visible'},defs);el('path',{d:'M0 0L10 5L0 10Z',fill:'black'},momentMarker);el('rect',{width:1100,height:720,fill:'white'});
 if(items.some(o=>o.type==='person'))definePersonSymbol(defs);
-// Behind the real member stroke so its engineering line remains unobscured; excluded from clean exports.
-if(!clean)renderThinReferenceHighlight();
 for(const o of [...items].sort((a,b)=>Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(a.type))-Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(b.type)))){if(o.type==='person'){try{validatePerson(o)}catch{continue}}if(hiddenSectionAction(o))continue;const {x,y,x2,y2}=o,g=el('g',{'data-id':o.id,...(validObjectColor(o.strokeColor)?{'data-object-color':o.strokeColor}:{}),stroke:objectColor(o),'stroke-width':1.8,fill:'none'});
 if(o.type==='person'){
  const instance=el('g',{transform:personTransform(o)},g);
@@ -851,7 +849,7 @@ if(!clean&&mode==='select'&&selectedObjectIds().size<2){
 }
  if(!clean&&mode==='curve'&&second)el('circle',{cx:second.x,cy:second.y,r:6,fill:'#15889c','pointer-events':'none'});
  if(!clean&&mode==='bar')renderBarConstraintPreview();
- if(!clean&&mode==='thin')renderThinConstraintPreview();
+ if(!clean){renderThinReferenceHighlight();if(mode==='thin')renderThinConstraintPreview()}
  if(!clean&&first&&hover&&['dashed','udl','linkBar'].includes(mode)){const g=el('g',{'pointer-events':'none',stroke:'#087d95','stroke-dasharray':'5 4'});line(g,first.x,first.y,hover.x,hover.y);}
  if(!clean&&mode==='joint'&&typeof drawJointHandles==='function')drawJointHandles();
  if(!clean)renderRigidControls();
@@ -1052,11 +1050,15 @@ if(mode==='bar'&&first&&typeof barNumericSession!=='undefined'&&barNumericSessio
  if(typeof beginBarNumericInput==='function')beginBarNumericInput(anchor);
  selected=items.at(-1).id;render();msg('Đã thêm đối tượng.');return true;
 }
-// Registered before tablet.js's pending numeric confirmation and the pointer commit path.
-svg.addEventListener('pointerdown',e=>{
- if(!overrideThinReference(e))return;
- e.preventDefault();e.stopImmediatePropagation();
-},true);
+// One event can visit capture, numeric confirmation and the canvas handler: consume it once.
+const thinReferenceConsumedEvents=new WeakSet();
+function consumeThinReferenceOverride(e){
+ if(thinReferenceConsumedEvents.has(e))return true;
+ if(!overrideThinReference(e))return false;
+ thinReferenceConsumedEvents.add(e);
+ e.preventDefault();e.stopImmediatePropagation();return true;
+}
+svg.addEventListener('pointerdown',consumeThinReferenceOverride,true);
 // Shared thin-line commit: click/tap and keyboard retain one history/model path.
 function commitThinCandidate(candidate,anchor){
  if(mode!=='thin'||!first)return false;
@@ -1085,6 +1087,7 @@ function commitThinCandidate(candidate,anchor){
  selected=items.at(-1).id;render();msg('Đã thêm đối tượng.');return true;
 }
 svg.onpointerdown=e=>{if(e.button!==0||mode==='labelEdit')return;
+if(consumeThinReferenceOverride(e))return;
 if(mode==='curve'){
  const p=snapToBar(rawPoint(e))||point(e);
  if(!first){first=p;render();msg('Chọn điểm thứ hai mà đường cong đi qua.');return}

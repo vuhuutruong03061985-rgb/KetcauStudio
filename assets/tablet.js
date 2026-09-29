@@ -107,24 +107,26 @@ svg.addEventListener('pointermove',e=>{
   const constrained=drawingPoint(e);if(Math.hypot(constrained.x-p.x,constrained.y-p.y)>0.01)return;
  }
  const size=6/Math.abs(svg.getScreenCTM().a);
+ const override=mode==='thin'&&first&&thinReferenceSession?thinReferenceOverrideAt(raw):null;
+ const markerClass=override&&override.id!==thinReferenceSession.referenceBarId?'reference-override':'';
  if(extra){
-  const g=el('g',{'data-extra-snap-hint':extra,'pointer-events':'none',stroke:'#087d95',fill:'white','stroke-width':1.5});
+  const g=el('g',{'data-extra-snap-hint':extra,class:markerClass,'pointer-events':'none',stroke:'#087d95',fill:'white','stroke-width':1.5});
   if(extra==='perpendicular')el('path',{d:`M${p.x-size} ${p.y-size}V${p.y+size}H${p.x+size}M${p.x-size} ${p.y}H${p.x}V${p.y+size}`,fill:'none','vector-effect':'non-scaling-stroke'},g);
   else if(extra==='pendingIntersection')el('path',{d:`M${p.x-size} ${p.y-size}L${p.x+size} ${p.y+size}M${p.x-size} ${p.y+size}L${p.x+size} ${p.y-size}`,'vector-effect':'non-scaling-stroke'},g);
   else el('path',{d:`M${p.x} ${p.y-size}L${p.x+size} ${p.y}L${p.x} ${p.y+size}L${p.x-size} ${p.y}Z`,'vector-effect':'non-scaling-stroke'},g);
   return;
  }
  if(intersection){
-  const g=el('g',{'data-intersection-hint':'true','pointer-events':'none'});
+  const g=el('g',{'data-intersection-hint':'true',class:markerClass,'pointer-events':'none'});
   el('path',{d:`M${p.x-size} ${p.y-size}L${p.x+size} ${p.y+size}M${p.x-size} ${p.y+size}L${p.x+size} ${p.y-size}`,stroke:'#087d95','stroke-width':2,'vector-effect':'non-scaling-stroke'},g);return;
  }
  if(endpoint){
-  const g=el('g',{'data-endpoint-hint':'true','pointer-events':'none'});
+  const g=el('g',{'data-endpoint-hint':'true',class:markerClass,'pointer-events':'none'});
   el('circle',{cx:p.x,cy:p.y,r:size+2/Math.abs(svg.getScreenCTM().a),fill:'none',stroke:'#087d95','stroke-width':2,'vector-effect':'non-scaling-stroke'},g);
   el('circle',{cx:p.x,cy:p.y,r:2/Math.abs(svg.getScreenCTM().a),fill:'#087d95'},g);
   return;
  }
- const g=el('g',{'data-midpoint-hint':'true','pointer-events':'none'});
+ const g=el('g',{'data-midpoint-hint':'true',class:markerClass,'pointer-events':'none'});
  el('path',{d:`M${p.x} ${p.y-size} L${p.x+size} ${p.y+size} L${p.x-size} ${p.y+size} Z`,fill:'white',stroke:'#087d95','stroke-width':1.5,'vector-effect':'non-scaling-stroke'},g);
 });
 svg.addEventListener('pointerleave',()=>{svg.querySelector('[data-extra-snap-hint]')?.remove();svg.querySelector('[data-midpoint-hint]')?.remove();svg.querySelector('[data-endpoint-hint]')?.remove();svg.querySelector('[data-intersection-hint]')?.remove()});
@@ -283,10 +285,54 @@ document.addEventListener('keydown',e=>{
   if(e.key.toLowerCase()==='v'){e.preventDefault();pasteObjects()}
  }
 });
-$('toggleTools').onclick=()=>{
- const collapsed=document.body.classList.toggle('tools-collapsed');
- $('toggleTools').setAttribute('aria-expanded',String(!collapsed));
+// Session-only toolbox presentation; independent of drawing/document state.
+const toolboxPanel=$('toolPanel'),toolboxHandle=$('toggleTools'),toolboxShell=toolboxPanel.parentElement;
+const toolboxPin=document.createElement('button');toolboxPin.id='toolboxPin';toolboxPin.type='button';
+toolboxPin.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l-1 7 3 3v2H6v-2l3-3zM12 15v6"/></svg>';
+const toolboxHeading=document.createElement('div');toolboxHeading.className='toolbox-heading';
+toolboxPanel.prepend(toolboxHeading);toolboxHeading.append(toolboxPanel.querySelector('h2'),toolboxPin);
+toolboxShell.append(toolboxHandle);toolboxHandle.className='toolbox-edge-handle';
+let toolboxMode='pinned-open',toolboxOpen=false,toolboxCloseTimer=null,toolboxTouchInteraction=false;
+function cancelToolboxClose(){clearTimeout(toolboxCloseTimer);toolboxCloseTimer=null}
+function paintToolbox(){
+ const visible=toolboxMode==='pinned-open'||toolboxMode==='auto-hide'&&toolboxOpen;
+ toolboxShell.dataset.toolboxMode=toolboxMode;toolboxShell.classList.toggle('toolbox-overlay-open',toolboxMode==='auto-hide'&&toolboxOpen);
+ document.body.classList.toggle('tools-collapsed',!visible);
+ toolboxPanel.hidden=!visible;toolboxPanel.inert=!visible;
+ toolboxHandle.textContent=visible?'‹':'›';toolboxHandle.setAttribute('aria-expanded',String(visible));
+ toolboxHandle.title=visible?'Thu gọn thanh Công cụ':'Mở thanh Công cụ';toolboxHandle.setAttribute('aria-label',toolboxHandle.title);
+ toolboxPin.setAttribute('aria-pressed',String(toolboxMode==='pinned-open'));
+ toolboxPin.title=toolboxMode==='pinned-open'?'Tự động ẩn thanh Công cụ':'Ghim thanh Công cụ';toolboxPin.setAttribute('aria-label',toolboxPin.title);
+}
+function setToolboxMode(next){cancelToolboxClose();toolboxMode=next;toolboxOpen=false;paintToolbox()}
+function openToolboxOverlay(){if(toolboxMode!=='auto-hide')return;cancelToolboxClose();toolboxOpen=true;paintToolbox()}
+function toolboxHasKeyboardFocus(){return [toolboxHandle,toolboxPanel].some(el=>el.contains(document.activeElement)&&document.activeElement.matches(':focus-visible'))}
+function scheduleToolboxClose(){
+ if(toolboxMode!=='auto-hide')return;cancelToolboxClose();
+ toolboxCloseTimer=setTimeout(()=>{if(toolboxHasKeyboardFocus())return;toolboxOpen=false;paintToolbox()},400);
+}
+toolboxHandle.onclick=()=>{
+ if(toolboxMode==='collapsed')setToolboxMode('pinned-open');
+ else if(toolboxMode==='auto-hide'&&!toolboxOpen)openToolboxOverlay();
+ else setToolboxMode('collapsed');
 };
+toolboxPin.onclick=()=>{
+ if(toolboxMode==='pinned-open'){toolboxHandle.focus({preventScroll:true});setToolboxMode('auto-hide')}
+ else setToolboxMode('pinned-open');
+};
+for(const target of [toolboxHandle,toolboxPanel]){
+ target.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')openToolboxOverlay()});
+ target.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')scheduleToolboxClose()});
+ target.addEventListener('focusin',()=>{if(toolboxHasKeyboardFocus())openToolboxOverlay()});
+ target.addEventListener('focusout',()=>{if(!toolboxTouchInteraction)scheduleToolboxClose()});
+}
+document.addEventListener('keydown',e=>{if(e.key==='Tab')toolboxTouchInteraction=false},true);
+document.addEventListener('pointerdown',e=>{
+ toolboxTouchInteraction=e.pointerType==='touch';
+ if(toolboxMode!=='auto-hide'||!toolboxOpen||toolboxPanel.contains(e.target)||toolboxHandle.contains(e.target))return;
+ cancelToolboxClose();toolboxOpen=false;paintToolbox();
+},true);
+paintToolbox();
 for(const [id,title,types]of [
  ['interactionTools','Thao tác',['select']],
  ['drawingTools','Vẽ',['bar','thin','dashed','curve','extend','hatch','rigidRegion']],
@@ -800,7 +846,7 @@ const toolIconPaths={
 const eraseCursorSVG=`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="${toolIconPaths.delete}" fill="white" stroke="#28485c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 svg.style.setProperty('--erase-cursor',`url("data:image/svg+xml,${encodeURIComponent(eraseCursorSVG)}") 3 15, default`);
 function decorateToolIcons(){
- for(const button of document.querySelectorAll('#tools button,#viewTools button,#actions button,#toggleTools')){
+ for(const button of document.querySelectorAll('#tools button,#viewTools button,#actions button')){
   const key=button.dataset.mode||button.dataset.toolbarIcon||button.id,path=toolIconPaths[key];if(!path)continue;
   const label=button.textContent.trim();
   const title=key==='person'?'H\u00ecnh ng\u01b0\u1eddi \u2013 \u0111\u1eb7t v\u1ecb tr\u00ed \u0111\u1ee9ng':label+(drawingShortcutNames[key]?' ('+drawingShortcutNames[key]+')':'');
@@ -1626,6 +1672,7 @@ svg.addEventListener('pointermove',e=>{
 // A canvas tap can accept pending drawing edits without a separate touch button.
 // Validation happens before the unchanged pointer commit handler.
 svg.addEventListener('pointerdown',e=>{
+ if(consumeThinReferenceOverride(e))return;
  if(e.button!==0||!first||!dynamicInputUI.isOpen())return;
  const session=mode==='bar'?barNumericSession:mode==='thin'?thinNumericSession:null;
  if(!session||!dynamicInputUI.owns(session.capture.confirm))return;
