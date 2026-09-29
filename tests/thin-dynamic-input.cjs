@@ -20,7 +20,10 @@ const {chromium}=require('../.test-tools/node_modules/playwright');const {pathTo
   }
   await reset();await click(200,200);await p.keyboard.press('Escape');assert.equal(await armed(),false);
   await reset();await click(200,200);await p.evaluate(()=>openArmedDynamicInput());await p.locator('#dynamicInputValue').fill('110');await p.evaluate(()=>dynamicInputUI.confirmPending());assert.equal(await p.evaluate(()=>items.length),0);assert.equal(await p.evaluate(()=>past.length),0);assert.equal(await armed(),true);
-  await reset();await p.evaluate(()=>{items=[make('bar',200,200,500,200)];render()});await click(202,201);assert.deepEqual(await p.evaluate(()=>first),{x:200,y:200});await click(498,201);assert.deepEqual(await p.evaluate(()=>[items[1].x,items[1].y,items[1].x2,items[1].y2]),[200,200,500,200]);assert.equal(await armed(),true);
+  // The first point still snaps; an active reference now uses raw normal distance and section offset.
+  await reset();await p.evaluate(()=>{items=[make('bar',200,200,500,200)];render()});await click(202,201);assert.deepEqual(await p.evaluate(()=>first),{x:200,y:200});
+  const offset=await p.evaluate(()=>3/Math.abs(svg.getScreenCTM().a));await click(498,201);
+  const expected=[200+offset,200,200+offset,201],actual=await p.evaluate(()=>[items[1].x,items[1].y,items[1].x2,items[1].y2]);actual.forEach((value,i)=>assert(Math.abs(value-expected[i])<.001));assert.equal(await armed(),true);
   await reset();await click(200,200);await p.evaluate(()=>{showDynamicInput({value:'42',suffix:'other'});setMode('select')});assert(await p.locator('#dynamicInput').isVisible());await p.evaluate(()=>hideDynamicInput());
   assert.deepEqual(errors,[]);await c.close();
  }

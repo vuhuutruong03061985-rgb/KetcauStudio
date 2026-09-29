@@ -516,6 +516,21 @@ function solveThinEndpointFromValue({startPoint:s,candidatePoint:c,internalForce
 // Transient per-segment reference only; never part of items or document serialization.
 const THIN_REFERENCE_TOLERANCE_PX=10;
 const THIN_REFERENCE_ACTIVATION_PX=10;
+const THIN_SECTION_SIDE_THRESHOLD_PX=10;
+const THIN_SECTION_OFFSET_PX=3;
+function resolveThinConstrainedGeometry(options={}){
+ if(!options)return null;
+ const {anchorPoint,referenceBar,rawCursorPoint,screenScale,valueMode,internalForceValue,internalForceScale}=options;
+ const placement=solveThinSectionPlacement({anchorPoint,referenceBar,cursorPoint:rawCursorPoint,screenScale,thresholdPx:THIN_SECTION_SIDE_THRESHOLD_PX,offsetPx:THIN_SECTION_OFFSET_PX});
+ if(!placement)return null;
+ const {drawStartPoint,sectionSide,normal,normalDistance:signedNormalDistance}=placement;
+ const endpoint=solveThinPerpendicularEndpoint({drawStartPoint,normal,signedNormalDistance,valueMode,internalForceValue,internalForceScale});
+ return endpoint?{drawStartPoint,endpoint,sectionSide,normal,signedNormalDistance}:null;
+}
+function getThinConstrainedGeometry(referenceBar,rawCursorPoint=thinReferenceSession?.rawCursorPoint){
+ const numeric=typeof thinNumericSession!=='undefined'&&thinNumericSession?.first===first?thinNumericSession:null;
+ return resolveThinConstrainedGeometry({anchorPoint:thinReferenceSession?.anchorPoint,referenceBar,rawCursorPoint,screenScale:Math.abs(svg.getScreenCTM()?.a),valueMode:numeric?.valueMode||'live',internalForceValue:numeric?.value,internalForceScale});
+}
 var thinReferenceSession=null;
 function endThinReferenceSession(){thinReferenceSession=null}
 function beginThinReferenceSession(){
@@ -524,7 +539,7 @@ function beginThinReferenceSession(){
  const screenScale=Math.abs(svg.getScreenCTM()?.a);
  const anchorPoint={x:first.x,y:first.y};
  const candidates=collectThinReferenceBars({bars:items,anchorPoint,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/screenScale});
- thinReferenceSession={anchorPoint,candidates,referenceBarId:candidates.length===1?candidates[0].barId:null,referenceBarLocked:candidates.length===1,segmentFirst:first};
+ thinReferenceSession={anchorPoint,candidates,referenceBarId:candidates.length===1?candidates[0].barId:null,referenceBarLocked:candidates.length===1,segmentFirst:first,rawCursorPoint:{...anchorPoint}};
 }
 function getThinReferenceBar(){
  const session=thinReferenceSession;if(!session?.referenceBarLocked)return null;
@@ -540,22 +555,28 @@ function syncThinReferenceSession(){
 function updateThinReferenceSession(e){
  syncThinReferenceSession();
  const session=thinReferenceSession;
- if(!session||session.referenceBarLocked||session.candidates.length<2||!e||![e.clientX,e.clientY].every(Number.isFinite))return;
+ if(!session||!e||![e.clientX,e.clientY].every(Number.isFinite))return;
  const screenScale=Math.abs(svg.getScreenCTM()?.a);
  if(!Number.isFinite(screenScale)||screenScale<=0)return;
+ const rawCursorPoint=rawPoint(e);
+ session.rawCursorPoint={x:rawCursorPoint.x,y:rawCursorPoint.y};
+ if(session.referenceBarLocked||session.candidates.length<2)return;
  // Refresh by ID from current items; candidate object references are not authoritative.
  const ids=new Set(session.candidates.map(c=>c.barId));
  session.candidates=collectThinReferenceBars({bars:items.filter(o=>ids.has(o.id)),anchorPoint:session.anchorPoint,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/screenScale});
- const candidate=resolveThinReferenceBar({candidates:session.candidates,anchorPoint:session.anchorPoint,cursorPoint:rawPoint(e),screenScale,activationThresholdPx:THIN_REFERENCE_ACTIVATION_PX});
+ const candidate=resolveThinReferenceBar({candidates:session.candidates,anchorPoint:session.anchorPoint,cursorPoint:rawCursorPoint,screenScale,activationThresholdPx:THIN_REFERENCE_ACTIVATION_PX});
  if(candidate){session.referenceBarId=candidate.barId;session.referenceBarLocked=true}
 }
 function renderThinConstraintPreview(){
  svg.querySelector('[data-thin-preview]')?.remove();
  if(mode!=='thin'||!first)return;
- const endpoint=typeof thinNumericSession!=='undefined'&&thinNumericSession?.valueMode==='locked'?thinNumericSession.endpoint:hover;
+ const referenceBar=getThinReferenceBar();
+ const geometry=referenceBar?getThinConstrainedGeometry(referenceBar):null;
+ const start=referenceBar?geometry?.drawStartPoint:first;
+ const endpoint=referenceBar?geometry?.endpoint:typeof thinNumericSession!=='undefined'&&thinNumericSession?.valueMode==='locked'?thinNumericSession.endpoint:hover;
  if(!endpoint)return;
  const g=el('g',{'data-thin-preview':'true','pointer-events':'none',stroke:'#087d95','stroke-dasharray':'5 4'});
- line(g,first.x,first.y,endpoint.x,endpoint.y);
+ line(g,start.x,start.y,endpoint.x,endpoint.y);
 }
 // Refresh this transient decoration without rendering objects or scheduling autosave.
 function renderBarConstraintPreview(){
@@ -987,18 +1008,27 @@ if(mode==='bar'&&first&&typeof barNumericSession!=='undefined'&&barNumericSessio
 function commitThinCandidate(candidate,anchor){
  if(mode!=='thin'||!first)return false;
  updateThinReferenceSession(anchor);
- let p=candidate;
-if(mode==='thin'&&first&&typeof thinNumericSession!=='undefined'&&thinNumericSession?.first===first&&thinNumericSession.valueMode==='locked'){
+ const referenceBar=getThinReferenceBar();
+ let p=candidate,start=first;
+ if(referenceBar){
+  // Recompute from this commit's raw event; an active but ambiguous normal is not free drawing.
+  const raw=anchor&&[anchor.clientX,anchor.clientY].every(Number.isFinite)?rawPoint(anchor):null;
+  const geometry=getThinConstrainedGeometry(referenceBar,raw);
+  if(!geometry)return false;
+  start=geometry.drawStartPoint;p=geometry.endpoint;
+  // Screen/model conversion can leave roundoff when the cursor lies exactly on the bar.
+  if(Math.hypot(p.x-start.x,p.y-start.y)<=1e-9)return false;
+ }else if(mode==='thin'&&first&&typeof thinNumericSession!=='undefined'&&thinNumericSession?.first===first&&thinNumericSession.valueMode==='locked'){
  p=solveThinEndpointFromValue({startPoint:first,candidatePoint:p,internalForceValue:thinNumericSession.value,internalForceScale});
  if(!p)return;
 }
 
- if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||(p.x===first.x&&p.y===first.y))return false;
- checkpoint();items.push(make('thin',first.x,first.y,p.x,p.y));
+ if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||(p.x===start.x&&p.y===start.y))return false;
+ checkpoint();items.push(make('thin',start.x,start.y,p.x,p.y));
  if(typeof endThinNumericInput==='function')endThinNumericInput();
  first={...p};hover=null;
- if(typeof beginThinNumericInput==='function')beginThinNumericInput(anchor);
  beginThinReferenceSession();
+ if(typeof beginThinNumericInput==='function')beginThinNumericInput(anchor);
  selected=items.at(-1).id;render();msg('Đã thêm đối tượng.');return true;
 }
 svg.onpointerdown=e=>{if(e.button!==0||mode==='labelEdit')return;

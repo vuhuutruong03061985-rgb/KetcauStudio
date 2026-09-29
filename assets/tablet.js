@@ -1606,10 +1606,12 @@ function endThinNumericInput(){
 function syncThinNumericInput(){
  // The legacy commit replaces first with the endpoint; this also ends the session.
  if(thinNumericSession&&(mode!=='thin'||first!==thinNumericSession.first||(thinNumericSession.valueMode==='live'&&dynamicNumericCapture!==thinNumericSession.capture)))endThinNumericInput();
- if(thinNumericSession?.valueMode==='locked')thinNumericSession.endpoint=solveThinEndpointFromValue({startPoint:first,candidatePoint:hover||first,internalForceValue:thinNumericSession.value,internalForceScale});
+ const referenceBar=thinNumericSession?getThinReferenceBar():null;
+ const geometry=referenceBar?getThinConstrainedGeometry(referenceBar):null;
+ if(thinNumericSession?.valueMode==='locked')thinNumericSession.endpoint=referenceBar?geometry?.endpoint||null:solveThinEndpointFromValue({startPoint:first,candidatePoint:hover||first,internalForceValue:thinNumericSession.value,internalForceScale});
  if(thinNumericSession?.valueMode==='live'){
   const candidate=hover||first;
-  thinNumericSession.value=Math.hypot(candidate.x-first.x,candidate.y-first.y)*internalForceScale;
+  thinNumericSession.value=(referenceBar?Math.abs(geometry?.signedNormalDistance||0):Math.hypot(candidate.x-first.x,candidate.y-first.y))*internalForceScale;
  }
  if(thinNumericSession&&dynamicInputUI.owns(thinNumericSession.capture.confirm))updateDynamicInput();
 }

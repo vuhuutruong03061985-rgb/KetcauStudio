@@ -25,6 +25,11 @@ const path=require('node:path');
      assert.equal(await page.evaluate(()=>mode==='bar'?barNumericSession.state.distance.mode:thinNumericSession.valueMode),'live');
      const counts=await page.evaluate(()=>[items.length,past.length]);
      await page.locator('#dynamicInputValue').fill(mode==='bar'?'1':'110');await click(600,400);
+     if(mode==='thin'){
+      // The preceding bar lies along this cursor direction: LOCKED has no normal side yet.
+      assert.deepEqual(await page.evaluate(()=>[items.length,past.length]),counts);
+      await click(600,450);
+     }
      assert.deepEqual(await page.evaluate(()=>[items.length,past.length]),counts.map(n=>n+1));
     }
     await page.evaluate(()=>actions.undo[1]());await clean();
