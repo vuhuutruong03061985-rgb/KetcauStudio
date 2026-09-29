@@ -415,6 +415,95 @@ function solveBarEndpoint({startPoint:s,candidatePoint:c,geometryScale:scale,dis
  const endpoint={x:s.x+ux*length,y:s.y+uy*length};
  return finitePoint(endpoint)?endpoint:null;
 }
+// Pure bar frame: tangent follows A -> B; normal is the fixed +90 degree rotation.
+function getThinBarFrame(bar){
+ if(!bar||![bar.x,bar.y,bar.x2,bar.y2].every(Number.isFinite))return null;
+ const dx=bar.x2-bar.x,dy=bar.y2-bar.y,length=Math.hypot(dx,dy);
+ if(!Number.isFinite(length)||length<=0)return null;
+ const tangent={x:dx/length,y:dy/length},normal={x:-tangent.y,y:tangent.x};
+ return {tangent,normal,length};
+}
+// Along selects the section side; normalDistance remains an independent model distance.
+// Only the visual start moves: the mechanical anchor is never modified.
+function solveThinSectionPlacement(options={}){
+ if(!options)return null;
+ const {anchorPoint:s,referenceBar,cursorPoint:c,screenScale,thresholdPx,offsetPx}=options;
+ const finite=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
+ if(!finite(s)||!finite(c)||![screenScale,thresholdPx,offsetPx].every(Number.isFinite)||screenScale<=0||thresholdPx<0||offsetPx<0)return null;
+ const frame=getThinBarFrame(referenceBar);if(!frame)return null;
+ const {tangent,normal}=frame,dx=c.x-s.x,dy=c.y-s.y;
+ const along=dx*tangent.x+dy*tangent.y,normalDistance=dx*normal.x+dy*normal.y;
+ const alongPx=along*screenScale,offsetModel=offsetPx/screenScale;
+ if(![along,normalDistance,alongPx,offsetModel].every(Number.isFinite))return null;
+ // Equality belongs to the dead zone on both sides.
+ const sectionSide=alongPx < -thresholdPx?-1:alongPx > thresholdPx?1:0;
+ const drawStartPoint={x:s.x+tangent.x*sectionSide*offsetModel,y:s.y+tangent.y*sectionSide*offsetModel};
+ return finite(drawStartPoint)?{tangent,normal,along,normalDistance,sectionSide,drawStartPoint}:null;
+}
+// Pure finite-segment candidates, in input order; bar is the original read-only reference.
+function collectThinReferenceBars(options={}){
+ if(!options)return [];
+ const {bars,anchorPoint:p,toleranceModel}=options;
+ if(!Array.isArray(bars)||!p||![p.x,p.y,toleranceModel].every(Number.isFinite)||toleranceModel<0)return [];
+ const candidates=[];
+ for(const bar of bars){
+  if(!bar||bar.type!=='bar')continue;
+  const frame=getThinBarFrame(bar);if(!frame)continue;
+  const {tangent,normal}=frame,dx=p.x-bar.x,dy=p.y-bar.y;
+  // Scale AB before the dot products: avoid squared-length overflow and unit-frame roundoff.
+  const abx=bar.x2-bar.x,aby=bar.y2-bar.y,scale=Math.max(Math.abs(abx),Math.abs(aby));
+  const ux=abx/scale,uy=aby/scale,uRaw=((dx/scale)*ux+(dy/scale)*uy)/(ux*ux+uy*uy);
+  if(!Number.isFinite(uRaw))continue;
+  const parameter=Math.max(0,Math.min(1,uRaw));
+  const contactPoint=parameter===0?{x:bar.x,y:bar.y}:parameter===1?{x:bar.x2,y:bar.y2}:{x:bar.x+parameter*(bar.x2-bar.x),y:bar.y+parameter*(bar.y2-bar.y)};
+  const distance=Math.hypot(p.x-contactPoint.x,p.y-contactPoint.y);
+  if(![contactPoint.x,contactPoint.y,distance].every(Number.isFinite)||distance>toleranceModel)continue;
+  candidates.push({barId:bar.id,bar,contactPoint,parameter,distance,tangent,normal});
+ }
+ return candidates;
+}
+// Pure resolution only: null means invalid, inactive or geometrically ambiguous; no lock/state.
+function resolveThinReferenceBar(options={}){
+ if(!options)return null;
+ const {candidates,anchorPoint:s,cursorPoint:p,screenScale,activationThresholdPx}=options;
+ const finite=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
+ if(!Array.isArray(candidates)||!candidates.length||!finite(s)||!finite(p)||![screenScale,activationThresholdPx].every(Number.isFinite)||screenScale<=0||activationThresholdPx<0)return null;
+ // Reject malformed candidate lists instead of silently changing the competing set.
+ for(const c of candidates){
+  if(!c||!c.bar||c.bar.type!=='bar'||!getThinBarFrame(c.bar)||!finite(c.contactPoint)||!finite(c.tangent)||!finite(c.normal)||![c.parameter,c.distance].every(Number.isFinite)||c.parameter<0||c.parameter>1||c.distance<0||Math.abs(Math.hypot(c.normal.x,c.normal.y)-1)>1e-9)return null;
+ }
+ if(candidates.length===1)return candidates[0];
+ const dx=p.x-s.x,dy=p.y-s.y,distance=Math.hypot(dx,dy),distancePx=distance*screenScale;
+ if(!Number.isFinite(distance)||!Number.isFinite(distancePx)||distance===0||distancePx<=activationThresholdPx)return null;
+ const direction={x:dx/distance,y:dy/distance};
+ let winner=null,topScore=-Infinity,secondScore=-Infinity;
+ for(const candidate of candidates){
+  const score=Math.abs(direction.x*candidate.normal.x+direction.y*candidate.normal.y);
+  if(score>topScore){secondScore=topScore;topScore=score;winner=candidate}
+  else if(score>secondScore)secondScore=score;
+ }
+ // Collinear members are also ambiguous-equivalent; array order must never break a tie.
+ return topScore-secondScore<=1e-9?null:winner;
+}
+// Pure perpendicular endpoint: LIVE uses the signed model distance; LOCKED uses positive force magnitude.
+function solveThinPerpendicularEndpoint(options={}){
+ if(!options)return null;
+ const {drawStartPoint:s,normal:n,signedNormalDistance:d,valueMode,internalForceValue:value,internalForceScale:scale}=options;
+ const finite=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y),epsilon=1e-9;
+ if(!finite(s)||!finite(n)||!Number.isFinite(d))return null;
+ const normalLength=Math.hypot(n.x,n.y);
+ if(!Number.isFinite(normalLength)||normalLength<=epsilon)return null;
+ let distance;
+ if(valueMode==='live')distance=d;
+ else if(valueMode==='locked'){
+  if(!Number.isFinite(value)||value<=0||!Number.isFinite(scale)||scale<=0||Math.abs(d)<=epsilon)return null;
+  const length=value/scale;
+  if(!Number.isFinite(length)||length<=0)return null;
+  distance=(d>0?1:-1)*length;
+ }else return null;
+ const endpoint={x:s.x+n.x/normalLength*distance,y:s.y+n.y/normalLength*distance};
+ return finite(endpoint)?endpoint:null;
+}
 // Pure force-magnitude preview solver; one model unit represents scale force units.
 function solveThinEndpointFromValue({startPoint:s,candidatePoint:c,internalForceValue:value,internalForceScale:scale}){
  const finite=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
