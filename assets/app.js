@@ -518,6 +518,43 @@ const THIN_REFERENCE_TOLERANCE_PX=10;
 const THIN_REFERENCE_ACTIVATION_PX=10;
 const THIN_SECTION_SIDE_THRESHOLD_PX=10;
 const THIN_SECTION_OFFSET_PX=3;
+const THIN_REFERENCE_OVERRIDE_RADIUS_PX=40;
+const THIN_REFERENCE_OVERRIDE_HIT_PX=10;
+const THIN_REFERENCE_OVERRIDE_TIE_PX=1;
+// Pure finite-bar hit test. The central hit-width disk carries no directional intent.
+function hitThinReferenceOverride({bars,anchorPoint,cursorPoint,screenScale}={}){
+ if(!anchorPoint||!cursorPoint||![anchorPoint.x,anchorPoint.y,cursorPoint.x,cursorPoint.y,screenScale].every(Number.isFinite)||screenScale<=0)return null;
+ const radius=Math.hypot(cursorPoint.x-anchorPoint.x,cursorPoint.y-anchorPoint.y)*screenScale;
+ if(radius<=THIN_REFERENCE_OVERRIDE_HIT_PX||radius>THIN_REFERENCE_OVERRIDE_RADIUS_PX)return null;
+ const hits=collectThinReferenceBars({bars,anchorPoint:cursorPoint,toleranceModel:THIN_REFERENCE_OVERRIDE_HIT_PX/screenScale})
+  .filter(c=>Math.hypot(c.contactPoint.x-anchorPoint.x,c.contactPoint.y-anchorPoint.y)*screenScale<=THIN_REFERENCE_OVERRIDE_RADIUS_PX)
+  .sort((a,b)=>a.distance-b.distance);
+ if(!hits.length||(hits.length>1&&(hits[1].distance-hits[0].distance)*screenScale<=THIN_REFERENCE_OVERRIDE_TIE_PX))return null;
+ return hits[0].bar;
+}
+function thinReferenceOverrideAt(cursorPoint){
+ const session=thinReferenceSession;if(!session||session.candidates.length<2)return null;
+ const screenScale=Math.abs(svg.getScreenCTM()?.a),ids=new Set(session.candidates.map(c=>c.barId));
+ // Refresh by ID and recheck contact with the anchor; never select a stale or unrelated bar.
+ const candidates=collectThinReferenceBars({bars:items.filter(o=>ids.has(o.id)),anchorPoint:session.anchorPoint,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/screenScale});
+ return hitThinReferenceOverride({bars:candidates.map(c=>c.bar),anchorPoint:session.anchorPoint,cursorPoint,screenScale});
+}
+function overrideThinReference(e){
+ if(mode!=='thin'||!first||e.button!==0||![e.clientX,e.clientY].every(Number.isFinite))return false;
+ syncThinReferenceSession();
+ const bar=thinReferenceOverrideAt(rawPoint(e));if(!bar)return false;
+ const session=thinReferenceSession;
+ session.referenceBarId=bar.id;session.referenceBarLocked=true;
+ // A reference-selection tap is not a new drawing endpoint or a numeric confirmation.
+ session.rawCursorPoint={...(session.overrideCursorPoint||session.anchorPoint)};
+ // Keyboard commit must use the same retained drawing intent as the refreshed preview.
+ const numeric=typeof thinNumericSession!=='undefined'?thinNumericSession:null;
+ if(numeric?.first===first&&typeof dynamicNumericCapture!=='undefined'&&dynamicNumericCapture===numeric.capture){
+  const cursor=new DOMPoint(session.rawCursorPoint.x,session.rawCursorPoint.y).matrixTransform(svg.getScreenCTM());
+  updateDynamicNumericInputAnchor(cursor.x,cursor.y);
+ }
+ render();return true;
+}
 function resolveThinConstrainedGeometry(options={}){
  if(!options)return null;
  const {anchorPoint,referenceBar,rawCursorPoint,screenScale,valueMode,internalForceValue,internalForceScale}=options;
@@ -560,6 +597,8 @@ function updateThinReferenceSession(e){
  if(!Number.isFinite(screenScale)||screenScale<=0)return;
  const rawCursorPoint=rawPoint(e);
  session.rawCursorPoint={x:rawCursorPoint.x,y:rawCursorPoint.y};
+ // Keep the last drawing intent while the pointer approaches a reference-selection target.
+ if(!thinReferenceOverrideAt(rawCursorPoint))session.overrideCursorPoint={...session.rawCursorPoint};
  if(session.referenceBarLocked||session.candidates.length<2)return;
  // Refresh by ID from current items; candidate object references are not authoritative.
  const ids=new Set(session.candidates.map(c=>c.barId));
@@ -1004,6 +1043,11 @@ if(mode==='bar'&&first&&typeof barNumericSession!=='undefined'&&barNumericSessio
  if(typeof beginBarNumericInput==='function')beginBarNumericInput(anchor);
  selected=items.at(-1).id;render();msg('Đã thêm đối tượng.');return true;
 }
+// Registered before tablet.js's pending numeric confirmation and the pointer commit path.
+svg.addEventListener('pointerdown',e=>{
+ if(!overrideThinReference(e))return;
+ e.preventDefault();e.stopImmediatePropagation();
+},true);
 // Shared thin-line commit: click/tap and keyboard retain one history/model path.
 function commitThinCandidate(candidate,anchor){
  if(mode!=='thin'||!first)return false;

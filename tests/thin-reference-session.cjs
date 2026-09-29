@@ -35,7 +35,8 @@ const near=(a,b)=>assert(Math.abs(a-b)<.002,`${a} != ${b}`);
   await start();await move(340,340);assert.equal((await state()).id,null);await move(340,300);assert.equal((await state()).id,'v');
 
   // Observe the ending session at the real checkpoint, before the next segment replaces it.
-  for(const [cursor,expectedId] of [[{x:300,y:340},'h'],[{x:340,y:300},'v'],[{x:340,y:340},null]]){
+  // Ordinary endpoint taps stay outside the new 40 CSS-pixel reference-override region.
+  for(const [cursor,expectedId] of [[{x:300,y:360},'h'],[{x:360,y:300},'v'],[{x:340,y:340},null]]){
    await start();await p.evaluate(()=>{window.referenceOldSession=thinReferenceSession;window.referenceOriginalCheckpoint=checkpoint;checkpoint=function(){window.referenceAtCommit={id:thinReferenceSession.referenceBarId,locked:thinReferenceSession.referenceBarLocked};return window.referenceOriginalCheckpoint()}});
    const q=await coords(cursor.x,cursor.y),expected=await p.evaluate(q=>drawingPoint(q),q);
    // Dispatch down/up directly: deliberately no pointermove before commit.
