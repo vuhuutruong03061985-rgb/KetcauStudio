@@ -569,7 +569,7 @@ function getThinConstrainedGeometry(referenceBar,rawCursorPoint=thinReferenceSes
  return resolveThinConstrainedGeometry({anchorPoint:thinReferenceSession?.anchorPoint,referenceBar,rawCursorPoint,screenScale:Math.abs(svg.getScreenCTM()?.a),valueMode:numeric?.valueMode||'live',internalForceValue:numeric?.value,internalForceScale});
 }
 var thinReferenceSession=null;
-function endThinReferenceSession(){thinReferenceSession=null}
+function endThinReferenceSession(){thinReferenceSession=null;svg.querySelector('.thin-reference-highlight')?.remove()}
 function beginThinReferenceSession(){
  endThinReferenceSession();
  if(mode!=='thin'||!first)return;
@@ -605,6 +605,13 @@ function updateThinReferenceSession(e){
  session.candidates=collectThinReferenceBars({bars:items.filter(o=>ids.has(o.id)),anchorPoint:session.anchorPoint,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/screenScale});
  const candidate=resolveThinReferenceBar({candidates:session.candidates,anchorPoint:session.anchorPoint,cursorPoint:rawCursorPoint,screenScale,activationThresholdPx:THIN_REFERENCE_ACTIVATION_PX});
  if(candidate){session.referenceBarId=candidate.barId;session.referenceBarLocked=true}
+}
+function renderThinReferenceHighlight(){
+ svg.querySelector('.thin-reference-highlight')?.remove();
+ if(mode!=='thin'||!first||!thinReferenceSession?.referenceBarLocked)return;
+ const bar=items.find(o=>o.id===thinReferenceSession.referenceBarId);
+ if(bar?.type!=='bar'||!getThinBarFrame(bar))return;
+ line(svg,bar.x,bar.y,bar.x2,bar.y2,{class:'thin-reference-highlight','pointer-events':'none','aria-hidden':'true'});
 }
 function renderThinConstraintPreview(){
  svg.querySelector('[data-thin-preview]')?.remove();
@@ -701,6 +708,8 @@ function render(clean=false){
  if(autosaveReady&&!clean){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(saveDraft,200)}
 svg.replaceChildren();const defs=el('defs'),marker=el('marker',{id:'arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto'},defs);el('path',{d:'M0 0L10 5L0 10Z',fill:'black'},marker);const momentMarker=el('marker',{id:'momentArrow',viewBox:'0 0 10 10',refX:0,refY:5,markerWidth:7,markerHeight:7,orient:'auto',overflow:'visible'},defs);el('path',{d:'M0 0L10 5L0 10Z',fill:'black'},momentMarker);el('rect',{width:1100,height:720,fill:'white'});
 if(items.some(o=>o.type==='person'))definePersonSymbol(defs);
+// Behind the real member stroke so its engineering line remains unobscured; excluded from clean exports.
+if(!clean)renderThinReferenceHighlight();
 for(const o of [...items].sort((a,b)=>Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(a.type))-Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(b.type)))){if(o.type==='person'){try{validatePerson(o)}catch{continue}}if(hiddenSectionAction(o))continue;const {x,y,x2,y2}=o,g=el('g',{'data-id':o.id,...(validObjectColor(o.strokeColor)?{'data-object-color':o.strokeColor}:{}),stroke:objectColor(o),'stroke-width':1.8,fill:'none'});
 if(o.type==='person'){
  const instance=el('g',{transform:personTransform(o)},g);

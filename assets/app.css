@@ -126,6 +126,8 @@ button.icon-button.active,button.icon-button[aria-pressed="true"]{background:#cc
 #drawingScales label{display:grid;grid-template-columns:7ch 7ch auto 6ch auto;align-items:center;gap:5px}
 #drawingScales label span{display:block;white-space:nowrap}
 
+.thin-reference-highlight{stroke:#607d8b;stroke-width:7;stroke-opacity:.3;fill:none;pointer-events:none}
+
 /* Let the drawing use all space below the existing toolbars. */
 body{height:100dvh;display:flex;flex-direction:column}
 header{flex:none}
