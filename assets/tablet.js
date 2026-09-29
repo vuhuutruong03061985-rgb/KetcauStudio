@@ -134,6 +134,7 @@ function applyCamera(){
  clearPersonPreview();
  svg.setAttribute('viewBox',`${camera.x} ${camera.y} ${camera.w} ${camera.h}`);
  $('zoomLevel').textContent=Math.round(1100/camera.w*100)+'%';
+ if(['support','force','udl'].includes(mode))renderReferenceAnglePreview();
 }
 function zoomAt(factor,anchor={x:camera.x+camera.w/2,y:camera.y+camera.h/2}){
  const w=Math.max(137.5,Math.min(4400,camera.w/factor)),ratio=w/camera.w;
@@ -347,7 +348,6 @@ for(const [id,title,types]of [
  section.append(heading,buttons);$('tools').append(section);
 }
 $('drawingTools').append(hatchPanel);
-$('annotationTools').append(scriptHelp);
 for(const id of ['support','direction','rotation'])$('symbolTools').append($(id).closest('label'));
 
 function captureDrawing(){
@@ -1427,6 +1427,7 @@ const dynamicInputUI=(()=>{
   el.addEventListener('input',()=>{el.setCustomValidity('');el.removeAttribute('aria-invalid');el.dataset.editing='true'});
   el.addEventListener('keydown',e=>e.stopPropagation());el.addEventListener('keyup',e=>e.stopPropagation());
  });
+ let arcDirection=null;
  let x=0,y=0,viewport=null,onConfirm=null,onCancel=null,previousFocus=null,validateValue=null;
  function clearError(){for(const el of fieldInputs){el.setCustomValidity('');el.removeAttribute('aria-invalid')}}
  function confirm(){
@@ -1467,22 +1468,24 @@ const dynamicInputUI=(()=>{
   panel.style.maxWidth=Math.max(1,width-2*mx)+'px';panel.style.maxHeight=Math.max(1,height-2*my)+'px';
   const rect=panel.getBoundingClientRect();
   const clamp=(n,min,max)=>Math.max(min,Math.min(n,Math.max(min,max)));
-  const px=x+gap+rect.width>left+width-mx?x-gap-rect.width:x+gap;
-  const py=fields&&y-gap-rect.height>=top+my?y-gap-rect.height:(y+gap+rect.height>top+height-my?y-gap-rect.height:y+gap);
+  const px=arcDirection?x+(arcDirection.x<0?-rect.width:0):x+gap+rect.width>left+width-mx?x-gap-rect.width:x+gap;
+  const py=arcDirection?y+(arcDirection.y<0?-rect.height:0):fields&&y-gap-rect.height>=top+my?y-gap-rect.height:(y+gap+rect.height>top+height-my?y-gap-rect.height:y+gap);
   panel.style.left=clamp(px,left+mx,left+width-mx-rect.width)+'px';
   panel.style.top=clamp(py,top+my,top+height-my-rect.height)+'px';
  }
  function update(options={}){
+  if(Object.hasOwn(options,'arcDirection'))arcDirection=options.arcDirection;
   if(Number.isFinite(options.clientX))x=options.clientX;
   if(Number.isFinite(options.clientY))y=options.clientY;
   if(Object.hasOwn(options,'value')){input.value=String(options.value??'');clearError()}
   if(Object.hasOwn(options,'suffix'))suffix.textContent=String(options.suffix??'');
   suffix.hidden=!suffix.textContent;
   syncFields();
-  position();
+  if(!options.keepPosition)position();
   if(options.focus&&!panel.hidden)activeInput().focus({preventScroll:true});
  }
  function show(options={}){
+  arcDirection=null;
   panel.classList.toggle('dynamic-compact',options.compact===true);
   confirmButton.hidden=cancelButton.hidden=options.compact===true;
   fields=options.fields||null;activeIndex=0;validateValue=typeof options.validateValue==='function'?options.validateValue:null;
@@ -1585,6 +1588,16 @@ window.addEventListener('keydown',e=>{
  if(openArmedDynamicInput(e.key)){e.preventDefault();e.stopImmediatePropagation()}
 },true);
 
+// Reuse the numeric field and viewport clamp; keep the typing target stationary.
+function updateReferenceAngleInputAnchor(geometry=activeReferenceAnglePreview(),e){
+ const numeric=mode==='support'?supportNumericSession:['force','udl'].includes(mode)?loadNumericSession:null;
+ if(!numeric||!dynamicInputUI.owns(numeric.capture.confirm))return false;
+ if(e)numeric.cursorAnchor={clientX:e.clientX,clientY:e.clientY};
+ if(dynamicInputUI.isFieldFocused()||$('dynamicInputValue').dataset.editing){updateDynamicInput(geometry?{}:{arcDirection:null,keepPosition:true});return true}
+ let anchor=numeric.touch?numeric.initialAnchor:numeric.cursorAnchor;
+ if(geometry){const p=new DOMPoint(geometry.inputAnchor.x,geometry.inputAnchor.y).matrixTransform(svg.getScreenCTM());anchor={clientX:p.x,clientY:p.y}}
+ updateDynamicInput({...anchor,arcDirection:geometry?.arcMidDirection||null});return true;
+}
 // Support owns one angle field; reuse shared capture, validation and focus lifecycle.
 var supportNumericSession=null;
 function endSupportNumericInput(){
@@ -1605,7 +1618,7 @@ function beginSupportNumericInput(e){
  const global={down:0,up:180,left:90,right:-90}[session.direction]||0,frame=supportReferenceFrame();
  session.angle.value=frame?globalPlacementAngleToReferenceAngle(global,frame):global;
  armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onCancel:cancelToSelection});
- supportNumericSession={session,capture:dynamicNumericCapture,touch:e.pointerType==='touch'};
+ supportNumericSession={session,capture:dynamicNumericCapture,touch:e.pointerType==='touch',initialAnchor:{clientX:e.clientX,clientY:e.clientY},cursorAnchor:{clientX:e.clientX,clientY:e.clientY}};
  showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onConfirm:dynamicNumericCapture.confirm,onCancel:dynamicNumericCapture.cancel,
   fields:{label:'G\u00f3c',values:[session.angle],validate:()=>true,onConfirm:(_,value)=>lockSupportNumericAngle(value),
    onKeyboardCommit:()=>commitSupportPlacement(supportGlobalAngle())}});
@@ -1619,6 +1632,7 @@ function updateSupportNumericInput(e){
   const text=getDynamicInputValue().trim().replace(',','.'),value=Number(text);
   if(text&&Number.isFinite(value))lockSupportNumericAngle(value);
  }
+ if(updateReferenceAngleInputAnchor(activeReferenceAnglePreview(),e))return;
  if(supportNumericSession.touch)updateDynamicInput();
  else updateDynamicInput({clientX:e.clientX,clientY:e.clientY});
 }
@@ -1629,14 +1643,17 @@ $('dynamicInputValue').addEventListener('input',()=>{
 });
 
 // Moment reuses Snap's palette, radio selected styling and dismissal lifecycle.
-let currentMomentRotation=$('rotation').value==='ccw'?'ccw':'cw';
+let currentMomentRotation='cw';
 const momentButton=$('tools').querySelector('[data-mode="moment"]');
 const momentPalette=document.createElement('details');momentPalette.id='momentDirectionPalette';
 momentPalette.style.cssText='position:fixed;width:0;height:0;margin:0;padding:0;border:0;z-index:2000';
 const momentSummary=document.createElement('summary');momentSummary.hidden=true;momentPalette.append(momentSummary);
 const momentChoices=document.createElement('div');momentChoices.className='snap-choices';momentChoices.style.width='max-content';
 momentChoices.setAttribute('role','radiogroup');momentChoices.setAttribute('aria-label','Chi\u1ec1u m\u00f4men');momentPalette.append(momentChoices);document.body.append(momentPalette);
-const momentIcon=rotation=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="${toolIconPaths.moment}" transform="${rotation==='ccw'?'translate(24 0) scale(-1 1)':''}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const momentIcon=rotation=>{
+ const side=rotation==='cw'?1:-1,id='moment-tool-arrow-'+rotation;
+ return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-55 -55 110 110"><defs><marker id="${id}" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="7" markerHeight="7" orient="auto" overflow="visible"><path d="M0 0L10 5L0 10Z" fill="currentColor"/></marker></defs><g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0L${-side*20} 28"/><path d="M${-side*20} 28 A34 34 0 0 ${side===1?1:0} ${side*12} -32" marker-end="url(#${id})"/></g></svg>`;
+};
 function syncMomentDirection(){
  for(const input of momentChoices.querySelectorAll('input'))input.checked=input.value===currentMomentRotation;
  momentButton.style.setProperty('--tool-icon',`url("data:image/svg+xml,${encodeURIComponent(momentIcon(currentMomentRotation))}")`);
@@ -1657,12 +1674,18 @@ for(const [rotation,title]of [['cw','M\u00f4men thu\u1eadn chi\u1ec1u'],['ccw','
  momentChoices.append(label);
 }
 momentButton.setAttribute('aria-controls',momentPalette.id);momentButton.setAttribute('aria-haspopup','true');momentButton.setAttribute('aria-expanded','false');
+let momentHoldTimer=null,momentHoldOpened=false;
+function openMomentChoices(){closeSecondaryTools();snapPanel.open=false;syncMomentDirection();momentPalette.open=true;momentButton.setAttribute('aria-expanded','true');positionMomentPalette()}
+momentButton.title+=' ? CW/CCW: right-click / hold / ?';
 momentButton.onclick=()=>{
- const open=!momentPalette.open;
- if(loadPlacement?.type==='moment')cancelLoadPlacement();
- closeSecondaryTools();snapPanel.open=false;syncMomentDirection();momentPalette.open=open;momentButton.setAttribute('aria-expanded',String(open));positionMomentPalette();
+ if(momentHoldOpened){momentHoldOpened=false;return}
+ closeSecondaryTools();snapPanel.open=false;selected=null;setMode('moment');syncMomentDirection();
+ closeMomentPalette();
 };
-momentButton.addEventListener('keydown',e=>{if(e.key==='ArrowDown'){e.preventDefault();if(!momentPalette.open)momentButton.click();momentChoices.querySelector('input:checked')?.focus()}});
+momentButton.addEventListener('keydown',e=>{if(e.key==='ArrowDown'){e.preventDefault();openMomentChoices();momentChoices.querySelector('input:checked')?.focus()}});
+momentButton.addEventListener('contextmenu',e=>{e.preventDefault();openMomentChoices()});
+momentButton.addEventListener('pointerdown',e=>{momentHoldOpened=false;if(e.pointerType==='touch'||e.pointerType==='pen')momentHoldTimer=setTimeout(()=>{momentHoldOpened=true;openMomentChoices()},500)});
+for(const event of ['pointerup','pointercancel','pointerleave'])momentButton.addEventListener(event,()=>clearTimeout(momentHoldTimer));
 momentPalette.addEventListener('toggle',()=>{momentButton.setAttribute('aria-expanded',String(momentPalette.open));positionMomentPalette()});
 autoHideSecondary(momentPalette,()=>[momentButton],()=>momentPalette.open,closeMomentPalette);
 window.addEventListener('resize',positionMomentPalette);
@@ -1693,7 +1716,7 @@ function beginLoadNumericInput(e){
  const session=loadPlacement,active=document.activeElement;
  if(!session?.uiAngle||active?.matches('input,textarea,select')||active?.isContentEditable||dynamicNumericCapture||dynamicInputUI.isOpen())return;
  armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onCancel:cancelToSelection});
- loadNumericSession={session,capture:dynamicNumericCapture,touch:e.pointerType==='touch'};
+ loadNumericSession={session,capture:dynamicNumericCapture,touch:e.pointerType==='touch',initialAnchor:{clientX:e.clientX,clientY:e.clientY},cursorAnchor:{clientX:e.clientX,clientY:e.clientY}};
  showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onConfirm:dynamicNumericCapture.confirm,onCancel:dynamicNumericCapture.cancel,
   fields:{label:'G\u00f3c',values:[session.uiAngle],validate:()=>true,onConfirm:(_,value)=>lockLoadNumericAngle(value),onKeyboardCommit:placeLoadObject}});
 
@@ -1701,6 +1724,7 @@ function beginLoadNumericInput(e){
 function confirmLoadNumericInput(){return !loadNumericSession||dynamicInputUI.confirmPending()}
 function updateLoadNumericInput(e){
  if(!loadNumericSession)return;
+ if(['force','udl'].includes(mode)&&updateReferenceAngleInputAnchor(activeReferenceAnglePreview(),e))return;
  updateDynamicInput(loadNumericSession.touch?{}:{clientX:e.clientX,clientY:e.clientY});
 }
 $('dynamicInputValue').addEventListener('input',readLoadNumericEdit);

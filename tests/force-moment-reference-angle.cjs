@@ -29,6 +29,7 @@ const near=(a,b)=>assert(Math.abs(a-b)<.002,`${a} != ${b}`);
   if(locked)await input.fill('30');else{const q=await screen(420,430);await p.mouse.move(q.x,q.y)}
   const before=await p.evaluate(()=>loadPlacement.globalPlacementAngle);
   await tap(300,330);assert.equal(await p.evaluate(()=>items.length),2);assert.equal(await p.evaluate(()=>past.length),0);assert.equal(await p.evaluate(()=>loadPlacement.referenceBarId),'b1');
+  if(tool==='moment'){await p.evaluate(()=>render());assert.equal(await p.locator('[data-load-preview] path[marker-end]').count(),1)}
   if(locked){near(await p.evaluate(()=>loadPlacement.globalPlacementAngle),30);near(Number(await input.inputValue()),30)}else near(await p.evaluate(()=>loadPlacement.globalPlacementAngle),before);
   const coords=await p.locator('[data-load-reference]').getAttribute('x1');near(Number(coords),300);
   await p.keyboard.press('Escape');assert.equal(await p.locator('[data-load-reference]').count(),0);

@@ -67,7 +67,7 @@ function renderSupportReference(){
 function clearSupportPlacement(){
  if(typeof endSupportNumericInput==='function')endSupportNumericInput();
  svg.querySelector('[data-support-reference]')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));
- supportPlacementSession=null;svg.querySelector('[data-support-preview]')?.remove();
+ supportPlacementSession=null;svg.querySelector('[data-support-preview]')?.remove();svg.querySelector('.reference-angle-preview')?.remove();
 }
 function commitSupportPlacement(angle){
  const session=supportPlacementSession;if(!session||!Number.isFinite(angle))return false;
@@ -537,6 +537,49 @@ function referenceAngleToGlobalPlacementAngle(referenceAngle,referenceFrame){
  const angle=normalizeReferenceAngle(referenceAngle),base=normalizeReferenceAngle(referenceFrame?.globalAngle);
  return angle===null||base===null?null:normalizeReferenceAngle(angle+base);
 }
+// Pure preview geometry. Radius/anchor share caller units; runtime converts CSS pixels.
+// The existing signed local angle selects the sweep, including canonical +180.
+function solveReferenceAnglePreviewGeometry({anchor,referenceFrame,globalPlacementAngle,localAngle,radius=30}={}){
+ const finite=p=>p&&[p.x,p.y].every(Number.isFinite);
+ const signedAngle=normalizeReferenceAngle(localAngle);
+ if(!finite(anchor)||!finite(referenceFrame?.tangent)||!(referenceFrame.length>1e-9)||
+  !Number.isFinite(referenceFrame.globalAngle)||!Number.isFinite(globalPlacementAngle)||signedAngle===null||!Number.isFinite(radius)||radius<=0)return null;
+ const startDirection=referenceFrame.tangent;
+ if(Math.abs(Math.hypot(startDirection.x,startDirection.y)-1)>1e-8)return null;
+ const radians=globalPlacementAngle*Math.PI/180;
+ const endDirection={x:-Math.sin(radians),y:Math.cos(radians)};
+ const arcMidDirection=rotateVector(startDirection,signedAngle*Math.PI/360);
+ const at=d=>({x:anchor.x+radius*d.x,y:anchor.y+radius*d.y});
+ return {startDirection:{...startDirection},endDirection,signedAngle,arcStart:at(startDirection),arcEnd:at(endDirection),arcMidDirection,arcMidPoint:at(arcMidDirection),radius};
+}
+// Read placement state only: no independent angle or drawing/history state.
+function activeReferenceAnglePreview(){
+ let anchor,frame,global,local;
+ if(mode==='support'&&supportPlacementSession){
+  frame=supportReferenceFrame();anchor=supportPlacementSession.anchorPoint;
+  local=supportPlacementSession.angle.value;global=supportGlobalAngle();
+ }else if(['force','udl'].includes(mode)&&loadPlacement?.type===mode&&(mode!=='udl'||loadPlacement.b)){
+  // UDL resolves references at its midpoint; only the visual center uses spanEnd.
+  frame=loadReferenceFrame();anchor=mode==='udl'?loadPlacement.b:loadPlacement.a;
+  local=loadPlacement.uiAngle.value;global=loadPlacement.globalPlacementAngle;
+ }else return null;
+ const scale=Math.hypot(svg.getScreenCTM()?.a,svg.getScreenCTM()?.b);
+ if(!frame||!Number.isFinite(scale)||scale<=0)return null;
+ const geometry=solveReferenceAnglePreviewGeometry({anchor,referenceFrame:frame,globalPlacementAngle:global,localAngle:local,radius:30/scale});
+ if(!geometry)return null;
+ return {...geometry,inputAnchor:{x:anchor.x+42/scale*geometry.arcMidDirection.x,y:anchor.y+42/scale*geometry.arcMidDirection.y}};
+}
+function renderReferenceAnglePreview(){
+ svg.querySelector('.reference-angle-preview')?.remove();
+ const geometry=activeReferenceAnglePreview();
+ if(geometry&&Math.abs(geometry.signedAngle)>1e-9){
+  const {arcStart:a,arcEnd:b,radius:r,signedAngle}=geometry;
+  el('path',{class:'reference-angle-preview',d:`M${a.x} ${a.y} A${r} ${r} 0 0 ${signedAngle>0?1:0} ${b.x} ${b.y}`,
+   stroke:'#14B8A6','stroke-width':1.1,'stroke-dasharray':'4 3',opacity:0.8,fill:'none',
+   'vector-effect':'non-scaling-stroke','pointer-events':'none','aria-hidden':'true'});
+ }
+ if(typeof updateReferenceAngleInputAnchor==='function')updateReferenceAngleInputAnchor(geometry);
+}
 // Preserve proven candidate metadata and normal-alignment resolution policy.
 // Use getReferenceBarFrame(candidate.bar) for endpoint-invariant user-angle axes.
 function collectReferenceBars(options){return collectThinReferenceBars(options)}
@@ -969,7 +1012,7 @@ if(!clean&&mode==='select'&&selectedObjectIds().size<2){
  if(!clean&&mode==='curve'&&second)el('circle',{cx:second.x,cy:second.y,r:6,fill:'#15889c','pointer-events':'none'});
  if(!clean&&mode==='support')renderSupportPlacement();
  if(!clean&&mode==='bar')renderBarConstraintPreview();
- if(!clean){renderThinReferenceHighlight();if(mode==='thin')renderThinConstraintPreview();renderSupportReference();renderLoadReference()}
+ if(!clean){renderThinReferenceHighlight();if(mode==='thin')renderThinConstraintPreview();renderSupportReference();renderLoadReference();if(['force','moment','udl'].includes(mode)&&loadPlacement?.type===mode)paintLoadPreview();renderReferenceAnglePreview()}
  if(!clean&&first&&hover&&['dashed','udl','linkBar'].includes(mode)){const g=el('g',{'pointer-events':'none',stroke:'#087d95','stroke-dasharray':'5 4'});line(g,first.x,first.y,hover.x,hover.y);}
  if(!clean&&mode==='joint'&&typeof drawJointHandles==='function')drawJointHandles();
  if(!clean)renderRigidControls();
@@ -1122,7 +1165,7 @@ function finishMulti(e){
 svg.addEventListener('pointerup',finishMulti,true);
 svg.addEventListener('pointercancel',finishMulti,true);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){extendBoundary=null;multiSelection.clear();boxSelect=null;groupDrag=null;render()}});
-function setMode(m){clearSupportPlacement();if(m!=='select')rememberCancelSelection();else cancelSelection=null;cancelConnectionDrag();cancelRigidDrag();rigidPoints=[];if(typeof mirrorSelecting!=='undefined')mirrorSelecting=false;if(typeof cancelLoadPlacement==='function')cancelLoadPlacement();hatchPoints=[];extendBoundary=null;multiSelection.clear();mode=m;first=null;second=null;hover=null;for(const b of document.querySelectorAll('button[data-mode]')){const active=b.dataset.mode===m;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}if($('delete')){$('delete').classList.toggle('active',m==='erase');$('delete').setAttribute('aria-pressed',String(m==='erase'))}svg.classList.toggle('erase-cursor',m==='erase');svg.style.cursor='';$('help').textContent=m==='curve'?'Chọn điểm đầu, điểm đi qua, rồi điểm cuối.':m==='erase'?'Bấm trực tiếp vào đối tượng để xóa. Esc để thoát; Hoàn tác để khôi phục.':m==='hatch'?'Bấm các điểm bao vùng biểu đồ. Enter để hoàn tất; Esc để hủy.':m==='extend'?'Chọn đường biên, rồi bấm gần đầu nét cần kéo dài. Shift + bấm để đổi biên.':m==='dim'?'Chọn hai điểm trên thanh, sau đó bấm vị trí đặt đường kích thước.':m==='select'?'Bấm chọn hoặc kéo đối tượng.':['bar','udl','dim','thin','dashed'].includes(m)?'Bấm hai điểm để tạo đối tượng.':'Nhập thuộc tính rồi bấm điểm đặt.';render()}
+function setMode(m){clearSupportPlacement();if(m!=='select')rememberCancelSelection();else cancelSelection=null;cancelConnectionDrag();cancelRigidDrag();rigidPoints=[];if(typeof mirrorSelecting!=='undefined')mirrorSelecting=false;if(typeof cancelLoadPlacement==='function')cancelLoadPlacement();hatchPoints=[];extendBoundary=null;multiSelection.clear();mode=m;first=null;second=null;hover=null;for(const b of document.querySelectorAll('button[data-mode]')){const active=b.dataset.mode===m;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}if($('delete')){$('delete').classList.toggle('active',m==='erase');$('delete').setAttribute('aria-pressed',String(m==='erase'))}svg.classList.toggle('erase-cursor',m==='erase');svg.style.cursor='';$('help').textContent=m==='curve'?'Chọn điểm đầu, điểm đi qua, rồi điểm cuối.':m==='erase'?'Bấm trực tiếp vào đối tượng để xóa. Esc để thoát; Hoàn tác để khôi phục.':m==='hatch'?'Bấm các điểm bao vùng biểu đồ. Enter để hoàn tất; Esc để hủy.':m==='extend'?'Chọn đường biên, rồi bấm gần đầu nét cần kéo dài. Shift + bấm để đổi biên.':m==='dim'?'Chọn hai điểm trên thanh, sau đó bấm vị trí đặt đường kích thước.':m==='select'?'Bấm chọn hoặc kéo đối tượng.':['bar','udl','dim','thin','dashed'].includes(m)?'Bấm hai điểm để tạo đối tượng.':'';$('help').hidden=!$('help').textContent;render()}
 for(const [m,title]of Object.entries(modes)){const b=document.createElement('button');b.textContent=title;b.dataset.mode=m;b.onclick=()=>chooseToolOptions(m);$('tools').append(b)}
 function props(){return Object.fromEntries(['label','support','direction','rotation'].map(k=>[k,$(k).value]))}
 function make(type,x,y,x2,y2,p={}){if(type==='person')return {id:newId(),type,x,y,angle:p.angle??0,size:p.size??PERSON_DEFAULT_SIZE};return {id:newId(),type,x,y,...(x2===undefined?{}:{x2,y2}),...props(),label:({force:'P',moment:'M',udl:'q',dim:'L',text:'A',diagramM:'kN.m',diagramQ:'kN',diagramN:'kN'})[type]||'',...p}}
@@ -1537,7 +1580,6 @@ document.addEventListener('pointerdown',e=>{
 const hatchPanel=document.createElement('div');
 hatchPanel.innerHTML='<label>Cách tạo hatch<select id="hatchMethod"><option value="closed">Chọn vùng hatch</option><option value="points">Chọn các điểm biên</option></select></label><label>Bước hatch (px)<input id="hatchSpacing" type="number" min="3" max="50" value="8"></label>';
 $('tools').after(hatchPanel);
-const scriptHelp=document.createElement('p');scriptHelp.textContent='Chỉ số dưới: M_A, q_1. Chỉ số trên: m^2. Nhiều ký tự: M_{max}, x^{12}. Nhấp đúp chữ để sửa.';$('tools').after(scriptHelp);
 for(const key of ['hatchSpacing'])$(key).onchange=()=>{
  const spacing=Number($('hatchSpacing').value);if(!Number.isFinite(spacing)||spacing<3||spacing>50){$('hatchSpacing').value=8;return}
  const o=items.find(o=>o.id===selected);if(o?.type==='hatch'){checkpoint();o.spacing=spacing;render()}
@@ -1771,7 +1813,7 @@ function renderLoadReference(){
  const bar=items.find(o=>o.id===loadPlacement.referenceBarId);
  line(svg,bar.x,bar.y,bar.x2,bar.y2,{class:'thin-reference-highlight','data-load-reference':'true','pointer-events':'none','aria-hidden':'true'});
 }
-function cancelLoadPlacement(){svg.querySelector('[data-load-reference]')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));if(typeof endLoadNumericInput==='function')endLoadNumericInput();loadPlacement=null;svg.querySelector('[data-load-preview]')?.remove()}
+function cancelLoadPlacement(){svg.querySelector('.reference-angle-preview')?.remove();svg.querySelector('[data-load-reference]')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));if(typeof endLoadNumericInput==='function')endLoadNumericInput();loadPlacement=null;svg.querySelector('[data-load-preview]')?.remove()}
 // UI ray follows the visible body. Force tail = anchor - 75 * loadVector,
 // so its internal tail-to-head vector is opposite the ray; moment uses SVG rotation.
 function loadUIToInternal(type,angle,rotation='cw'){
@@ -1813,7 +1855,7 @@ function placeLoadObject(){
  checkpoint();const o=make(p.type,a.x,a.y,b?.x,b?.y,{loadAngle:p.angle,rotation:p.rotation});
  items.push(o);selected=o.id;cancelLoadPlacement();render();
 }
-function paintLoadPreview(){renderLoadReference();
+function paintLoadPreview(){renderLoadReference();renderReferenceAnglePreview();
  svg.querySelector('[data-load-preview]')?.remove();if(!loadPlacement)return;
  const p=loadPlacement,g=el('g',{'data-load-preview':'true','pointer-events':'none',stroke:'#087d95',fill:'none','stroke-width':1.5});
  const {x,y}=p.a;el('circle',{cx:x,cy:y,r:4,fill:'white'},g);

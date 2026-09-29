@@ -36,13 +36,13 @@ const internal=(type,a)=>(((type==='force'?90:Math.atan2(34,-18)*180/Math.PI)-a)
    const r=angle*Math.PI/180,dx=-Math.sin(r),dy=Math.cos(r);
    let cw;
    for(const rotation of ['cw','ccw']){
-    await reset('moment');if(rotation==='ccw'){await p.locator('[data-mode=moment]').click();await p.locator('input[name=momentDirection][value=ccw]').click();await tap(300,300)}
+    await reset('moment');if(rotation==='ccw'){await p.locator('[data-mode=moment]').press('ArrowDown');await p.locator('input[name=momentDirection][value=ccw]').click();await tap(300,300)}
     // One event ray, no prior hover required for touch; gesture sense remains independent.
     const q=await screen(300+dx*130,300+dy*130);
     if(touch)await p.touchscreen.tap(q.x,q.y);
     else await p.locator('#drawing').dispatchEvent('pointerdown',{clientX:q.x,clientY:q.y,button:0,pointerId:1,pointerType:'mouse'});
     const live=await momentBody('g[data-id]');near(live.ax,300);near(live.ay,300);assert(live.x*dx+live.y*dy>0);near(live.x*dy-live.y*dx,0);
-    await reset('moment');if(rotation==='ccw'){await p.locator('[data-mode=moment]').click();await p.locator('input[name=momentDirection][value=ccw]').click();await tap(300,300)}await input.fill(String(angle));
+    await reset('moment');if(rotation==='ccw'){await p.locator('[data-mode=moment]').press('ArrowDown');await p.locator('input[name=momentDirection][value=ccw]').click();await tap(300,300)}await input.fill(String(angle));
     const preview=await momentBody('[data-load-preview]');await input.press('Enter');const numeric=await momentBody('g[data-id]');
     for(const k of ['x','y','ax','ay']){near(live[k],numeric[k]);near(preview[k],numeric[k])}
     if(cw){near(cw.x,numeric.x);near(cw.y,numeric.y)}else cw=numeric;
@@ -94,7 +94,7 @@ const internal=(type,a)=>(((type==='force'?90:Math.atan2(34,-18)*180/Math.PI)-a)
    const round=await p.evaluate(()=>{const original=copy(items[0]);const restored=validate(JSON.parse(documentText()))[0];objectClipboard=[copy(original)];clipboardBase={x:original.x,y:original.y};placeClipboard({x:600,y:400});const pasted=copy(items[1]);const mirrored=mirroredObjects([original],{x:550,y:0},{x:550,y:700})[0];actions.undo[1]();const undone=items.length;actions.redo[1]();return {original,restored,pasted,mirrored,undone,redone:items.length}});
    near(round.restored.loadAngle,round.original.loadAngle);near(round.pasted.loadAngle,round.original.loadAngle);assert.equal(round.undone,1);assert.equal(round.redone,2);assert(Number.isFinite(round.mirrored.loadAngle));if(type==='moment')assert.notEqual(round.mirrored.rotation,round.original.rotation);
   }
-  await reset('moment');await p.locator('[data-mode=moment]').click();await p.locator('input[name=momentDirection][value=ccw]').click();await tap(300,300);await input.fill('30');await input.press('Enter');assert.equal(await p.evaluate(()=>items[0].rotation),'ccw');
+  await reset('moment');await p.locator('[data-mode=moment]').press('ArrowDown');await p.locator('input[name=momentDirection][value=ccw]').click();await tap(300,300);await input.fill('30');await input.press('Enter');assert.equal(await p.evaluate(()=>items[0].rotation),'ccw');
   await reset('moment');for(const [x,y]of [[400,300],[300,400]]){const q=await screen(x,y);await p.mouse.move(q.x,q.y)}assert.equal(await p.evaluate(()=>loadPlacement.rotation),'cw');
   await p.evaluate(()=>setMode('udl'));await tap(200,400);await tap(500,400);assert(await p.locator('#dynamicInputValue').isVisible());await p.locator('#dynamicInputValue').fill('45');await p.locator('#dynamicInputValue').press('Enter');assert.equal(await p.evaluate(()=>items.at(-1).loadAngle),45);
   assert.deepEqual(errors,[]);console.log(`PASS force/moment dynamic angles ${touch?'touch emulated':'mouse'}: LIVE/LOCKED, adapters, invalid, lifecycle, history, serialization, copy/mirror, CW/CCW and legacy UDL`);await context.close();
