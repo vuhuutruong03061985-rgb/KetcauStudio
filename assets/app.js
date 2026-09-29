@@ -459,6 +459,35 @@ function getThinBarFrame(bar){
  const tangent={x:dx/length,y:dy/length},normal={x:-tangent.y,y:tangent.x};
  return {tangent,normal,length};
 }
+// Generic user-angle foundation; no runtime tool/session dependencies.
+function normalizeReferenceAngle(angle){
+ if(!Number.isFinite(angle))return null;
+ let value=angle%360;if(value<=-180)value+=360;if(value>180)value-=360;
+ return value===0?0:value;
+}
+function getReferenceBarFrame(bar){
+ const frame=getThinBarFrame(bar);if(!frame)return null;
+ // Exact vertical means dx === 0. Otherwise always face increasing screen X.
+ const flip=frame.tangent.x<0||(frame.tangent.x===0&&frame.tangent.y<0);
+ const x=(flip?-frame.tangent.x:frame.tangent.x)||0,y=(flip?-frame.tangent.y:frame.tangent.y)||0;
+ const tangent={x,y},normal={x:-y||0,y:x};
+ return {tangent,normal,length:frame.length,globalAngle:normalizeReferenceAngle(Math.atan2(-x,y)*180/Math.PI)};
+}
+// Positive local angles rotate clockwise in screen space, toward normal=(-ty,tx).
+// Horizontal: local 0 -> right (-90 global), local +90 -> down (0 global).
+function globalPlacementAngleToReferenceAngle(globalAngle,referenceFrame){
+ const angle=normalizeReferenceAngle(globalAngle),base=normalizeReferenceAngle(referenceFrame?.globalAngle);
+ return angle===null||base===null?null:normalizeReferenceAngle(angle-base);
+}
+function referenceAngleToGlobalPlacementAngle(referenceAngle,referenceFrame){
+ const angle=normalizeReferenceAngle(referenceAngle),base=normalizeReferenceAngle(referenceFrame?.globalAngle);
+ return angle===null||base===null?null:normalizeReferenceAngle(angle+base);
+}
+// Preserve proven candidate metadata and normal-alignment resolution policy.
+// Use getReferenceBarFrame(candidate.bar) for endpoint-invariant user-angle axes.
+function collectReferenceBars(options){return collectThinReferenceBars(options)}
+function resolveReferenceBar(options){return resolveThinReferenceBar(options)}
+function hitReferenceOverride(options){return hitThinReferenceOverride(options)}
 // Along selects the section side; normalDistance remains an independent model distance.
 // Only the visual start moves: the mechanical anchor is never modified.
 function solveThinSectionPlacement(options={}){
