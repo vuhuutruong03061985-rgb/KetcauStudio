@@ -312,6 +312,8 @@ function restoreDrawing(snapshot){
  jointDrag=null;rigidDrag=null;rigidPivot=snapshot.rigidPivot||null;rigidSnapHint=null;rigidPoints=snapshot.rigidPoints||[];
  items=snapshot.items;past=snapshot.past;future=snapshot.future;selected=snapshot.selected;first=snapshot.first;second=snapshot.second;hover=snapshot.hover;
  hatchPoints=snapshot.hatchPoints;extendBoundary=snapshot.extendBoundary;multiSelection=new Set(snapshot.multiSelection);
+ // Restored first/items are new objects: rebuild transient reference state, never reuse the gesture lock.
+ beginThinReferenceSession();
  drag=null;groupDrag=null;boxSelect=null;render();
 }
 function stopPointer(e){e.preventDefault();e.stopImmediatePropagation()}
