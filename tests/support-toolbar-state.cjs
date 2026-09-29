@@ -25,7 +25,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),{pathToFile
    await p.evaluate(()=>setMode('support'));await check(type);
   }
   await p.evaluate(()=>{items=[];selected=null;past=[];future=[];snapEnabled=false;render()});
-  await click(300,300);await click(600,300);
+  await click(300,300);await click(300,400);await click(600,300);await click(600,400);
   assert.equal(await p.evaluate(()=>mode),'support');await check(type);
   assert.deepEqual(await p.evaluate(()=>items.map(o=>o.support)),[type,type]);
   await p.locator('#resetView').click();await check();

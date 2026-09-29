@@ -354,6 +354,7 @@ function captureDrawing(){
  return {items:copy(items),past:copy(past),future:copy(future),selected,first:copy(first),second:copy(second),hover:copy(hover),hatchPoints:copy(hatchPoints),rigidPoints:copy(rigidPoints),rigidPivot:copy(rigidPivot),extendBoundary,multiSelection:[...multiSelection]};
 }
 function restoreDrawing(snapshot){
+ clearSupportPlacement();
  if(!snapshot)return;
  jointDrag=null;rigidDrag=null;rigidPivot=snapshot.rigidPivot||null;rigidSnapHint=null;rigidPoints=snapshot.rigidPoints||[];
  items=snapshot.items;past=snapshot.past;future=snapshot.future;selected=snapshot.selected;first=snapshot.first;second=snapshot.second;hover=snapshot.hover;
@@ -524,6 +525,7 @@ async function loadDocument(file,handle=null){
  setMode('select');saveDraft();msg('Đã mở '+documentName);
 }
 async function openDocument(){
+ clearSupportPlacement();
  if(fileBusy)return;
  finishDocumentEdit();fileMenu.open=false;openDialog.showModal();
 }
