@@ -31,7 +31,7 @@ const {pathToFileURL}=require('node:url');
   assert.equal(await lan.evaluate(()=>window.isSecureContext),false);
   await lan.locator('[data-mode="force"]').click();const count=await lan.evaluate(()=>items.length);
   await lan.locator('#drawing').click({position:{x:200,y:200}});
-  await lan.locator('#loadAngleInput').press('Enter');assert.equal(await lan.evaluate(()=>items.length),count+1);assert.deepEqual(errors,[]);
+  await lan.locator('#dynamicInputValue').press('Enter');assert.equal(await lan.evaluate(()=>items.length),count+1);assert.deepEqual(errors,[]);
   console.log('PASS direct file, legacy JSON, invalid JSON preservation, touch-accessible hatch/undo, insecure LAN UUID fallback');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

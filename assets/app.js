@@ -1215,7 +1215,7 @@ const dx=p.x-(drag.anchor?(['bar','dim','udl','thin','dashed'].includes(o.type)?
 drag.moved=drag.moved||!!(dx||dy);if(o.type==='dim'&&!drag.anchor){o.offset=snapDimensionOffset(drag.o,{x:drag.o.x2,y:drag.o.y2},(drag.o.offset??0)+offsetAt(drag.o,{x:drag.o.x2,y:drag.o.y2},{x:drag.o.x+dx,y:drag.o.y+dy}),o.id);render();return}o.x=drag.o.x+dx;o.y=drag.o.y+dy;if(o.x2!==undefined){o.x2=drag.o.x2+dx;o.y2=drag.o.y2+dy}render()};
 svg.addEventListener('pointerleave',clearPersonPreview);
 svg.addEventListener('pointercancel',clearPersonPreview);
-svg.onpointerup=svg.onpointercancel=e=>{if(e.type==='pointercancel')clearSupportPlacement();if(e.type==='pointercancel'&&drag?.o.type==='person'){items=drag.before;drag=null;render();return}if(e.type==='pointercancel'&&drawingConnection(drag?.o)){cancelConnectionDrag();render();return}const rigid=drag?.o.type==='rigidRegion';if(e.type==='pointercancel'&&rigid){cancelRigidDrag();render();return}rigidSnapHint=null;if(drag?.moved){past.push(drag.before);if(rigid&&past.length>100)past.shift();future=[]}drag=null;if(rigid)render()};
+svg.onpointerup=svg.onpointercancel=e=>{if(e.type==='pointercancel')cancelConcentratedLoadPlacement();if(e.type==='pointercancel')clearSupportPlacement();if(e.type==='pointercancel'&&drag?.o.type==='person'){items=drag.before;drag=null;render();return}if(e.type==='pointercancel'&&drawingConnection(drag?.o)){cancelConnectionDrag();render();return}const rigid=drag?.o.type==='rigidRegion';if(e.type==='pointercancel'&&rigid){cancelRigidDrag();render();return}rigidSnapHint=null;if(drag?.moved){past.push(drag.before);if(rigid&&past.length>100)past.shift();future=[]}drag=null;if(rigid)render()};
 function lengthValue(label){
  const m=label.trim().match(/(?:^|=)\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\s*$/i);
  return m?{value:Number(m[1].replace(',','.')),unit:(m[2]||'').toLowerCase()}:null;
@@ -1259,7 +1259,7 @@ function template(t){checkpoint();items=[];restoreDrawingScales();const add=(...
 for(const b of document.querySelectorAll('[data-template]'))b.onclick=()=>template(b.dataset.template);
 function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),5000)}
 function exportSVG(){render(true);try{const out=svg.cloneNode(true);out.setAttribute('viewBox','0 0 1100 720');out.setAttribute('width','1100');out.setAttribute('height','720');return new XMLSerializer().serializeToString(out)}finally{render()}}
-const actions={undo:['↶ Hoàn tác',()=>{clearSupportPlacement();endThinReferenceSession();clearPersonPreview();if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!past.length)return;future.push(copy(items));items=past.pop();selected=null;first=null;second=null;hover=null;render()}],redo:['↷ Làm lại',()=>{clearSupportPlacement();endThinReferenceSession();clearPersonPreview();if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!future.length)return;past.push(copy(items));items=future.pop();selected=null;first=null;second=null;hover=null;render()}],delete:['Tẩy',()=>{selected=null;setMode(mode==='erase'?'select':'erase')}],clear:['Bản vẽ trống',()=>{clearSupportPlacement();checkpoint();items=[];restoreDrawingScales();selected=null;first=null;second=null;hover=null;render()}],save:['Lưu JSON',()=>download(new Blob([JSON.stringify({format:'ket-cau-studio',version:1,items,geometryScale,internalForceScale},null,2)],{type:'application/json'}),'ket-cau.json')],open:['Mở JSON',()=>$('file').click()],svg:['Xuất SVG',()=>download(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'}),'ket-cau.svg')],png:['Xuất PNG',()=>{const u=URL.createObjectURL(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'})),im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=3300;c.height=2160;c.getContext('2d').drawImage(im,0,0,3300,2160);URL.revokeObjectURL(u);c.toBlob(b=>b?download(b,'ket-cau.png'):msg('Không xuất được PNG.'))};im.onerror=()=>{URL.revokeObjectURL(u);msg('Không xuất được PNG. Hãy thử SVG.')};im.src=u}]};
+const actions={undo:['↶ Hoàn tác',()=>{cancelConcentratedLoadPlacement();clearSupportPlacement();endThinReferenceSession();clearPersonPreview();if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!past.length)return;future.push(copy(items));items=past.pop();selected=null;first=null;second=null;hover=null;render()}],redo:['↷ Làm lại',()=>{cancelConcentratedLoadPlacement();clearSupportPlacement();endThinReferenceSession();clearPersonPreview();if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!future.length)return;past.push(copy(items));items=future.pop();selected=null;first=null;second=null;hover=null;render()}],delete:['Tẩy',()=>{selected=null;setMode(mode==='erase'?'select':'erase')}],clear:['Bản vẽ trống',()=>{clearSupportPlacement();checkpoint();items=[];restoreDrawingScales();selected=null;first=null;second=null;hover=null;render()}],save:['Lưu JSON',()=>download(new Blob([JSON.stringify({format:'ket-cau-studio',version:1,items,geometryScale,internalForceScale},null,2)],{type:'application/json'}),'ket-cau.json')],open:['Mở JSON',()=>$('file').click()],svg:['Xuất SVG',()=>download(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'}),'ket-cau.svg')],png:['Xuất PNG',()=>{const u=URL.createObjectURL(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'})),im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=3300;c.height=2160;c.getContext('2d').drawImage(im,0,0,3300,2160);URL.revokeObjectURL(u);c.toBlob(b=>b?download(b,'ket-cau.png'):msg('Không xuất được PNG.'))};im.onerror=()=>{URL.revokeObjectURL(u);msg('Không xuất được PNG. Hãy thử SVG.')};im.src=u}]};
 for(const [id,[title,fn]]of Object.entries(actions)){const b=document.createElement('button');b.id=id;b.textContent=title;b.onclick=fn;$('actions').append(b)}
 function validate(d){if(!d||d.format!=='ket-cau-studio'||d.version!==1||!Array.isArray(d.items)||d.items.length>2000)throw Error('Sai định dạng.');const ids=new Set();for(const o of d.items){if(!o||(!Object.hasOwn(modes,o.type)&&o.type!=='person')||['select','extend'].includes(o.type)||typeof o.id!=='string'||ids.has(o.id))throw Error('Đối tượng không hợp lệ.');ids.add(o.id);if(o.type==='person'){validatePerson(o);continue}if(o.sectionVisible!==undefined&&(typeof o.sectionVisible!=='boolean'||!sectionForceAction(o)))throw Error('Invalid section visibility');if(drawingConnection(o))validateConnection(o);if(o.strokeColor!==undefined&&!validObjectColor(o.strokeColor))throw Error('Invalid object strokeColor');if(o.type==='rigidRegion')validateRigidRegion(o);if(o.loadAngle!==undefined&&(!Number.isFinite(o.loadAngle)||Math.abs(o.loadAngle)>360))throw Error('Invalid load angle');if(o.labelFormula!==undefined&&(typeof o.labelFormula!=='string'||o.labelFormula.length>500||!['deg','rad'].includes(o.labelAngle)))throw Error('Invalid label expression');if(o.type==='curve'&&(!Array.isArray(o.curvePoints)||o.curvePoints.length!==2||o.curvePoints.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)))throw Error('Đường cong không hợp lệ.');if(o.type==='hatch'&&(!Array.isArray(o.points)||o.points.length<3||o.points.length>1000||o.points.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)||!Number.isFinite(o.spacing)||o.spacing<3||o.spacing>50))throw Error('Invalid hatch');if(o.offset!==undefined&&(!Number.isFinite(o.offset)||Math.abs(o.offset)>10000))throw Error('Khoảng cách đường kích thước không hợp lệ.');for(const k of ['x','y',...(['bar','udl','dim','thin','dashed'].includes(o.type)?['x2','y2']:[])])if(!Number.isFinite(o[k])||Math.abs(o[k])>10000)throw Error('Tọa độ không hợp lệ.');if(typeof o.label!=='string'||o.label.length>100||!['pin','roller','fixed','pin-plain','roller-plain'].includes(o.support)||!['down','up','left','right'].includes(o.direction)||!['cw','ccw'].includes(o.rotation))throw Error('Thuộc tính không hợp lệ.')}return d.items}
 $('file').onchange=async e=>{try{const f=e.target.files[0];if(!f)return;if(f.size>2000000)throw Error('Tệp quá lớn.');const data=JSON.parse(await f.text()),next=validate(data);checkpoint();items=next;restoreDrawingScales(data);selected=null;first=null;second=null;hover=null;render();msg('Đã mở bản vẽ.')}catch(err){msg('Không mở được: '+err.message)}e.target.value=''};
@@ -1640,7 +1640,26 @@ function constructionSnap(e){
 autoHideSecondary(secondaryTools,()=>[$('tools').querySelector(`[data-mode="${secondaryTools.dataset.anchorMode}"]`)],()=>!secondaryTools.hidden,closeSecondaryTools);
 
 var loadPlacement=null,loadAnglePanel=null;
-function cancelLoadPlacement(){loadPlacement=null;if(loadAnglePanel)loadAnglePanel.remove();loadAnglePanel=null;svg.querySelector('[data-load-preview]')?.remove()}
+function cancelLoadPlacement(){if(typeof endLoadNumericInput==='function')endLoadNumericInput();loadPlacement=null;if(loadAnglePanel)loadAnglePanel.remove();loadAnglePanel=null;svg.querySelector('[data-load-preview]')?.remove()}
+// UI ray follows the visible body. Force tail = anchor - 75 * loadVector,
+// so its internal tail-to-head vector is opposite the ray; moment uses SVG rotation.
+function loadUIToInternal(type,angle,rotation='cw'){
+ // The radius-34 semicircle has center (-4*side,-2) and arc midpoint (-34*side,-18).
+ // Align that body ray with UI local +Y, independently of rotational sense.
+ const base=type==='force'?90:Math.atan2(rotation==='cw'?34:-34,-18)*180/Math.PI;
+ return ((base-angle)%360+360)%360;
+}
+function updateLoadOrientation(e){
+ const session=loadPlacement;if(!session||!session.uiAngle)return false;
+ if(typeof readLoadNumericEdit==='function')readLoadNumericEdit();
+ if(session.uiAngle.mode==='locked')return true;
+ const p=rawPoint(e),dx=p.x-session.a.x,dy=p.y-session.a.y;
+ let angle=solveSupportAngle(session.a,p);if(angle===null)return false;
+
+ if(e.shiftKey){angle=Math.round(angle/90)*90;if(angle===-180)angle=180}
+ session.uiAngle.value=angle;session.angle=loadUIToInternal(session.type,angle,session.rotation);return true;
+}
+function cancelConcentratedLoadPlacement(){if(loadPlacement?.uiAngle)cancelLoadPlacement()}
 function placeLoadObject(){
  if(!loadPlacement)return;
  const p=loadPlacement,a=p.a,b=p.b;
@@ -1674,13 +1693,15 @@ function openLoadAnglePanel(e){
 svg.addEventListener('pointerdown',e=>{
  if(e.button!==0||!['force','moment','udl'].includes(mode)||typeof panEnabled!=='undefined'&&panEnabled)return;
  e.preventDefault();e.stopImmediatePropagation();
- if(!loadPlacement){loadPlacement={type:mode,a:snapToBar(rawPoint(e))||point(e),angle:mode==='moment'?0:270,rotation:$('rotation').value};if(mode!=='udl')openLoadAnglePanel(e)}
+ if(!loadPlacement){loadPlacement={type:mode,a:snapToBar(rawPoint(e))||point(e),angle:mode==='moment'?0:270,rotation:mode==='moment'?currentMomentRotation:$('rotation').value};if(mode!=='udl'){loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=loadUIToInternal(mode,0,loadPlacement.rotation);beginLoadNumericInput(e)}}
  else if(mode==='udl'&&!loadPlacement.b){const b=snapToBar(rawPoint(e))||point(e);if(Math.hypot(b.x-loadPlacement.a.x,b.y-loadPlacement.a.y)<1)return;loadPlacement.b=b;openLoadAnglePanel(e)}
- else{placeLoadObject();return}
+ else{if(loadPlacement.uiAngle){if(!confirmLoadNumericInput()||!updateLoadOrientation(e))return}placeLoadObject();return}
  paintLoadPreview();
 },true);
 svg.addEventListener('pointermove',e=>{
- if(!loadPlacement)return;e.stopImmediatePropagation();const p=rawPoint(e);
+ if(!loadPlacement)return;e.stopImmediatePropagation();
+ if(loadPlacement.uiAngle){updateLoadOrientation(e);updateLoadNumericInput(e);paintLoadPreview();return}
+ const p=rawPoint(e);
  if(loadPlacement.type==='udl'&&!loadPlacement.b){loadPlacement.hover=drawingPoint(e);paintLoadPreview();return}
  const a=loadPlacement.b?{x:(loadPlacement.a.x+loadPlacement.b.x)/2,y:(loadPlacement.a.y+loadPlacement.b.y)/2}:loadPlacement.a;
  const dx=p.x-a.x,dy=p.y-a.y;if(Math.hypot(dx,dy)<2)return;

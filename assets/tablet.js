@@ -354,6 +354,7 @@ function captureDrawing(){
  return {items:copy(items),past:copy(past),future:copy(future),selected,first:copy(first),second:copy(second),hover:copy(hover),hatchPoints:copy(hatchPoints),rigidPoints:copy(rigidPoints),rigidPivot:copy(rigidPivot),extendBoundary,multiSelection:[...multiSelection]};
 }
 function restoreDrawing(snapshot){
+ cancelConcentratedLoadPlacement();
  clearSupportPlacement();
  if(!snapshot)return;
  jointDrag=null;rigidDrag=null;rigidPivot=snapshot.rigidPivot||null;rigidSnapHint=null;rigidPoints=snapshot.rigidPoints||[];
@@ -525,6 +526,7 @@ async function loadDocument(file,handle=null){
  setMode('select');saveDraft();msg('Đã mở '+documentName);
 }
 async function openDocument(){
+ cancelConcentratedLoadPlacement();
  clearSupportPlacement();
  if(fileBusy)return;
  finishDocumentEdit();fileMenu.open=false;openDialog.showModal();
@@ -1624,6 +1626,83 @@ $('dynamicInputValue').addEventListener('input',()=>{
  const text=getDynamicInputValue().trim().replace(',','.'),value=Number(text);
  if(text&&Number.isFinite(value))lockSupportNumericAngle(value);
 });
+
+// Moment reuses Snap's palette, radio selected styling and dismissal lifecycle.
+let currentMomentRotation=$('rotation').value==='ccw'?'ccw':'cw';
+const momentButton=$('tools').querySelector('[data-mode="moment"]');
+const momentPalette=document.createElement('details');momentPalette.id='momentDirectionPalette';
+momentPalette.style.cssText='position:fixed;width:0;height:0;margin:0;padding:0;border:0;z-index:2000';
+const momentSummary=document.createElement('summary');momentSummary.hidden=true;momentPalette.append(momentSummary);
+const momentChoices=document.createElement('div');momentChoices.className='snap-choices';momentChoices.style.width='max-content';
+momentChoices.setAttribute('role','radiogroup');momentChoices.setAttribute('aria-label','Chi\u1ec1u m\u00f4men');momentPalette.append(momentChoices);document.body.append(momentPalette);
+const momentIcon=rotation=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="${toolIconPaths.moment}" transform="${rotation==='ccw'?'translate(24 0) scale(-1 1)':''}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+function syncMomentDirection(){
+ for(const input of momentChoices.querySelectorAll('input'))input.checked=input.value===currentMomentRotation;
+ momentButton.style.setProperty('--tool-icon',`url("data:image/svg+xml,${encodeURIComponent(momentIcon(currentMomentRotation))}")`);
+ momentButton.dataset.rotation=currentMomentRotation;
+}
+function closeMomentPalette(){momentPalette.open=false;momentButton.setAttribute('aria-expanded','false')}
+function positionMomentPalette(){
+ if(!momentPalette.open)return;
+ const box=momentButton.getBoundingClientRect();
+ momentChoices.style.left=Math.max(8,Math.min(box.left,innerWidth-momentChoices.offsetWidth-8))+'px';
+ momentChoices.style.top=Math.max(8,Math.min(box.bottom+6,innerHeight-momentChoices.offsetHeight-8))+'px';
+}
+for(const [rotation,title]of [['cw','M\u00f4men thu\u1eadn chi\u1ec1u'],['ccw','M\u00f4men ng\u01b0\u1ee3c chi\u1ec1u']]){
+ const label=document.createElement('label');label.className='snap-icon-choice';label.title=title;
+ const input=document.createElement('input');input.type='radio';input.name='momentDirection';input.value=rotation;input.setAttribute('aria-label',title);
+ label.innerHTML=momentIcon(rotation);label.querySelector('svg').style.cssText='width:30px;height:30px;border:0;flex:none';label.querySelector('svg').setAttribute('aria-hidden','true');label.prepend(input);
+ input.onclick=()=>{currentMomentRotation=rotation;$('rotation').value=rotation;selected=null;setMode('moment');syncMomentDirection();closeMomentPalette();momentButton.focus({preventScroll:true})};
+ momentChoices.append(label);
+}
+momentButton.setAttribute('aria-controls',momentPalette.id);momentButton.setAttribute('aria-haspopup','true');momentButton.setAttribute('aria-expanded','false');
+momentButton.onclick=()=>{
+ const open=!momentPalette.open;
+ if(loadPlacement?.type==='moment')cancelLoadPlacement();
+ closeSecondaryTools();snapPanel.open=false;syncMomentDirection();momentPalette.open=open;momentButton.setAttribute('aria-expanded',String(open));positionMomentPalette();
+};
+momentButton.addEventListener('keydown',e=>{if(e.key==='ArrowDown'){e.preventDefault();if(!momentPalette.open)momentButton.click();momentChoices.querySelector('input:checked')?.focus()}});
+momentPalette.addEventListener('toggle',()=>{momentButton.setAttribute('aria-expanded',String(momentPalette.open));positionMomentPalette()});
+autoHideSecondary(momentPalette,()=>[momentButton],()=>momentPalette.open,closeMomentPalette);
+window.addEventListener('resize',positionMomentPalette);
+document.addEventListener('scroll',e=>{if(!momentChoices.contains(e.target))closeMomentPalette()},true);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMomentPalette()});
+syncMomentDirection();
+
+// Force/moment use the shared angle field; UDL retains its legacy panel.
+var loadNumericSession=null;
+function endLoadNumericInput(){
+ const session=loadNumericSession;loadNumericSession=null;
+ if(session&&dynamicNumericCapture===session.capture)disarmDynamicNumericInput();
+}
+function lockLoadNumericAngle(value){
+ if(!loadNumericSession||!Number.isFinite(value))return;
+ const session=loadNumericSession.session;
+ let angle=value%360;if(angle<=-180)angle+=360;if(angle>180)angle-=360;
+ session.uiAngle.mode='locked';session.uiAngle.value=angle===0?0:angle;
+ session.angle=loadUIToInternal(session.type,angle,session.rotation);paintLoadPreview();
+}
+function readLoadNumericEdit(){
+ if(!loadNumericSession||!$('dynamicInputValue').dataset.editing)return;
+ const text=getDynamicInputValue().trim().replace(',','.'),value=Number(text);
+ if(text&&Number.isFinite(value))lockLoadNumericAngle(value);
+}
+function beginLoadNumericInput(e){
+ endLoadNumericInput();
+ const session=loadPlacement,active=document.activeElement;
+ if(!session?.uiAngle||active?.matches('input,textarea,select')||active?.isContentEditable||dynamicNumericCapture||dynamicInputUI.isOpen())return;
+ armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onCancel:cancelToSelection});
+ loadNumericSession={session,capture:dynamicNumericCapture,touch:e.pointerType==='touch'};
+ showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onConfirm:dynamicNumericCapture.confirm,onCancel:dynamicNumericCapture.cancel,
+  fields:{label:'G\u00f3c',values:[session.uiAngle],validate:()=>true,onConfirm:(_,value)=>lockLoadNumericAngle(value),onKeyboardCommit:placeLoadObject}});
+
+}
+function confirmLoadNumericInput(){return !loadNumericSession||dynamicInputUI.confirmPending()}
+function updateLoadNumericInput(e){
+ if(!loadNumericSession)return;
+ updateDynamicInput(loadNumericSession.touch?{}:{clientX:e.clientX,clientY:e.clientY});
+}
+$('dynamicInputValue').addEventListener('input',readLoadNumericEdit);
 
 // Each explicit first point or completed segment starts a fresh LIVE/LIVE session.
 var barNumericSession=null;
