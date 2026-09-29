@@ -23,7 +23,7 @@ const near=(a,b)=>assert(Math.abs(a-b)<.002,`${a} != ${b}`);
   }
   // Touch commits directly, without a preceding pointer move.
   await click(400,315);assert.equal(await p.evaluate(()=>items.length),2);assert.equal(await p.evaluate(()=>past.length),1);assert.equal(await p.evaluate(()=>mode),'person');
-  const person=await p.evaluate(()=>copy(items[1]));near(person.x,400);near(person.y,307);near(person.angle,0);assert.equal(person.size,2);assert.deepEqual(Object.keys(person).sort(),['angle','id','size','type','x','y']);
+  const person=await p.evaluate(()=>copy(items[1]));near(person.x,400);near(person.y,324);near(person.angle,0);assert.equal(person.size,2);assert.deepEqual(Object.keys(person).sort(),['angle','id','size','type','x','y']);
   assert.equal(await p.evaluate(()=>savedDocument===documentText()),false);assert.equal(await p.locator('[data-person-preview]').count(),0);
   await click(400,500);await click(400,300);assert.equal(await p.evaluate(()=>items.length),2);assert.equal(await p.evaluate(()=>past.length),1);
   await click(500,285);assert.equal(await p.evaluate(()=>items.length),3);assert.equal(await p.evaluate(()=>past.length),2);near(await p.evaluate(()=>items[2].angle),180);

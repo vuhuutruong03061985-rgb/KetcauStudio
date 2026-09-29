@@ -1,4 +1,4 @@
-*{box-sizing:border-box}body{margin:0;background:#edf2f6;color:#20374a;font:15px system-ui}header{padding:20px 30px;background:#203f55;color:white;font-size:24px}main{display:grid;grid-template-columns:250px 1fr;gap:20px;padding:20px}aside,article{padding:18px;background:white;border-radius:12px}button,input,select{padding:9px;border:1px solid #cbd6df;border-radius:6px;font:inherit;background:white;max-width:100%}button{cursor:pointer;margin:3px}button.active{background:#176f7b;color:white}label{display:block;margin:14px 0}input,select{width:100%;margin-top:5px}svg{width:100%;border:1px solid #dce4ea;touch-action:none}p{line-height:1.6;font-size:13px}h2{font-size:16px}#status{padding:10px}#file{display:none}
+*{box-sizing:border-box}body{margin:0;background:#edf2f6;color:#20374a;font:15px system-ui}header{padding:20px 30px;background:#203f55;color:white;font-size:24px}main{display:grid;grid-template-columns:250px 1fr;gap:20px;padding:20px}aside,article{padding:18px;background:white;border-radius:12px}button,input,select{padding:9px;border:1px solid #cbd6df;border-radius:6px;font:inherit;background:white;max-width:100%}button{cursor:pointer;margin:3px}button.active{background:#176f7b;color:white}label{display:block;margin:14px 0}input,select{width:100%;margin-top:5px}svg{width:100%;border:1px solid #dce4ea;touch-action:none}p{line-height:1.6;font-size:13px}h2{font-size:16px}#file{display:none}
 
 [hidden]{display:none!important}
 /* Preserve the native color picker while showing a stable multicolor tool icon. */
@@ -24,13 +24,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 #actions,#viewTools{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:10px}
 #actions button,#viewTools button{font-size:13px;margin:0}#zoomLevel{min-width:48px;text-align:center;font-size:13px}
 .canvas-wrap{overflow:hidden;background:#dce5eb;border-radius:8px;border:1px solid #cbd6df}
-#drawing{display:block;width:100%;height:clamp(360px,67dvh,900px);border:0;user-select:none;touch-action:none;background:white}
-#status{min-height:40px;font-size:14px;overflow-wrap:anywhere}
+#drawing{display:block;width:100%;height:100%;min-height:0;border:0;user-select:none;touch-action:none;background:white}
+
 .tools-collapsed main{grid-template-columns:minmax(0,1fr)}.tools-collapsed aside{display:none}
 .presets{display:flex;flex-wrap:wrap;margin-bottom:12px}.presets button{font-size:13px}
 .offline-ready{color:#9ee9d5}
-@media(max-width:1000px){main{grid-template-columns:220px minmax(0,1fr);padding:10px;gap:10px}aside,article{padding:12px}header{padding:12px 16px}#drawing{height:65dvh}}
-@media(max-width:700px){main{display:flex;flex-direction:column}aside{max-height:36dvh}#tools{grid-template-columns:repeat(3,minmax(0,1fr))}header strong{font-size:20px}header{padding:10px;align-items:flex-start}#drawing{height:58dvh;min-height:320px}.tools-collapsed #drawing{height:68dvh}article>p{font-size:12px}}
+@media(max-width:1000px){main{grid-template-columns:220px minmax(0,1fr);padding:10px;gap:10px}aside,article{padding:12px}header{padding:12px 16px}}
+@media(max-width:700px){main{display:flex;flex-direction:column}aside{max-height:24dvh}#tools{grid-template-columns:repeat(3,minmax(0,1fr))}header strong{font-size:20px}header{padding:10px;align-items:flex-start}}
 @media(pointer:coarse){#tools button{min-height:48px}button{padding:10px 12px}}
 @media(display-mode:standalone){header{padding-top:max(12px,env(safe-area-inset-top))}body{padding-bottom:env(safe-area-inset-bottom)}}
 
@@ -125,3 +125,13 @@ button.icon-button.active,button.icon-button[aria-pressed="true"]{background:#cc
 
 #drawingScales label{display:grid;grid-template-columns:7ch 7ch auto 6ch auto;align-items:center;gap:5px}
 #drawingScales label span{display:block;white-space:nowrap}
+
+/* Let the drawing use all space below the existing toolbars. */
+body{height:100dvh;display:flex;flex-direction:column}
+header{flex:none}
+main{flex:1;min-height:0}
+aside{min-height:0;max-height:100%}
+article{display:flex;flex-direction:column;min-height:0}
+#actions,#viewTools{flex:none}
+.canvas-wrap{flex:1;min-height:0}
+@media(max-width:700px){aside{flex:0 1 auto;max-height:24dvh}article{flex:1}}

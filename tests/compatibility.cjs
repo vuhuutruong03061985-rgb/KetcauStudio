@@ -19,7 +19,7 @@ const {pathToFileURL}=require('node:url');
   await page.locator('#undo').click();assert.equal(await page.evaluate(()=>items.length),previous.items.length);
   const keep=await page.evaluate(()=>JSON.stringify(items));
   await page.locator('#file').setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from('null')});
-  await page.waitForFunction(()=>document.getElementById('status').textContent.startsWith('Không mở được:'));
+  await page.waitForFunction(()=>document.getElementById('file').value===''&&!fileBusy);
   assert.equal(await page.evaluate(()=>JSON.stringify(items)),keep);assert.deepEqual(errors,[]);
   // LAN HTTP is not a secure context: UUID fallback must still allow drawing.
   const lan=await browser.newPage();lan.on('pageerror',e=>errors.push(e.message));

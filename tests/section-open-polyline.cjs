@@ -22,6 +22,8 @@ assert.equal(old.edges.length,2);assert.equal(old.cuts[0].length,1);assert(Math.
  const p=await browser.newPage({viewport:{width:1500,height:1100},hasTouch:true}),errors=[];
  p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.resolve('index.html')).href);
  await p.waitForFunction(()=>typeof sectionGeometry!=='undefined');
+ // Keep this precision-sensitive geometry fixture at its original drawing dimensions.
+ await p.addStyleTag({content:'.canvas-wrap{flex:none;height:739px}'});
  const screen=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});
  const click=async(x,y,touch=false)=>{const q=await screen(x,y);if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
  const seed=async(points=oldPoints,objects=[bar('source',350,344,600,344)])=>p.evaluate(({points,objects})=>{
@@ -69,7 +71,7 @@ assert.equal(old.edges.length,2);assert.equal(old.cuts[0].length,1);assert(Math.
  await seed([v(400,200),v(400,450)],[bar('a',200,344,600,344),bar('b',400,344,400,500)]);
  assert.equal(await p.evaluate(()=>sectionPending),null);assert.equal(await p.evaluate(()=>past.length),0);
  assert.equal(await p.evaluate(()=>items.length),2);assert.equal(await p.locator('[data-section-conflict]').count(),1);
- assert((await p.locator('#status').textContent()).includes('nút T'));
+ assert.equal(await p.locator('#status').count(),0);
  // Browser preview matches finite geometry, including unused segments and ordinary nodes.
  for(const [points,objects,pieces,cutCount]of [
   [[v(200,200),v(400,200),v(400,400),v(600,400)],[bar('a',300,300,500,300)],2,1],

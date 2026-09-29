@@ -119,7 +119,7 @@ function restoreDrawingScales(data={}){
  internalForceScale=Number.isFinite(data.internalForceScale)&&data.internalForceScale>0?data.internalForceScale:defaultInternalForceScale;
 }
 const newId=()=>typeof crypto.randomUUID==='function'?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
-const copy=x=>JSON.parse(JSON.stringify(x)),msg=t=>$('status').textContent=t;
+const copy=x=>JSON.parse(JSON.stringify(x)),msg=()=>{}; // Bottom status panel removed; keep notification calls harmless.
 let snapEnabled=true;
 const snapOptions={endpoint:true,midpoint:true,intersection:true,member:true,dimension:true,perpendicular:true,tangent:false};
 try{const saved=JSON.parse(localStorage.getItem('ket-cau-snap-settings')||'null');if(saved){if(typeof saved.enabled==='boolean')snapEnabled=saved.enabled;for(const key of Object.keys(snapOptions))if(typeof saved.options?.[key]==='boolean')snapOptions[key]=saved.options[key]}}catch{}
@@ -445,7 +445,7 @@ function renderBarConstraintPreview(){
 // size is a uniform model-unit multiplier; angle is SVG degrees (clockwise on screen).
 const PERSON_DEFAULT_SIZE=2;
 const PERSON_HEAD_RADIUS=2;
-const PERSON_BAR_GAP=3;
+const PERSON_BAR_GAP=20;
 const PERSON_PLACEMENT_TOLERANCE=1e-6; // Model units, independent of camera zoom.
 function solvePersonPlacement({bar,candidatePoint:p,size=PERSON_DEFAULT_SIZE}={}){
  if(!bar||!p||![bar.x,bar.y,bar.x2,bar.y2,p.x,p.y,size].every(Number.isFinite)||size<=0)return null;
