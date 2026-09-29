@@ -1583,6 +1583,48 @@ window.addEventListener('keydown',e=>{
  if(openArmedDynamicInput(e.key)){e.preventDefault();e.stopImmediatePropagation()}
 },true);
 
+// Support owns one angle field; reuse shared capture, validation and focus lifecycle.
+var supportNumericSession=null;
+function endSupportNumericInput(){
+ const session=supportNumericSession;supportNumericSession=null;
+ if(session&&dynamicNumericCapture===session.capture)disarmDynamicNumericInput();
+}
+function lockSupportNumericAngle(value){
+ const session=supportPlacementSession;if(!session||!Number.isFinite(value))return;
+ // Same SVG +Y convention and canonical range as the pure direction solver.
+ const wrapped=value%360,r=wrapped*Math.PI/180;
+ const angle=solveSupportAngle({x:0,y:0},{x:-Math.sin(r),y:Math.cos(r)});
+ session.angle.mode='locked';session.angle.value=angle;session.previewAngle=angle;render();
+}
+function beginSupportNumericInput(e){
+ endSupportNumericInput();
+ const session=supportPlacementSession,active=document.activeElement;
+ if(!session||active?.matches('input,textarea,select')||active?.isContentEditable||dynamicNumericCapture||dynamicInputUI.isOpen())return;
+ session.angle.value={down:0,up:180,left:90,right:-90}[session.direction]||0;
+ armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onCancel:cancelToSelection});
+ supportNumericSession={session,capture:dynamicNumericCapture,touch:e.pointerType==='touch'};
+ showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onConfirm:dynamicNumericCapture.confirm,onCancel:dynamicNumericCapture.cancel,
+  fields:{label:'G\u00f3c',values:[session.angle],validate:()=>true,onConfirm:(_,value)=>lockSupportNumericAngle(value),
+   onKeyboardCommit:()=>commitSupportPlacement(session.angle.value)}});
+}
+function confirmSupportNumericInput(){
+ return !supportNumericSession||dynamicInputUI.confirmPending();
+}
+function updateSupportNumericInput(e){
+ if(!supportNumericSession)return;
+ if($('dynamicInputValue').dataset.editing){
+  const text=getDynamicInputValue().trim().replace(',','.'),value=Number(text);
+  if(text&&Number.isFinite(value))lockSupportNumericAngle(value);
+ }
+ if(supportNumericSession.touch)updateDynamicInput();
+ else updateDynamicInput({clientX:e.clientX,clientY:e.clientY});
+}
+$('dynamicInputValue').addEventListener('input',()=>{
+ if(!supportNumericSession)return;
+ const text=getDynamicInputValue().trim().replace(',','.'),value=Number(text);
+ if(text&&Number.isFinite(value))lockSupportNumericAngle(value);
+});
+
 // Each explicit first point or completed segment starts a fresh LIVE/LIVE session.
 var barNumericSession=null;
 function beginBarNumericInput(e){

@@ -16,16 +16,23 @@ function solveSupportAngle(anchorPoint,cursorPoint){
 }
 let supportPlacementSession=null;
 function clearSupportPlacement(){
+ if(typeof endSupportNumericInput==='function')endSupportNumericInput();
  supportPlacementSession=null;svg.querySelector('[data-support-preview]')?.remove();
+}
+function commitSupportPlacement(angle){
+ const session=supportPlacementSession;if(!session||!Number.isFinite(angle))return false;
+ const o=make('support',session.anchorPoint.x,session.anchorPoint.y,undefined,undefined,{support:session.supportSubtype,direction:session.direction,supportAngle:angle});
+ checkpoint();items.push(o);selected=o.id;clearSupportPlacement();render();return true;
 }
 function placeSupport(e){
  if(!supportPlacementSession){
-  supportPlacementSession={anchorPoint:{...drawingPoint(e)},supportSubtype:$('support').value,direction:$('direction').value,previewAngle:null};
+  supportPlacementSession={anchorPoint:{...drawingPoint(e)},supportSubtype:$('support').value,direction:$('direction').value,previewAngle:null,angle:{mode:'live',value:0}};
+  if(typeof beginSupportNumericInput==='function')beginSupportNumericInput(e);
  }else{
-  const session=supportPlacementSession,angle=solveSupportAngle(session.anchorPoint,rawPoint(e));
+  if(typeof confirmSupportNumericInput==='function'&&!confirmSupportNumericInput())return;
+  const session=supportPlacementSession,angle=session.angle.mode==='locked'?session.angle.value:solveSupportAngle(session.anchorPoint,rawPoint(e));
   if(angle===null)return;
-  const o=make('support',session.anchorPoint.x,session.anchorPoint.y,undefined,undefined,{support:session.supportSubtype,direction:session.direction,supportAngle:angle});
-  checkpoint();items.push(o);selected=o.id;clearSupportPlacement();
+  commitSupportPlacement(angle);return;
  }
  render();
 }
@@ -1182,7 +1189,7 @@ if(mode==='select'){selected=e.target.closest('[data-id]')?.dataset.id||null;con
  checkpoint();items.push(make('dim',first.x,first.y,second.x,second.y,{offset:snapDimensionOffset(first,second,offsetAt(first,second,point(e)))}));
  first=null;second=null;hover=null;selected=items.at(-1).id;render();msg('Đã tạo kích thước.');return;
  }if(mode==='linkBar'){if(!first){first=p;render();return}if(Math.hypot(p.x-first.x,p.y-first.y)<1)return;const o=make('linkBar',first.x,first.y,p.x,p.y);try{validateConnection(o)}catch{return}checkpoint();items.push(o);first=null;hover=null;selected=o.id;render();return}if(['bar','udl','thin','dashed'].includes(mode)){if(!first){first=p;if(mode==='bar'&&typeof beginBarNumericInput==='function')beginBarNumericInput(e);if(mode==='thin'){beginThinReferenceSession();if(typeof beginThinNumericInput==='function')beginThinNumericInput(e)}render();msg('Bấm điểm thứ hai.');return}if(first.x===p.x&&first.y===p.y)return;checkpoint();items.push(make(mode,first.x,first.y,p.x,p.y));first={...p};hover=null}else{checkpoint();items.push(make(mode,p.x,p.y))}selected=items.at(-1).id;render();msg('Đã thêm đối tượng.');if(mode==='text'){e.preventDefault();editObjectLabel(items.at(-1))}};
-svg.onpointermove=e=>{if(mode==='support'&&supportPlacementSession&&!drag){const angle=solveSupportAngle(supportPlacementSession.anchorPoint,rawPoint(e));if(angle!==null)supportPlacementSession.previewAngle=angle;render();return}if(mode==='thin'&&!drag)updateThinReferenceSession(e);if(mode==='person'&&!drag){paintPersonPreview(e);return}if(!drag){if(first&&['bar','thin','dashed','udl','linkBar'].includes(mode)){hover=drawingPoint(e);render();return;}if(mode==='dim'||mode==='moment'){hover=second?point(e):(snapToBar(rawPoint(e))||point(e));render()}return;}const o=items.find(o=>o.id===selected);if(!o)return;
+svg.onpointermove=e=>{if(mode==='support'&&supportPlacementSession&&!drag){const angle=solveSupportAngle(supportPlacementSession.anchorPoint,rawPoint(e));if(supportPlacementSession.angle.mode==='live'&&angle!==null){supportPlacementSession.previewAngle=angle;supportPlacementSession.angle.value=angle}if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);render();return}if(mode==='thin'&&!drag)updateThinReferenceSession(e);if(mode==='person'&&!drag){paintPersonPreview(e);return}if(!drag){if(first&&['bar','thin','dashed','udl','linkBar'].includes(mode)){hover=drawingPoint(e);render();return;}if(mode==='dim'||mode==='moment'){hover=second?point(e):(snapToBar(rawPoint(e))||point(e));render()}return;}const o=items.find(o=>o.id===selected);if(!o)return;
 if(o.type==='person'){
  const p=rawPoint(e),x=drag.o.x+p.x-drag.p.x,y=drag.o.y+p.y-drag.p.y;
  try{validatePerson({...o,x,y})}catch{return}
