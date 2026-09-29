@@ -1726,18 +1726,20 @@ var loadPlacement=null;
 function loadReferenceCandidates(){
  const session=loadPlacement;if(!session?.referenceCandidates)return [];
  const ids=new Set(session.referenceCandidates.map(c=>c.barId));
- return collectReferenceBars({bars:items.filter(o=>ids.has(o.id)),anchorPoint:session.a,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/Math.abs(svg.getScreenCTM().a)});
+ return collectReferenceBars({bars:items.filter(o=>ids.has(o.id)),anchorPoint:session.referenceAnchor||session.a,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/Math.abs(svg.getScreenCTM().a)});
 }
 function loadReferenceFrame(){
  const session=loadPlacement;if(!session?.referenceBarId)return null;
  const candidate=loadReferenceCandidates().find(c=>c.barId===session.referenceBarId);
  if(candidate)return getReferenceBarFrame(candidate.bar);
  session.referenceBarId=null;session.referenceCandidates=[];session.uiAngle.value=session.globalPlacementAngle;
+ if(session.type==='udl')svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));
+ if(session.type==='udl'&&typeof loadNumericSession!=='undefined'&&loadNumericSession?.session===session){delete $('dynamicInputValue').dataset.editing;updateDynamicInput({value:session.uiAngle.value})}
  svg.querySelector('[data-load-reference]')?.remove();return null;
 }
 function loadReferenceOverrideAt(cursorPoint){
  const candidates=loadReferenceCandidates();if(candidates.length<2)return null;
- const bar=hitReferenceOverride({bars:candidates.map(c=>c.bar),anchorPoint:loadPlacement.a,cursorPoint,screenScale:Math.abs(svg.getScreenCTM().a)});
+ const bar=hitReferenceOverride({bars:candidates.map(c=>c.bar),anchorPoint:loadPlacement.referenceAnchor||loadPlacement.a,cursorPoint,screenScale:Math.abs(svg.getScreenCTM().a)});
  return bar?.id!==loadPlacement.referenceBarId?bar:null;
 }
 function resolveLoadUserAngle(){
@@ -1753,8 +1755,15 @@ function setLoadReference(barId){
 }
 function beginLoadReference(){
  const session=loadPlacement;session.globalPlacementAngle=0;session.referenceBarId=null;
- session.referenceCandidates=collectReferenceBars({bars:items,anchorPoint:session.a,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/Math.abs(svg.getScreenCTM().a)});
+ if(session.type==='udl')session.referenceAnchor={x:(session.a.x+session.b.x)/2,y:(session.a.y+session.b.y)/2};
+ session.referenceCandidates=collectReferenceBars({bars:items,anchorPoint:session.referenceAnchor||session.a,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/Math.abs(svg.getScreenCTM().a)});
  if(session.referenceCandidates.length===1)setLoadReference(session.referenceCandidates[0].barId);
+ else if(session.type==='udl'&&session.referenceCandidates.length>1){
+  const span=getReferenceBarFrame({x:session.a.x,y:session.a.y,x2:session.b.x,y2:session.b.y});
+  const ranked=session.referenceCandidates.map(c=>{const t=getReferenceBarFrame(c.bar).tangent;return {id:c.barId,score:Math.abs(span.tangent.x*t.x+span.tangent.y*t.y)}}).sort((a,b)=>b.score-a.score);
+  // A tie stays global until an explicit override; cursor direction never selects UDL reference.
+  if(ranked[0].score-ranked[1].score>1e-9)setLoadReference(ranked[0].id);
+ }
 }
 function renderLoadReference(){
  svg.querySelector('[data-load-reference]')?.remove();
@@ -1791,9 +1800,10 @@ function updateUDLOrientation(e){
  const session=loadPlacement;if(session?.type!=='udl'||!session.b)return false;
  if(session.uiAngle?.mode==='locked')return true;
  const anchor={x:(session.a.x+session.b.x)/2,y:(session.a.y+session.b.y)/2};
+ if(loadReferenceOverrideAt(rawPoint(e)))return false;
  let angle=solveSupportAngle(anchor,rawPoint(e));if(angle===null)return false;
  if(e.shiftKey){angle=Math.round(angle/90)*90;if(angle===-180)angle=180}
- session.placementAngle=angle;if(session.uiAngle)session.uiAngle.value=angle;
+ session.placementAngle=angle;session.globalPlacementAngle=angle;const frame=loadReferenceFrame();if(session.uiAngle)session.uiAngle.value=frame?globalPlacementAngleToReferenceAngle(angle,frame):angle;
  session.angle=((90-angle)%360+360)%360;
  return true;
 }
@@ -1819,12 +1829,12 @@ svg.addEventListener('pointerdown',e=>{
  if(e.button!==0||!['force','moment','udl'].includes(mode)||typeof panEnabled!=='undefined'&&panEnabled)return;
  e.preventDefault();e.stopImmediatePropagation();
  if(!loadPlacement){loadPlacement={type:mode,a:snapToBar(rawPoint(e))||point(e),angle:mode==='moment'?0:270,rotation:mode==='moment'?currentMomentRotation:$('rotation').value};if(mode!=='udl'){loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=loadUIToInternal(mode,0,loadPlacement.rotation);beginLoadReference();beginLoadNumericInput(e)}}
- else if(mode==='udl'&&!loadPlacement.b){const b=snapToBar(rawPoint(e))||point(e);if(Math.hypot(b.x-loadPlacement.a.x,b.y-loadPlacement.a.y)<1)return;loadPlacement.b=b;loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=90;beginLoadNumericInput(e)}
+ else if(mode==='udl'&&!loadPlacement.b){const b=snapToBar(rawPoint(e))||point(e);if(Math.hypot(b.x-loadPlacement.a.x,b.y-loadPlacement.a.y)<1)return;loadPlacement.b=b;loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=90;beginLoadReference();beginLoadNumericInput(e)}
  else{const override=loadReferenceOverrideAt(rawPoint(e));if(override){setLoadReference(override.id);updateLoadNumericInput(e);paintLoadPreview();return}if(loadPlacement.uiAngle){if(!confirmLoadNumericInput()||!updateLoadOrientation(e))return}else if(loadPlacement.type==='udl'&&!updateUDLOrientation(e))return;placeLoadObject();return}
  paintLoadPreview();
 },true);
 svg.addEventListener('pointermove',e=>{
- if(!loadPlacement)return;if(loadPlacement.type==='udl')e.stopImmediatePropagation();
+ if(!loadPlacement)return;if(loadPlacement.type==='udl'&&!loadPlacement.b)e.stopImmediatePropagation();
  if(loadPlacement.uiAngle){updateLoadOrientation(e);updateLoadNumericInput(e);paintLoadPreview();return}
  if(loadPlacement.type==='udl'&&!loadPlacement.b){loadPlacement.hover=drawingPoint(e);paintLoadPreview();return}
 
