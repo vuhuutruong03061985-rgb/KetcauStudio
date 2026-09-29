@@ -1639,27 +1639,39 @@ function constructionSnap(e){
 }
 autoHideSecondary(secondaryTools,()=>[$('tools').querySelector(`[data-mode="${secondaryTools.dataset.anchorMode}"]`)],()=>!secondaryTools.hidden,closeSecondaryTools);
 
-var loadPlacement=null,loadAnglePanel=null;
-function cancelLoadPlacement(){if(typeof endLoadNumericInput==='function')endLoadNumericInput();loadPlacement=null;if(loadAnglePanel)loadAnglePanel.remove();loadAnglePanel=null;svg.querySelector('[data-load-preview]')?.remove()}
+var loadPlacement=null;
+function cancelLoadPlacement(){if(typeof endLoadNumericInput==='function')endLoadNumericInput();loadPlacement=null;svg.querySelector('[data-load-preview]')?.remove()}
 // UI ray follows the visible body. Force tail = anchor - 75 * loadVector,
 // so its internal tail-to-head vector is opposite the ray; moment uses SVG rotation.
 function loadUIToInternal(type,angle,rotation='cw'){
  // The radius-34 semicircle has center (-4*side,-2) and arc midpoint (-34*side,-18).
  // Align that body ray with UI local +Y, independently of rotational sense.
- const base=type==='force'?90:Math.atan2(rotation==='cw'?34:-34,-18)*180/Math.PI;
+ const base=(type==='force'||type==='udl')?90:Math.atan2(rotation==='cw'?34:-34,-18)*180/Math.PI;
  return ((base-angle)%360+360)%360;
 }
 function updateLoadOrientation(e){
  const session=loadPlacement;if(!session||!session.uiAngle)return false;
  if(typeof readLoadNumericEdit==='function')readLoadNumericEdit();
  if(session.uiAngle.mode==='locked')return true;
+ if(session.type==='udl')return updateUDLOrientation(e);
  const p=rawPoint(e),dx=p.x-session.a.x,dy=p.y-session.a.y;
  let angle=solveSupportAngle(session.a,p);if(angle===null)return false;
 
  if(e.shiftKey){angle=Math.round(angle/90)*90;if(angle===-180)angle=180}
  session.uiAngle.value=angle;session.angle=loadUIToInternal(session.type,angle,session.rotation);return true;
 }
-function cancelConcentratedLoadPlacement(){if(loadPlacement?.uiAngle)cancelLoadPlacement()}
+function cancelConcentratedLoadPlacement(){if(loadPlacement?.uiAngle||loadPlacement?.type==='udl')cancelLoadPlacement()}
+// UDL arrowheads stay on the span; tails extend opposite the stored load vector.
+function updateUDLOrientation(e){
+ const session=loadPlacement;if(session?.type!=='udl'||!session.b)return false;
+ if(session.uiAngle?.mode==='locked')return true;
+ const anchor={x:(session.a.x+session.b.x)/2,y:(session.a.y+session.b.y)/2};
+ let angle=solveSupportAngle(anchor,rawPoint(e));if(angle===null)return false;
+ if(e.shiftKey){angle=Math.round(angle/90)*90;if(angle===-180)angle=180}
+ session.placementAngle=angle;if(session.uiAngle)session.uiAngle.value=angle;
+ session.angle=((90-angle)%360+360)%360;
+ return true;
+}
 function placeLoadObject(){
  if(!loadPlacement)return;
  const p=loadPlacement,a=p.a,b=p.b;
@@ -1678,42 +1690,19 @@ function paintLoadPreview(){
  }else if(p.type==='force'){arrow(g,x-dx*75,y-dy*75,x,y)}
  else{const b=p.b;line(g,x-dx*55,y-dy*55,b.x-dx*55,b.y-dy*55);const n=Math.max(2,Math.ceil(Math.hypot(b.x-x,b.y-y)/25));for(let i=0;i<=n;i++){const xx=x+(b.x-x)*i/n,yy=y+(b.y-y)*i/n;arrow(g,xx-dx*55,yy-dy*55,xx,yy)}}
 }
-function openLoadAnglePanel(e){
- loadAnglePanel=document.createElement('div');loadAnglePanel.style.cssText='position:fixed;z-index:2100;background:white;border:1px solid #b8ced8;padding:10px;border-radius:8px;box-shadow:0 4px 16px #0003';
- loadAnglePanel.style.left=Math.max(8,Math.min(e.clientX+28,innerWidth-260))+'px';loadAnglePanel.style.top=Math.max(8,Math.min(e.clientY+30,innerHeight-180))+'px';
- const label=document.createElement('label');label.textContent='G\u00f3c (\u00b0)';label.style.margin='0';
- const input=document.createElement('input');input.type='number';input.step='any';input.value=loadPlacement.angle;input.style.width='90px';input.id='loadAngleInput';label.append(input);loadAnglePanel.append(label);
- const hint=document.createElement('small');hint.textContent='0\u00b0: ph\u1ea3i; 90\u00b0: l\u00ean. Shift: ngang/d\u1ecdc.';loadAnglePanel.append(hint);
- const ok=document.createElement('button');ok.textContent='\u0110\u1eb7t';ok.onclick=placeLoadObject;loadAnglePanel.append(ok);
- if(loadPlacement.type==='moment'){const turn=document.createElement('button');turn.textContent='\u21bb / \u21ba';turn.title='\u0110\u1ea3o chi\u1ec1u m\u00f4 men';turn.onclick=()=>{loadPlacement.rotation=loadPlacement.rotation==='cw'?'ccw':'cw';paintLoadPreview()};loadAnglePanel.append(turn)}
- input.oninput=()=>{const angle=Number(input.value);if(input.value!==''&&Number.isFinite(angle)){loadPlacement.angle=((angle%360)+360)%360;paintLoadPreview()}};
- input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();placeLoadObject()}};
- document.body.append(loadAnglePanel);
-}
 svg.addEventListener('pointerdown',e=>{
  if(e.button!==0||!['force','moment','udl'].includes(mode)||typeof panEnabled!=='undefined'&&panEnabled)return;
  e.preventDefault();e.stopImmediatePropagation();
  if(!loadPlacement){loadPlacement={type:mode,a:snapToBar(rawPoint(e))||point(e),angle:mode==='moment'?0:270,rotation:mode==='moment'?currentMomentRotation:$('rotation').value};if(mode!=='udl'){loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=loadUIToInternal(mode,0,loadPlacement.rotation);beginLoadNumericInput(e)}}
- else if(mode==='udl'&&!loadPlacement.b){const b=snapToBar(rawPoint(e))||point(e);if(Math.hypot(b.x-loadPlacement.a.x,b.y-loadPlacement.a.y)<1)return;loadPlacement.b=b;openLoadAnglePanel(e)}
- else{if(loadPlacement.uiAngle){if(!confirmLoadNumericInput()||!updateLoadOrientation(e))return}placeLoadObject();return}
+ else if(mode==='udl'&&!loadPlacement.b){const b=snapToBar(rawPoint(e))||point(e);if(Math.hypot(b.x-loadPlacement.a.x,b.y-loadPlacement.a.y)<1)return;loadPlacement.b=b;loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=90;beginLoadNumericInput(e)}
+ else{if(loadPlacement.uiAngle){if(!confirmLoadNumericInput()||!updateLoadOrientation(e))return}else if(loadPlacement.type==='udl'&&!updateUDLOrientation(e))return;placeLoadObject();return}
  paintLoadPreview();
 },true);
 svg.addEventListener('pointermove',e=>{
  if(!loadPlacement)return;e.stopImmediatePropagation();
  if(loadPlacement.uiAngle){updateLoadOrientation(e);updateLoadNumericInput(e);paintLoadPreview();return}
- const p=rawPoint(e);
  if(loadPlacement.type==='udl'&&!loadPlacement.b){loadPlacement.hover=drawingPoint(e);paintLoadPreview();return}
- const a=loadPlacement.b?{x:(loadPlacement.a.x+loadPlacement.b.x)/2,y:(loadPlacement.a.y+loadPlacement.b.y)/2}:loadPlacement.a;
- const dx=p.x-a.x,dy=p.y-a.y;if(Math.hypot(dx,dy)<2)return;
- if(loadPlacement.type==='moment'){
-  const previous=loadPlacement.lastVector;
-  if(previous){const turn=previous.x*dy-previous.y*dx;if(Math.abs(turn)>2)loadPlacement.rotation=turn>0?'cw':'ccw'}
-  loadPlacement.lastVector={x:dx,y:dy};
- }
- let angle=Math.atan2(-dy,dx)*180/Math.PI;
- if(e.shiftKey)angle=Math.round(angle/90)*90;
- loadPlacement.angle=(angle+360)%360;
- if($('loadAngleInput'))$('loadAngleInput').value=Number(loadPlacement.angle.toFixed(1));paintLoadPreview();
+
 },true);
 
 // Region interactions share the SVG pointer pipeline; document-level pan/pinch takes precedence.

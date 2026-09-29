@@ -96,7 +96,7 @@ const internal=(type,a)=>(((type==='force'?90:Math.atan2(34,-18)*180/Math.PI)-a)
   }
   await reset('moment');await p.locator('[data-mode=moment]').click();await p.locator('input[name=momentDirection][value=ccw]').click();await tap(300,300);await input.fill('30');await input.press('Enter');assert.equal(await p.evaluate(()=>items[0].rotation),'ccw');
   await reset('moment');for(const [x,y]of [[400,300],[300,400]]){const q=await screen(x,y);await p.mouse.move(q.x,q.y)}assert.equal(await p.evaluate(()=>loadPlacement.rotation),'cw');
-  await p.evaluate(()=>setMode('udl'));await tap(200,400);await tap(500,400);assert(await p.locator('#loadAngleInput').isVisible());await p.locator('#loadAngleInput').fill('45');await p.locator('#loadAngleInput').press('Enter');assert.equal(await p.evaluate(()=>items.at(-1).loadAngle),45);
+  await p.evaluate(()=>setMode('udl'));await tap(200,400);await tap(500,400);assert(await p.locator('#dynamicInputValue').isVisible());await p.locator('#dynamicInputValue').fill('45');await p.locator('#dynamicInputValue').press('Enter');assert.equal(await p.evaluate(()=>items.at(-1).loadAngle),45);
   assert.deepEqual(errors,[]);console.log(`PASS force/moment dynamic angles ${touch?'touch emulated':'mouse'}: LIVE/LOCKED, adapters, invalid, lifecycle, history, serialization, copy/mirror, CW/CCW and legacy UDL`);await context.close();
  }
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
