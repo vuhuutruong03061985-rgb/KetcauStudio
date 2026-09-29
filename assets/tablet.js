@@ -107,8 +107,8 @@ svg.addEventListener('pointermove',e=>{
   const constrained=drawingPoint(e);if(Math.hypot(constrained.x-p.x,constrained.y-p.y)>0.01)return;
  }
  const size=6/Math.abs(svg.getScreenCTM().a);
- const override=mode==='thin'&&first&&thinReferenceSession?thinReferenceOverrideAt(raw):null;
- const markerClass=override&&override.id!==thinReferenceSession.referenceBarId?'reference-override':'';
+ const override=mode==='thin'&&first&&thinReferenceSession?thinReferenceOverrideAt(raw):mode==='support'&&supportPlacementSession?supportReferenceOverrideAt(raw):null;
+ const markerClass=override&&override.id!==(mode==='support'?supportPlacementSession?.referenceBarId:thinReferenceSession?.referenceBarId)?'reference-override':'';
  if(extra){
   const g=el('g',{'data-extra-snap-hint':extra,class:markerClass,'pointer-events':'none',stroke:'#087d95',fill:'white','stroke-width':1.5});
   if(extra==='perpendicular')el('path',{d:`M${p.x-size} ${p.y-size}V${p.y+size}H${p.x+size}M${p.x-size} ${p.y}H${p.x}V${p.y+size}`,fill:'none','vector-effect':'non-scaling-stroke'},g);
@@ -1596,18 +1596,19 @@ function lockSupportNumericAngle(value){
  // Same SVG +Y convention and canonical range as the pure direction solver.
  const wrapped=value%360,r=wrapped*Math.PI/180;
  const angle=solveSupportAngle({x:0,y:0},{x:-Math.sin(r),y:Math.cos(r)});
- session.angle.mode='locked';session.angle.value=angle;session.previewAngle=angle;render();
+ supportReferenceFrame();session.angle.mode='locked';session.angle.value=angle;session.previewAngle=supportGlobalAngle();render();
 }
 function beginSupportNumericInput(e){
  endSupportNumericInput();
  const session=supportPlacementSession,active=document.activeElement;
  if(!session||active?.matches('input,textarea,select')||active?.isContentEditable||dynamicNumericCapture||dynamicInputUI.isOpen())return;
- session.angle.value={down:0,up:180,left:90,right:-90}[session.direction]||0;
+ const global={down:0,up:180,left:90,right:-90}[session.direction]||0,frame=supportReferenceFrame();
+ session.angle.value=frame?globalPlacementAngleToReferenceAngle(global,frame):global;
  armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onCancel:cancelToSelection});
  supportNumericSession={session,capture:dynamicNumericCapture,touch:e.pointerType==='touch'};
  showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onConfirm:dynamicNumericCapture.confirm,onCancel:dynamicNumericCapture.cancel,
   fields:{label:'G\u00f3c',values:[session.angle],validate:()=>true,onConfirm:(_,value)=>lockSupportNumericAngle(value),
-   onKeyboardCommit:()=>commitSupportPlacement(session.angle.value)}});
+   onKeyboardCommit:()=>commitSupportPlacement(supportGlobalAngle())}});
 }
 function confirmSupportNumericInput(){
  return !supportNumericSession||dynamicInputUI.confirmPending();

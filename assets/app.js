@@ -15,8 +15,58 @@ function solveSupportAngle(anchorPoint,cursorPoint){
  return angle===-180?180:angle===0?0:angle;
 }
 let supportPlacementSession=null;
+function supportReferenceCandidates(){
+ const session=supportPlacementSession;if(!session)return [];
+ const ids=new Set(session.referenceCandidates.map(c=>c.barId));
+ return collectReferenceBars({bars:items.filter(o=>ids.has(o.id)),anchorPoint:session.anchorPoint,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/Math.abs(svg.getScreenCTM().a)});
+}
+function supportReferenceFrame(){
+ const session=supportPlacementSession;if(!session?.referenceBarId)return null;
+ const candidate=supportReferenceCandidates().find(c=>c.barId===session.referenceBarId);
+ if(candidate)return getReferenceBarFrame(candidate.bar);
+ session.referenceBarId=null;session.referenceCandidates=[];
+ // Losing a reference preserves the last global orientation, now interpreted globally.
+ session.angle.value=session.previewAngle??({down:0,up:180,left:90,right:-90}[session.direction]);
+ svg.querySelector('[data-support-reference]')?.remove();
+ return null;
+}
+function supportGlobalAngle(){
+ const session=supportPlacementSession,frame=supportReferenceFrame();
+ return frame?referenceAngleToGlobalPlacementAngle(session.angle.value,frame):session.angle.value;
+}
+function supportReferenceOverrideAt(cursorPoint){
+ const candidates=supportReferenceCandidates();if(candidates.length<2)return null;
+ const bar=hitReferenceOverride({bars:candidates.map(c=>c.bar),anchorPoint:supportPlacementSession.anchorPoint,cursorPoint,screenScale:Math.abs(svg.getScreenCTM().a)});
+ return bar?.id!==supportPlacementSession.referenceBarId?bar:null;
+}
+function setSupportReference(barId){
+ const session=supportPlacementSession,global=session.previewAngle??({down:0,up:180,left:90,right:-90}[session.direction]);
+ session.referenceBarId=barId;const frame=supportReferenceFrame();
+ if(session.angle.mode==='locked')session.previewAngle=frame?referenceAngleToGlobalPlacementAngle(session.angle.value,frame):session.angle.value;
+ else session.angle.value=frame?globalPlacementAngleToReferenceAngle(global,frame):global;
+}
+function updateSupportOrientation(e){
+ const session=supportPlacementSession;supportReferenceFrame();
+ const raw=rawPoint(e);
+ if(!session.referenceBarId){
+  const candidate=resolveReferenceBar({candidates:supportReferenceCandidates(),anchorPoint:session.anchorPoint,cursorPoint:raw,screenScale:Math.abs(svg.getScreenCTM().a),activationThresholdPx:THIN_REFERENCE_ACTIVATION_PX});
+  if(candidate)setSupportReference(candidate.barId);
+ }
+ if(session.angle.mode==='locked')return;
+ // Preserve drawing intent while approaching an explicit reference target.
+ if(supportReferenceOverrideAt(raw))return;
+ const angle=solveSupportAngle(session.anchorPoint,raw);if(angle===null)return;
+ session.previewAngle=angle;const frame=supportReferenceFrame();
+ session.angle.value=frame?globalPlacementAngleToReferenceAngle(angle,frame):angle;
+}
+function renderSupportReference(){
+ if(mode!=='support'||!supportReferenceFrame())return;
+ const bar=items.find(o=>o.id===supportPlacementSession.referenceBarId);
+ line(svg,bar.x,bar.y,bar.x2,bar.y2,{class:'thin-reference-highlight','data-support-reference':'true','pointer-events':'none','aria-hidden':'true'});
+}
 function clearSupportPlacement(){
  if(typeof endSupportNumericInput==='function')endSupportNumericInput();
+ svg.querySelector('[data-support-reference]')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));
  supportPlacementSession=null;svg.querySelector('[data-support-preview]')?.remove();
 }
 function commitSupportPlacement(angle){
@@ -26,11 +76,15 @@ function commitSupportPlacement(angle){
 }
 function placeSupport(e){
  if(!supportPlacementSession){
-  supportPlacementSession={anchorPoint:{...drawingPoint(e)},supportSubtype:$('support').value,direction:$('direction').value,previewAngle:null,angle:{mode:'live',value:0}};
+  supportPlacementSession={anchorPoint:{...drawingPoint(e)},supportSubtype:$('support').value,direction:$('direction').value,previewAngle:null,angle:{mode:'live',value:0},referenceCandidates:[],referenceBarId:null};
+  const session=supportPlacementSession;session.referenceCandidates=collectReferenceBars({bars:items,anchorPoint:session.anchorPoint,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/Math.abs(svg.getScreenCTM().a)});
+  if(session.referenceCandidates.length===1)setSupportReference(session.referenceCandidates[0].barId);
   if(typeof beginSupportNumericInput==='function')beginSupportNumericInput(e);
  }else{
+  const override=supportReferenceOverrideAt(rawPoint(e));
+  if(override){setSupportReference(override.id);if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);render();return}
   if(typeof confirmSupportNumericInput==='function'&&!confirmSupportNumericInput())return;
-  const session=supportPlacementSession,angle=session.angle.mode==='locked'?session.angle.value:solveSupportAngle(session.anchorPoint,rawPoint(e));
+  const session=supportPlacementSession,angle=session.angle.mode==='locked'?supportGlobalAngle():solveSupportAngle(session.anchorPoint,rawPoint(e));
   if(angle===null)return;
   commitSupportPlacement(angle);return;
  }
@@ -915,7 +969,7 @@ if(!clean&&mode==='select'&&selectedObjectIds().size<2){
  if(!clean&&mode==='curve'&&second)el('circle',{cx:second.x,cy:second.y,r:6,fill:'#15889c','pointer-events':'none'});
  if(!clean&&mode==='support')renderSupportPlacement();
  if(!clean&&mode==='bar')renderBarConstraintPreview();
- if(!clean){renderThinReferenceHighlight();if(mode==='thin')renderThinConstraintPreview()}
+ if(!clean){renderThinReferenceHighlight();if(mode==='thin')renderThinConstraintPreview();renderSupportReference()}
  if(!clean&&first&&hover&&['dashed','udl','linkBar'].includes(mode)){const g=el('g',{'pointer-events':'none',stroke:'#087d95','stroke-dasharray':'5 4'});line(g,first.x,first.y,hover.x,hover.y);}
  if(!clean&&mode==='joint'&&typeof drawJointHandles==='function')drawJointHandles();
  if(!clean)renderRigidControls();
@@ -1218,7 +1272,7 @@ if(mode==='select'){selected=e.target.closest('[data-id]')?.dataset.id||null;con
  checkpoint();items.push(make('dim',first.x,first.y,second.x,second.y,{offset:snapDimensionOffset(first,second,offsetAt(first,second,point(e)))}));
  first=null;second=null;hover=null;selected=items.at(-1).id;render();msg('Đã tạo kích thước.');return;
  }if(mode==='linkBar'){if(!first){first=p;render();return}if(Math.hypot(p.x-first.x,p.y-first.y)<1)return;const o=make('linkBar',first.x,first.y,p.x,p.y);try{validateConnection(o)}catch{return}checkpoint();items.push(o);first=null;hover=null;selected=o.id;render();return}if(['bar','udl','thin','dashed'].includes(mode)){if(!first){first=p;if(mode==='bar'&&typeof beginBarNumericInput==='function')beginBarNumericInput(e);if(mode==='thin'){beginThinReferenceSession();if(typeof beginThinNumericInput==='function')beginThinNumericInput(e)}render();msg('Bấm điểm thứ hai.');return}if(first.x===p.x&&first.y===p.y)return;checkpoint();items.push(make(mode,first.x,first.y,p.x,p.y));first={...p};hover=null}else{checkpoint();items.push(make(mode,p.x,p.y))}selected=items.at(-1).id;render();msg('Đã thêm đối tượng.');if(mode==='text'){e.preventDefault();editObjectLabel(items.at(-1))}};
-svg.onpointermove=e=>{if(mode==='support'&&supportPlacementSession&&!drag){const angle=solveSupportAngle(supportPlacementSession.anchorPoint,rawPoint(e));if(supportPlacementSession.angle.mode==='live'&&angle!==null){supportPlacementSession.previewAngle=angle;supportPlacementSession.angle.value=angle}if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);render();return}if(mode==='thin'&&!drag)updateThinReferenceSession(e);if(mode==='person'&&!drag){paintPersonPreview(e);return}if(!drag){if(first&&['bar','thin','dashed','udl','linkBar'].includes(mode)){hover=drawingPoint(e);render();return;}if(mode==='dim'||mode==='moment'){hover=second?point(e):(snapToBar(rawPoint(e))||point(e));render()}return;}const o=items.find(o=>o.id===selected);if(!o)return;
+svg.onpointermove=e=>{if(mode==='support'&&supportPlacementSession&&!drag){updateSupportOrientation(e);if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);render();return}if(mode==='thin'&&!drag)updateThinReferenceSession(e);if(mode==='person'&&!drag){paintPersonPreview(e);return}if(!drag){if(first&&['bar','thin','dashed','udl','linkBar'].includes(mode)){hover=drawingPoint(e);render();return;}if(mode==='dim'||mode==='moment'){hover=second?point(e):(snapToBar(rawPoint(e))||point(e));render()}return;}const o=items.find(o=>o.id===selected);if(!o)return;
 if(o.type==='person'){
  const p=rawPoint(e),x=drag.o.x+p.x-drag.p.x,y=drag.o.y+p.y-drag.p.y;
  try{validatePerson({...o,x,y})}catch{return}
