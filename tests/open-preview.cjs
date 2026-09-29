@@ -1,0 +1,12 @@
+﻿const {chromium}=require('../.test-tools/node_modules/playwright');const {pathToFileURL}=require('node:url');const path=require('node:path');const fs=require('node:fs');const assert=require('node:assert/strict');
+(async()=>{const b=await chromium.launch({channel:'msedge',headless:true});try{const p=await b.newPage();const errors=[];p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>items.length>0);assert.equal(await p.locator('#templateList').count(),0);
+const before=await p.evaluate(()=>documentText());await p.keyboard.press('Control+o');assert(await p.locator('#openDrawingDialog').isVisible());
+const files=fs.readdirSync('Mau-ket-cau').filter(n=>n.endsWith('.json'));assert(files.length>0);
+const content=fs.readFileSync(path.join('Mau-ket-cau',files[0]),'utf8');
+await p.evaluate(({name,content})=>listCandidates([{name,file:new File([content],name)},{name:'bad.json',file:new File(['null'],'bad.json')}]),{name:files[0],content});
+await p.locator('#drawingFileList button').filter({hasText:files[0]}).click();await p.waitForFunction(()=>!document.getElementById('confirmOpenDrawing').disabled);assert(await p.locator('#drawingFilePreview').isVisible());assert.equal(await p.evaluate(()=>documentText()),before);
+await p.locator('#drawingFileList button').filter({hasText:'bad.json'}).click();await p.waitForFunction(()=>document.getElementById('drawingFileInfo').textContent.startsWith('Không mở được'));assert(await p.locator('#confirmOpenDrawing').isDisabled());
+await p.locator('#drawingFileList button').filter({hasText:files[0]}).click();await p.waitForFunction(()=>!document.getElementById('confirmOpenDrawing').disabled);
+p.once('dialog',d=>d.accept());await p.locator('#confirmOpenDrawing').click();await p.waitForFunction(()=>!document.getElementById('openDrawingDialog').open);assert.deepEqual(await p.evaluate(()=>items),JSON.parse(content).items);
+await p.keyboard.press('Control+o');await p.locator('#cancelOpenDrawing').click();assert.deepEqual(await p.evaluate(()=>items),JSON.parse(content).items);assert.deepEqual(errors,[]);console.log('PASS legacy sample files, preview without mutation, invalid file rejection, open and cancel');
+}finally{await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});

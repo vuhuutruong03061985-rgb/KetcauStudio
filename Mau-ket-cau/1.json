@@ -1,0 +1,75 @@
+{
+  "format": "ket-cau-studio",
+  "version": 1,
+  "items": [
+    {
+      "id": "3ebfddc5-ab39-453a-8de9-605e60098512",
+      "type": "bar",
+      "x": 220,
+      "y": 340,
+      "x2": 880,
+      "y2": 340,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "1a501490-4883-4b59-92e7-b2b5317b5e0d",
+      "type": "support",
+      "x": 220,
+      "y": 340,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "a2daec6b-8787-4f97-a191-a60505020db2",
+      "type": "support",
+      "x": 880,
+      "y": 340,
+      "label": "",
+      "support": "roller",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "948abaf1-f8da-43b2-92e4-cb815421b58d",
+      "type": "force",
+      "x": 540,
+      "y": 340,
+      "label": "P = 20 kN",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "9265d824-dd5a-49f0-bbbd-d631403faeb4",
+      "type": "udl",
+      "x": 240,
+      "y": 340,
+      "x2": 440,
+      "y2": 340,
+      "label": "q = 10 kN/m",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "b736852b-fe8c-44a8-8775-3d686ebba8b4",
+      "type": "dim",
+      "x": 220,
+      "y": 340,
+      "x2": 880,
+      "y2": 340,
+      "label": "L = 6 m",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw",
+      "offset": 120
+    }
+  ],
+  "grid": true,
+  "gridSize": 20
+}

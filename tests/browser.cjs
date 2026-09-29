@@ -1,0 +1,94 @@
+const {chromium}=require('../.test-tools/node_modules/playwright');
+const assert=require('node:assert/strict');
+const path=require('node:path');
+const fs=require('node:fs');
+
+(async()=>{
+ const browser=await chromium.launch({channel:'msedge',headless:true});
+ const errors=[];
+ try{
+  const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
+  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('http://localhost:18766/');
+  await page.waitForFunction(()=>typeof items!=='undefined'&&items.length>0);
+  assert.equal(await page.locator('#drawing g[data-id]').count()>0,true);
+  assert.equal(await page.locator('#actions').getByText('Chèn vào Word').isVisible(),false);
+  await page.evaluate(()=>navigator.serviceWorker.ready);
+  await page.reload();
+  await page.waitForFunction(()=>navigator.serviceWorker.controller);
+  await page.evaluate(()=>{items[0].label='Test saved';render();saveDraft()});
+  await page.reload();
+  assert.equal(await page.evaluate(()=>items[0].label),'Test saved');
+  const before=await page.evaluate(()=>JSON.stringify(items));
+  await page.locator('#zoomIn').click();
+  assert.notEqual(await page.locator('#drawing').getAttribute('viewBox'),'0 0 1100 720');
+  assert.equal(await page.evaluate(()=>JSON.stringify(items)),before);
+  const exported=await page.evaluate(()=>exportSVG());
+  assert.match(exported,/viewBox="0 0 1100 720"/);
+  assert.doesNotMatch(exported,/data-hit-area|drawingGridPattern/);
+  const download=page.waitForEvent('download');await page.locator('#png').click();
+  const png=await download;await png.saveAs(path.join(__dirname,'export.png'));
+  const bytes=fs.readFileSync(path.join(__dirname,'export.png'));assert.equal(bytes.readUInt32BE(16),3300);assert.equal(bytes.readUInt32BE(20),2160);
+  await page.locator('#resetView').click();
+  await page.screenshot({path:path.join(__dirname,'desktop.png'),fullPage:true});
+  await context.setOffline(true);await page.reload();
+  await page.waitForFunction(()=>items.length>0);
+  await page.locator('[data-mode="force"]').click();
+  const count=await page.evaluate(()=>items.length);
+  await page.locator('#drawing').click({position:{x:250,y:220}});
+  assert.equal(await page.evaluate(()=>items.length),count+1);
+  await context.setOffline(false);
+  console.log('PASS desktop: startup, persistence, zoom, clean export, PNG, offline editing');
+
+  const tablet=await browser.newContext({viewport:{width:800,height:1100},hasTouch:true,isMobile:true,deviceScaleFactor:1});
+  const tab=await tablet.newPage();tab.on('pageerror',e=>errors.push(e.message));
+  await tab.goto('http://localhost:18766/');await tab.waitForFunction(()=>items.length>0);
+  assert(await tab.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await tab.locator('#toggleTools').tap();
+  assert.equal(await tab.locator('#toolPanel').isVisible(),false);
+  await tab.locator('#toggleTools').tap();
+  await tab.locator('[data-mode="bar"]').tap();
+  const cdp=await tablet.newCDPSession(tab);
+  const box=await tab.locator('#drawing').boundingBox();
+  const x=box.x+box.width/2,y=box.y+box.height/2;
+  const touch=(type,points)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:points.map(([id,x,y])=>({id,x,y,radiusX:4,radiusY:4}))});
+  const state=await tab.evaluate(()=>({items:JSON.stringify(items),past:past.length,first}));
+  await touch('touchStart',[[0,x-50,y]]);
+  await touch('touchStart',[[0,x-50,y],[1,x+50,y]]);
+  await touch('touchMove',[[0,x-100,y+20],[1,x+100,y+20]]);
+  await touch('touchEnd',[[1,x+100,y+20]]);
+  await touch('touchEnd',[]);
+  assert.deepEqual(await tab.evaluate(()=>({items:JSON.stringify(items),past:past.length,first})),state);
+  assert.notEqual(await tab.locator('#drawing').getAttribute('viewBox'),'0 0 1100 720');
+  // A new touch after pinching must work; two taps create exactly one bar.
+  await tab.touchscreen.tap(x-30,y);await tab.touchscreen.tap(x+30,y);
+  assert.equal(await tab.evaluate(()=>items.length),JSON.parse(state.items).length+1);
+  // Single-finger panning must not create drawing objects.
+  await tab.locator('#panView').tap();const panBefore=await tab.evaluate(()=>JSON.stringify(items));
+  await touch('touchStart',[[0,x,y]]);await touch('touchMove',[[0,x+40,y+40]]);await touch('touchEnd',[]);
+  assert.equal(await tab.evaluate(()=>JSON.stringify(items)),panBefore);
+  await tab.locator('#panView').tap();await tab.locator('#resetView').tap();
+  await tab.evaluate(()=>{selected=items.find(o=>o.type==='force').id;setMode('select')});
+  await tab.locator('#editSelected').tap();
+  const input=tab.getByRole('textbox',{name:'Sửa nhãn trên hình'});await input.fill('P = 42 kN');await input.press('Enter');
+  assert.equal(await tab.evaluate(()=>items.find(o=>o.type==='force').label),'P = 42 kN');
+  await tab.locator('#templateName').fill('Mẫu tablet');await tab.locator('#storeTemplate').tap();
+  await tab.reload();assert.equal(await tab.locator('#templateList option').first().textContent(),'Mẫu tablet');
+  await tab.locator('#toggleTools').tap();await tab.screenshot({path:path.join(__dirname,'tablet.png'),fullPage:true});
+  await tab.setViewportSize({width:1100,height:800});assert(await tab.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await tab.setViewportSize({width:390,height:844});assert(await tab.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  console.log('PASS tablet: layout, toolbar, pinch rollback, touch drawing, pan, label editing, library');
+  // Word credentials are obtained only from the local bridge and POST uses its token.
+  const wordPage=await context.newPage();
+  await wordPage.route('**/bridge-info',route=>route.fulfill({json:{token:'test-token'}}));
+  let wordPayload=null;
+  await wordPage.route('**/insert-word',async route=>{wordPayload={body:route.request().postDataJSON(),headers:route.request().headers()};await route.fulfill({json:{ok:true}})});
+  await wordPage.goto('http://localhost:18766/');
+  await wordPage.getByRole('button',{name:'Chèn vào Word',exact:true}).click();
+  await wordPage.waitForFunction(()=>document.getElementById('status').textContent==='Đã chèn hình vào Word.');
+  assert.equal(wordPayload.headers['x-studio-token'],'test-token');assert(wordPayload.body.png.startsWith('iVBOR'));
+  console.log('PASS Word browser integration (mock API; no document modified)');
+  const response=await page.request.get('http://localhost:18766/archive/before-tablet-20260913/index.html');assert.equal(response.status(),404);
+  assert.deepEqual(errors,[]);console.log('PASS no JavaScript errors; private paths not served');
+ }finally{await browser.close()}
+})().catch(error=>{console.error(error);process.exitCode=1});

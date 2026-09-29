@@ -1,0 +1,53 @@
+# ===============================
+# Codex Ignore Rules
+# Project: KetCauStudio
+# Reduce unnecessary AI context
+# ===============================
+
+# Build output
+dist/
+bin/
+obj/
+
+# Backup / old versions
+archive/
+recovered-templates/
+
+# Compiled files
+*.exe
+*.dll
+*.pdb
+
+# Large media files
+assets/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.ico
+
+# Documents and archives
+*.pdf
+*.zip
+*.rar
+*.7z
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# IDE settings
+.vscode/
+.cursor/
+
+# Test files
+tests/
+
+# Generated files
+*.generated.*
+*.cache
+
+# Screenshots
+screenshot*

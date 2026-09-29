@@ -1,0 +1,127 @@
+*{box-sizing:border-box}body{margin:0;background:#edf2f6;color:#20374a;font:15px system-ui}header{padding:20px 30px;background:#203f55;color:white;font-size:24px}main{display:grid;grid-template-columns:250px 1fr;gap:20px;padding:20px}aside,article{padding:18px;background:white;border-radius:12px}button,input,select{padding:9px;border:1px solid #cbd6df;border-radius:6px;font:inherit;background:white;max-width:100%}button{cursor:pointer;margin:3px}button.active{background:#176f7b;color:white}label{display:block;margin:14px 0}input,select{width:100%;margin-top:5px}svg{width:100%;border:1px solid #dce4ea;touch-action:none}p{line-height:1.6;font-size:13px}h2{font-size:16px}#status{padding:10px}#file{display:none}
+
+[hidden]{display:none!important}
+/* Preserve the native color picker while showing a stable multicolor tool icon. */
+#objectColor{appearance:none;background:var(--palette-artwork) center/24px 24px no-repeat,linear-gradient(#fff,#edf2f6);border-color:#b8c9d4;box-shadow:0 2px 2px #183e5526,inset 0 1px 0 white;cursor:pointer;touch-action:manipulation}
+#objectColor::-webkit-color-swatch-wrapper{opacity:0}
+#objectColor::-moz-color-swatch{opacity:0}
+#objectColor:disabled{opacity:.5;cursor:default}
+.snap-choices{display:flex;flex-wrap:wrap;gap:6px}
+.snap-choices label.snap-icon-choice{position:relative;justify-content:center;width:48px;height:48px;border:1px solid #b8c9d4;border-radius:6px;cursor:pointer}
+.snap-icon-choice input{position:absolute;opacity:0;width:100%;height:100%;inset:0;cursor:pointer}
+.snap-icon-choice:has(input:checked){background:#cce3e8;box-shadow:inset 2px 2px 4px #143a5540;color:#075c6a}
+.snap-icon-choice:focus-within{outline:2px solid #087d95}
+.action-group{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding-right:8px;margin-right:4px;border-right:1px solid #cbd6df}
+body{min-width:320px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px}
+header strong{font-size:24px}header small{display:block;font-size:12px;font-weight:400;margin-top:4px;color:#d1e6ee}
+.header-actions{display:flex;gap:6px;flex-wrap:wrap}
+main{grid-template-columns:260px minmax(0,1fr);gap:16px;padding:16px}
+aside{max-height:calc(100dvh - 110px);overflow:auto}article{min-width:0}
+button{min-height:44px;touch-action:manipulation}input,select{min-height:44px;font-size:16px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #1a899c;outline-offset:2px}
+#tools{display:grid;grid-template-columns:1fr 1fr;gap:3px}#tools button{margin:0;font-size:13px}
+#actions,#viewTools{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:10px}
+#actions button,#viewTools button{font-size:13px;margin:0}#zoomLevel{min-width:48px;text-align:center;font-size:13px}
+.canvas-wrap{overflow:hidden;background:#dce5eb;border-radius:8px;border:1px solid #cbd6df}
+#drawing{display:block;width:100%;height:clamp(360px,67dvh,900px);border:0;user-select:none;touch-action:none;background:white}
+#status{min-height:40px;font-size:14px;overflow-wrap:anywhere}
+.tools-collapsed main{grid-template-columns:minmax(0,1fr)}.tools-collapsed aside{display:none}
+.presets{display:flex;flex-wrap:wrap;margin-bottom:12px}.presets button{font-size:13px}
+.offline-ready{color:#9ee9d5}
+@media(max-width:1000px){main{grid-template-columns:220px minmax(0,1fr);padding:10px;gap:10px}aside,article{padding:12px}header{padding:12px 16px}#drawing{height:65dvh}}
+@media(max-width:700px){main{display:flex;flex-direction:column}aside{max-height:36dvh}#tools{grid-template-columns:repeat(3,minmax(0,1fr))}header strong{font-size:20px}header{padding:10px;align-items:flex-start}#drawing{height:58dvh;min-height:320px}.tools-collapsed #drawing{height:68dvh}article>p{font-size:12px}}
+@media(pointer:coarse){#tools button{min-height:48px}button{padding:10px 12px}}
+@media(display-mode:standalone){header{padding-top:max(12px,env(safe-area-inset-top))}body{padding-bottom:env(safe-area-inset-bottom)}}
+
+#tools{display:block}
+.tool-group+.tool-group{margin-top:18px;padding-top:14px;border-top:1px solid #dce4ea}
+.tool-group h3{margin:0 0 10px;color:#203f55;font-size:15px}
+.tool-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+@media(max-width:700px){.tool-buttons{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.command-menu{position:relative;z-index:20}
+.command-menu summary{list-style:none;cursor:pointer;padding:12px 18px;border-radius:6px;background:#203f55;color:white;min-height:44px;font-size:14px}
+.command-menu summary:focus-visible{outline:3px solid #1a899c;outline-offset:2px}
+.command-menu[open] summary{background:#176f7b}
+.file-commands{position:absolute;top:100%;left:0;min-width:255px;padding:8px;background:white;border:1px solid #cbd6df;border-radius:8px;box-shadow:0 6px 20px #0002;display:grid;gap:4px}
+.file-commands button{text-align:left}
+#fileStatus{font-size:13px;color:#385267;overflow-wrap:anywhere;max-width:100%;padding:0 8px}
+.file-commands{max-width:calc(100vw - 48px);min-width:min(255px,calc(100vw - 48px))}
+.file-commands p{margin:4px;padding:8px;max-width:240px}
+@media(max-width:700px){.command-menu summary{padding:12px}.command-menu .file-commands{position:fixed;left:24px;top:auto;max-height:65dvh;overflow:auto}#fileStatus{flex-basis:100%;padding:5px 0}}
+
+#openDrawingDialog{width:min(950px,94vw);max-height:90dvh;border:1px solid #cbd6df;border-radius:12px;padding:22px;color:#20374a}
+#openDrawingDialog::backdrop{background:#10253688}
+.open-layout{display:grid;grid-template-columns:minmax(180px,1fr) minmax(0,2fr);gap:16px;margin:16px 0}
+#drawingFileList{max-height:50dvh;overflow:auto;border:1px solid #dce4ea;border-radius:8px;padding:6px;min-height:220px}
+#drawingFileList button{display:block;width:100%;text-align:left;margin:3px 0;overflow-wrap:anywhere}
+.drawing-preview{min-width:0;border:1px solid #dce4ea;border-radius:8px;padding:12px;background:white}
+#drawingFilePreview{width:100%;height:36dvh;object-fit:contain}.open-actions{display:flex;gap:6px;flex-wrap:wrap}
+@media(max-width:600px){.open-layout{grid-template-columns:1fr}#drawingFileList{min-height:80px;max-height:18dvh}#drawingFilePreview{height:25dvh}}
+
+.calculator-panel{margin-top:18px;border-top:1px solid #dce4ea;padding-top:14px}
+.calculator-panel>summary{cursor:pointer;font-weight:600;min-height:44px;padding:10px 0}
+#calcResult{display:block;padding:12px;background:#edf5f6;border-radius:6px;margin:8px 0;overflow-wrap:anywhere;font-size:18px}
+#calcHistory button{display:block;text-align:left;width:100%;overflow-wrap:anywhere;font-size:13px}
+
+#snapSettings{position:relative;font-size:13px}#snapSettings summary{cursor:pointer;padding:12px;border:1px solid #cbd6df;border-radius:6px;background:white}
+.snap-choices{position:fixed;z-index:2000;width:260px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:10px;background:white;border:1px solid #cbd6df;border-radius:8px;box-shadow:0 4px 15px #0002}
+.snap-choices label{display:flex;align-items:center;gap:8px;margin:2px 0;min-height:40px}.snap-choices input{width:20px;min-height:20px;margin:0}
+
+/* Raised buttons at rest, inset buttons for active tools and toggles. */
+button.icon-button,#tools button.icon-button,#viewTools button.icon-button,#actions button.icon-button{font-size:0;min-width:44px;min-height:44px;padding:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(#fff,#edf2f6);color:#28485c;border:1px solid #b8c9d4;box-shadow:0 2px 2px #183e5526,inset 0 1px 0 white}
+button.icon-button::before{content:'';display:block;flex:none;width:24px;height:24px;background:currentColor;mask:var(--tool-icon) center/contain no-repeat;-webkit-mask:var(--tool-icon) center/contain no-repeat}
+button.icon-button.active,button.icon-button[aria-pressed="true"]{background:#cce3e8!important;color:#075c6a!important;border-color:#83aeb9!important;box-shadow:inset 2px 2px 4px #143a5540,inset -1px -1px 2px #fff!important;transform:translateY(1px)}
+#actions button.icon-with-label{font-size:13px;justify-content:flex-start;background:white;box-shadow:none;border-color:transparent}
+#tools .tool-buttons{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+#tools button.icon-button{width:100%;padding:8px;min-width:0}
+@media(max-width:1000px){#tools .tool-buttons{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){#tools .tool-buttons{grid-template-columns:repeat(5,minmax(0,1fr))}}
+
+.support-choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.support-symbol{padding:5px!important;min-width:0;min-height:68px;background:linear-gradient(white,#edf2f6);box-shadow:0 2px 2px #183e5526}
+.support-symbol svg{width:100%;height:62px;border:0;display:block;pointer-events:none}
+.support-symbol.active{background:#cce3e8;color:#075c6a;box-shadow:inset 2px 2px 4px #143a5540;border-color:#83aeb9}
+
+/* Snap options are a flyout only; no separate summary button in the toolbar. */
+#snapSettings{position:fixed;width:0;height:0;margin:0;padding:0;border:0;z-index:2000}
+#snapSettings>summary{display:none!important}
+
+#secondaryTools.section-flyout{padding:10px!important;border-radius:8px!important;box-shadow:0 4px 15px #0002!important}
+#secondaryTools.section-flyout button{margin:0;border:1px solid #b8c9d4;border-radius:6px}
+#secondaryTools.section-flyout button.active{background:#cce3e8;box-shadow:inset 2px 2px 4px #143a5540;color:#075c6a}
+
+/* Inline pan cursor overrides this mode rule; descendants follow either cursor. */
+#drawing.erase-cursor{cursor:var(--erase-cursor,default)}
+#drawing.erase-cursor *{cursor:inherit!important}
+#drawingScales{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;min-width:0;max-width:100%;margin:3px 0;padding:8px 12px;border:1px solid #cbd6df;border-radius:6px;font-size:13px}
+#drawingScales legend{font-weight:600;padding:0 4px}
+#drawingScales label{margin:0;min-width:0}
+#drawingScales label span{display:flex;align-items:center;flex-wrap:wrap;gap:5px}
+#drawingScales input{width:90px;margin:3px 0}
+
+#dynamicInput{position:fixed;z-index:1001;display:flex;align-items:center;gap:6px;padding:6px;background:#edf5f6;border:1px solid #b9d5da;border-radius:6px;box-shadow:0 2px 8px #183e5526;overflow:auto;box-sizing:border-box}
+#dynamicInput input{width:100px;min-width:0;min-height:44px;flex:0 1 100px;margin:0;font-size:16px}
+#dynamicInputSuffix{min-width:0;overflow-wrap:anywhere;font-size:13px}
+#dynamicInput button{flex:0 0 44px;min-width:44px;min-height:44px;margin:0;padding:6px;font-size:18px}
+#dynamicInput input[aria-invalid="true"]{border-color:#ad3333}
+#dynamicInput.dynamic-pair{flex-wrap:wrap}
+#dynamicInput.dynamic-pair input{width:84px;flex:0 1 84px}
+#dynamicInput .dynamic-active{outline:2px solid #087d95;outline-offset:1px}
+#dynamicInput .dynamic-locked{background:#e1eff2;border-color:#087d95}
+/* Drawing entry is a compact overlay; generic consumers retain the full controls. */
+#dynamicInput.dynamic-compact{gap:3px;padding:2px;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}
+#dynamicInput.dynamic-compact input{width:7ch;flex:0 1 7ch;min-width:0;min-height:28px;height:28px;padding:2px 4px;border-radius:3px;font-size:14px}
+#dynamicInput.dynamic-compact span{font-size:12px}
+@media(pointer:coarse){#dynamicInput.dynamic-compact input{font-size:16px;box-shadow:0 0 0 8px transparent;touch-action:manipulation}}
+#dynamicInput .dynamic-hit-area{display:contents;margin:0}
+@media(pointer:coarse){#dynamicInput.dynamic-compact .dynamic-hit-area{display:inline-flex;align-items:center;min-height:44px;min-width:44px;margin:0;cursor:text}#dynamicInput.dynamic-compact .dynamic-hit-area:has(input[hidden]){display:none}}
+/* Scale controls reuse the toolbar icon and floating-panel presentation. */
+#drawingScales{position:fixed;z-index:2000;grid-template-columns:minmax(0,1fr);width:max-content;margin:0;padding:8px 10px;gap:5px;background:white;border:1px solid #cbd6df;border-radius:6px;box-shadow:0 4px 14px #183e5526;overflow:auto}
+#drawingScales label{min-height:44px;cursor:text}
+#drawingScales input{width:6ch;min-height:28px;height:28px;padding:2px 4px;margin:2px 0;font-size:16px}
+#drawingScales label span{gap:4px}
+
+#drawingScales label{display:grid;grid-template-columns:7ch 7ch auto 6ch auto;align-items:center;gap:5px}
+#drawingScales label span{display:block;white-space:nowrap}

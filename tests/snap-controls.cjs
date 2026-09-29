@@ -1,0 +1,22 @@
+const {chromium}=require('../.test-tools/node_modules/playwright');
+const {pathToFileURL}=require('node:url'),path=require('node:path'),assert=require('node:assert/strict');
+const near=(a,b)=>assert(Math.abs(a-b)<.001,`${a} != ${b}`);
+(async()=>{const b=await chromium.launch({channel:'msedge',headless:true});try{
+ const p=await b.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.resolve('index.html')).href);
+ const legacy=JSON.stringify({enabled:true,options:{grid:true,endpoint:true,midpoint:true,intersection:true,member:true,tangent:false}});
+ await p.evaluate(v=>localStorage.setItem('ket-cau-snap-settings',v),legacy);await p.reload();await p.waitForFunction(()=>items.length>0);
+ assert.equal(await p.evaluate(()=>Object.hasOwn(snapOptions,'grid')),false);assert.equal(await p.evaluate(()=>localStorage.getItem('ket-cau-snap-settings')),legacy);assert.equal(await p.locator('#snap-grid').count(),0);
+ await p.evaluate(()=>{items=[]});
+ const v=await p.evaluate(()=>{const q=new DOMPoint(123.4,87.6).matrixTransform(svg.getScreenCTM());return point({clientX:q.x,clientY:q.y})});near(v.x,123.4);near(v.y,87.6);
+ await p.evaluate(()=>{items=[make('bar',200,200,400,200)];render()});
+ assert.deepEqual(await p.evaluate(()=>endpointSnap({x:202,y:202})),{x:200,y:200});assert.deepEqual(await p.evaluate(()=>midpointSnap({x:302,y:202})),{x:300,y:200});
+ await p.locator('#snapToggle').click();assert.equal(await p.evaluate(()=>endpointSnap({x:200,y:200})),null);await p.locator('#snapToggle').click();await p.locator('#snap-endpoint').uncheck();assert.equal(await p.evaluate(()=>endpointSnap({x:202,y:202})),null);assert.deepEqual(await p.evaluate(()=>midpointSnap({x:302,y:202})),{x:300,y:200});
+ await p.evaluate(()=>{snapPanel.open=false;setMode('select');selected=items[0].id;past=[];future=[];document.activeElement.blur();render()});
+ await p.keyboard.press('ArrowRight');await p.keyboard.press('Shift+ArrowDown');assert.deepEqual(await p.evaluate(()=>[items[0].x,items[0].y,past.length]),[201,205,2]);
+ await p.evaluate(()=>{actions.undo[1]();actions.undo[1]()});assert.deepEqual(await p.evaluate(()=>[items[0].x,items[0].y]),[200,200]);await p.evaluate(()=>{actions.redo[1]();actions.redo[1]()});assert.deepEqual(await p.evaluate(()=>[items[0].x,items[0].y]),[201,205]);
+ await p.evaluate(()=>{items=[make('bar',200,200,400,200),make('support',400,200)];setMode('joint')});
+ const pts=await p.evaluate(()=>[{x:400,y:200},{x:423.4,y:287.6}].map(v=>{const q=new DOMPoint(v.x,v.y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}}));
+ await p.mouse.move(pts[0].x,pts[0].y);await p.mouse.down();await p.mouse.move(pts[1].x,pts[1].y);await p.mouse.up();
+ const j=await p.evaluate(()=>[items[0].x2,items[0].y2,items[1].x,items[1].y]);near(j[0],423.4);near(j[1],287.6);near(j[2],423.4);near(j[3],287.6);
+ assert.deepEqual(errors,[]);console.log('PASS legacy settings ignored without rewrite, free coordinates/joint drag, geometric toggles, 1/5-unit arrows and history');
+}finally{await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});

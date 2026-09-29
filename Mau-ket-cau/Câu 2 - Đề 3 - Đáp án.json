@@ -1,0 +1,480 @@
+{
+  "format": "ket-cau-studio",
+  "version": 1,
+  "items": [
+    {
+      "id": "cbd860f5-5686-4f76-88fc-f33408579072",
+      "type": "bar",
+      "x": 200,
+      "y": 200,
+      "x2": 600,
+      "y2": 200,
+      "label": "",
+      "support": "roller",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "44b1a236-4f5f-49c2-9084-e22d36442a29",
+      "type": "support",
+      "x": 300,
+      "y": 200,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "cc1c1147-c0c8-41cc-ae37-77c165a9b012",
+      "type": "support",
+      "x": 500,
+      "y": 200,
+      "label": "",
+      "support": "roller",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "acfd3907-faeb-4892-98e0-8ee8a453909e",
+      "type": "force",
+      "x": 600,
+      "y": 200,
+      "label": "36",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "c2397527-937c-44e6-aa60-a4e54b6e481b",
+      "type": "bar",
+      "x": 400,
+      "y": 190,
+      "x2": 400,
+      "y2": 210,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "c625047f-fa5c-49ca-ab57-b35984143c94",
+      "type": "text",
+      "x": 410.46853918802896,
+      "y": 173.7961486569361,
+      "label": "k",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "0c389879-76c4-40f3-93f8-e1d638eb6179",
+      "type": "text",
+      "x": 182.2727830246535,
+      "y": 206.29461547896483,
+      "label": "A",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "1a5963e8-1c9a-4448-bd06-bb5402da60db",
+      "type": "text",
+      "x": 275.5292530356924,
+      "y": 226.0762909358519,
+      "label": "B",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "2041e918-7e08-4994-9a5a-acac6243b61d",
+      "type": "text",
+      "x": 527.0391267018276,
+      "y": 227.48926775420097,
+      "label": "C",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "c34aad4c-c21b-4e81-8573-f7d7e7f072fc",
+      "type": "text",
+      "x": 611.1112473935975,
+      "y": 221.83736048080465,
+      "label": "D",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "0afe345d-582f-4830-98b5-74728f654e5f",
+      "type": "dashed",
+      "x": 400,
+      "y": 225,
+      "x2": 400,
+      "y2": 475,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "f66545be-62e3-4926-a4fa-fd0c84beae7b",
+      "type": "dim",
+      "x": 200,
+      "y": 275,
+      "x2": 300,
+      "y2": 275,
+      "label": "1",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw",
+      "offset": 25
+    },
+    {
+      "id": "2eaf84be-65dd-4400-8660-a7b37a8f6a52",
+      "type": "dim",
+      "x": 300,
+      "y": 275,
+      "x2": 400,
+      "y2": 275,
+      "label": "1",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw",
+      "offset": 25
+    },
+    {
+      "id": "b73ee8e2-d6d6-4f1c-8b3b-bd5f0f737c92",
+      "type": "dim",
+      "x": 400,
+      "y": 275,
+      "x2": 500,
+      "y2": 275,
+      "label": "2",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw",
+      "offset": 25
+    },
+    {
+      "id": "53685d46-8c1f-4809-862e-35a3d9a6485c",
+      "type": "dim",
+      "x": 500,
+      "y": 275,
+      "x2": 600,
+      "y2": 275,
+      "label": "2",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw",
+      "offset": 25
+    },
+    {
+      "id": "cf6e8ec1-0f2f-4ce1-92f0-87960af999b7",
+      "type": "bar",
+      "x": 200,
+      "y": 425,
+      "x2": 600,
+      "y2": 425,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "6bdbfaf2-8181-406f-92d3-70dd7fcb8377",
+      "type": "dashed",
+      "x": 498.1284259984339,
+      "y": 425,
+      "x2": 500,
+      "y2": 375,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "3ada9868-8fd8-4346-8c1d-a9a0f8474772",
+      "type": "dashed",
+      "x": 300,
+      "y": 475,
+      "x2": 298.7611589663274,
+      "y2": 425,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "babc2ceb-b37d-43f9-bae2-0bd98611e602",
+      "type": "dashed",
+      "x": 200,
+      "y": 448.87595165184393,
+      "x2": 500,
+      "y2": 375,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "bc2cb0ee-f290-495f-ab19-bba102f0e026",
+      "type": "dashed",
+      "x": 300,
+      "y": 475,
+      "x2": 600,
+      "y2": 398.94523898387195,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "f4d61f4a-8b7a-4d2e-b220-9573286f8df1",
+      "type": "thin",
+      "x": 200,
+      "y": 425,
+      "x2": 200,
+      "y2": 450,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "b6f5840b-dae4-4036-99a2-b526d488d1ad",
+      "type": "thin",
+      "x": 200,
+      "y": 450,
+      "x2": 400,
+      "y2": 400,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "475d6d6b-d0d3-4167-9fbe-4bc82919cc13",
+      "type": "thin",
+      "x": 400,
+      "y": 400,
+      "x2": 400,
+      "y2": 450,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "67884562-3a07-4465-8d66-9bb5651c6f8a",
+      "type": "thin",
+      "x": 400,
+      "y": 450,
+      "x2": 600,
+      "y2": 400,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "aba42c4f-62d9-44a3-b7c9-131a2823ad53",
+      "type": "thin",
+      "x": 600,
+      "y": 400,
+      "x2": 600,
+      "y2": 425,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "7748b4bf-4a87-47bd-9b16-a6d34baf8965",
+      "type": "hatch",
+      "x": 200,
+      "y": 425,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 96.95693030540338,
+          "y": 0
+        },
+        {
+          "x": 0,
+          "y": 23.875951651843934
+        }
+      ],
+      "spacing": 8,
+      "horizontal": false
+    },
+    {
+      "id": "f417c2f0-e135-40f0-b026-01d6c72d382d",
+      "type": "hatch",
+      "x": 400,
+      "y": 400,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 0,
+          "y": 25
+        },
+        {
+          "x": -100,
+          "y": 25
+        }
+      ],
+      "spacing": 8,
+      "horizontal": false
+    },
+    {
+      "id": "a809c307-03f1-4968-a828-d751939d90cc",
+      "type": "hatch",
+      "x": 400,
+      "y": 425,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 97.22631166797203,
+          "y": 0
+        },
+        {
+          "x": 0,
+          "y": 24.648412994623982
+        }
+      ],
+      "spacing": 8,
+      "horizontal": false
+    },
+    {
+      "id": "7a5d6ca7-65cd-44b3-a8ff-c101d37a82bf",
+      "type": "hatch",
+      "x": 500,
+      "y": 425,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 100,
+          "y": -25
+        },
+        {
+          "x": 100,
+          "y": 0
+        }
+      ],
+      "spacing": 8,
+      "horizontal": false
+    },
+    {
+      "id": "5e9cd6fd-eaa0-4452-970c-0a65e82ece0d",
+      "type": "text",
+      "x": 650,
+      "y": 425,
+      "label": "đ.a.h Q_k",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "f4d8a889-d635-46e1-ba41-54fc115c6251",
+      "type": "text",
+      "x": 300,
+      "y": 500,
+      "label": "1",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "f6c2adaf-c83b-4987-88b5-fa53d2b5040f",
+      "type": "text",
+      "x": 500,
+      "y": 371,
+      "label": "1",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "1f5d7938-086e-47bb-bc08-c9d101de14b1",
+      "type": "text",
+      "x": 400,
+      "y": 384,
+      "label": "1/3",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "4cd8e5b2-fc8a-40c0-9a6d-3dd9910f1896",
+      "type": "text",
+      "x": 400,
+      "y": 475,
+      "label": "2/3",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "18d747a5-0eb8-41ec-a9e5-c2386530d21d",
+      "type": "text",
+      "x": 200,
+      "y": 475,
+      "label": "1/3",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "c24eebbe-1b21-4a17-a522-f5d271c52e4c",
+      "type": "text",
+      "x": 600,
+      "y": 384,
+      "label": "2/3",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "0324882f-b957-4569-8e52-f568c8b099f7",
+      "type": "text",
+      "x": 581.010180109632,
+      "y": 469.09945184025054,
+      "label": "Q_k = 36*(-2/3) = -24 kN",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    }
+  ],
+  "grid": false,
+  "gridSize": 25
+}

@@ -1,0 +1,1261 @@
+{
+  "format": "ket-cau-studio",
+  "version": 1,
+  "items": [
+    {
+      "id": "837c7bf0-7ac8-424a-9b5f-c226dcd5ac1e",
+      "type": "bar",
+      "x": 300,
+      "y": 175,
+      "x2": 700,
+      "y2": 175,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "9b867633-b382-46ae-86fc-570297b961dc",
+      "type": "bar",
+      "x": 500,
+      "y": 175,
+      "x2": 500,
+      "y2": 375,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "6f208968-a64e-4d5e-9a1a-adc2157f170f",
+      "type": "support",
+      "x": 300,
+      "y": 175,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "e5b0262b-a370-4bc0-85bf-9f0829b7b91a",
+      "type": "support",
+      "x": 500,
+      "y": 375,
+      "label": "",
+      "support": "roller",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "a41ab482-10de-4804-aa01-7196526f510d",
+      "type": "moment",
+      "x": 600,
+      "y": 175,
+      "label": "14",
+      "support": "roller",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "1a19adf1-006f-4f72-a0f3-7c3379b649fe",
+      "type": "force",
+      "x": 700,
+      "y": 175,
+      "label": "24",
+      "support": "roller",
+      "direction": "down",
+      "rotation": "ccw"
+    },
+    {
+      "id": "a76ae8f8-4dcc-47c7-ae25-51bc406fa01d",
+      "type": "udl",
+      "x": 500,
+      "y": 175,
+      "x2": 500,
+      "y2": 375,
+      "label": "16",
+      "support": "roller",
+      "direction": "left",
+      "rotation": "ccw"
+    },
+    {
+      "id": "77a68404-5c30-4007-97c6-985ba2816986",
+      "type": "dim",
+      "x": 300,
+      "y": 450,
+      "x2": 400,
+      "y2": 450,
+      "label": "1,5",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "offset": 100
+    },
+    {
+      "id": "c39f261b-a73c-413e-9655-c25de29978bd",
+      "type": "dim",
+      "x": 400,
+      "y": 450,
+      "x2": 500,
+      "y2": 450,
+      "label": "1,5",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "offset": 100
+    },
+    {
+      "id": "8b636aa3-ea3d-4587-8ea6-ced05ab64ac6",
+      "type": "dim",
+      "x": 500,
+      "y": 450,
+      "x2": 600,
+      "y2": 450,
+      "label": "1,5",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "offset": 100
+    },
+    {
+      "id": "31af4ff0-69f6-4d26-bc02-5f16d1aaaba9",
+      "type": "dim",
+      "x": 600,
+      "y": 450,
+      "x2": 700,
+      "y2": 450,
+      "label": "1,5",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "offset": 100
+    },
+    {
+      "id": "cb8f08dd-e4fa-4415-8cf0-c2d927e749e9",
+      "type": "force",
+      "x": 300,
+      "y": 225,
+      "label": "-95,3",
+      "support": "roller",
+      "direction": "up",
+      "rotation": "ccw"
+    },
+    {
+      "id": "937618d2-ec39-432d-936d-6bf86251393a",
+      "type": "force",
+      "x": 275,
+      "y": 225,
+      "label": "80",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "f553f923-b84c-403c-92db-2d93d6ac755e",
+      "type": "force",
+      "x": 500,
+      "y": 425,
+      "label": "119,3",
+      "support": "roller",
+      "direction": "up",
+      "rotation": "ccw"
+    },
+    {
+      "id": "fd6e8397-ded4-4f3d-827a-16cf62ad6671",
+      "type": "text",
+      "x": 275,
+      "y": 175,
+      "label": "A",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "40ab896a-c0ad-4379-815b-36fdf2b235e1",
+      "type": "text",
+      "x": 475,
+      "y": 200,
+      "label": "B",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "ae55fcfa-9012-4d37-9d94-1586a99fccd4",
+      "type": "text",
+      "x": 600,
+      "y": 200,
+      "label": "C",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "f4dd1da1-bf9a-4111-b0cb-b88d54013dd9",
+      "type": "text",
+      "x": 725,
+      "y": 175,
+      "label": "D",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "af1e16f9-cebc-4dca-a36a-eadfa1313df8",
+      "type": "text",
+      "x": 475,
+      "y": 375,
+      "label": "E",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "0d3ddc41-360b-431a-bdbb-766bff9886ff",
+      "type": "dim",
+      "x": 725,
+      "y": 175,
+      "x2": 725,
+      "y2": 375,
+      "label": "5",
+      "support": "roller",
+      "direction": "up",
+      "rotation": "ccw",
+      "offset": -25
+    },
+    {
+      "id": "3a2b91b2-060f-4b32-84cf-f728249f1b20",
+      "type": "bar",
+      "x": 875,
+      "y": 175,
+      "x2": 1275,
+      "y2": 175,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "a5d2f53f-3450-4a27-a7be-9b34e1168c73",
+      "type": "bar",
+      "x": 1075,
+      "y": 175,
+      "x2": 1075,
+      "y2": 375,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "422e3522-d98e-4901-86e0-197338d427dd",
+      "type": "support",
+      "x": 875,
+      "y": 175,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "6529c89a-a20d-481d-9b4d-434b529307be",
+      "type": "support",
+      "x": 1075,
+      "y": 375,
+      "label": "",
+      "support": "roller",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "d8f1da1b-ce2b-4cc7-b06f-2f71ef6929fa",
+      "type": "text",
+      "x": 850,
+      "y": 175,
+      "label": "A",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "daa0a953-c5cc-4965-ae62-8f3b457c8e66",
+      "type": "text",
+      "x": 1050,
+      "y": 200,
+      "label": "B",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "08c6c94b-2da1-4e26-b065-f8f130e3cb85",
+      "type": "text",
+      "x": 1175,
+      "y": 200,
+      "label": "C",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "12c3555c-1e2b-4357-9e93-4affdec1ddc5",
+      "type": "text",
+      "x": 1300,
+      "y": 175,
+      "label": "D",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "4ef7e3b5-0d28-42a3-b0b4-fbe5b682b702",
+      "type": "text",
+      "x": 1050,
+      "y": 375,
+      "label": "E",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "57b3ae0d-320c-4eca-9400-a108624f063b",
+      "type": "bar",
+      "x": 300,
+      "y": 675,
+      "x2": 700,
+      "y2": 675,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "2ad379c1-a347-47eb-8316-8e1cf714eef2",
+      "type": "bar",
+      "x": 500,
+      "y": 675,
+      "x2": 500,
+      "y2": 875,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "1cb06526-1020-478a-99c1-0d658d56d71c",
+      "type": "support",
+      "x": 300,
+      "y": 675,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "428115a0-7d5f-4d33-9a20-143bdb77f7e3",
+      "type": "support",
+      "x": 500,
+      "y": 875,
+      "label": "",
+      "support": "roller",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "3c9ad855-0a5e-4586-aa9b-3e45a6d4c8f7",
+      "type": "text",
+      "x": 275,
+      "y": 675,
+      "label": "A",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "38a69e98-3599-4633-b22e-2a0eaa088f66",
+      "type": "text",
+      "x": 475,
+      "y": 700,
+      "label": "B",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "1ef12056-003f-4dac-84e2-7a20369a6910",
+      "type": "text",
+      "x": 600,
+      "y": 700,
+      "label": "C",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "0ff77e42-0d40-4487-99f4-ff9ce3d535ff",
+      "type": "text",
+      "x": 725,
+      "y": 675,
+      "label": "D",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "f31f15ad-31ba-45f6-932c-ee6cf7540695",
+      "type": "text",
+      "x": 475,
+      "y": 875,
+      "label": "E",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "15fedfa8-f5f4-4a38-8fdb-7f7b89afb475",
+      "type": "bar",
+      "x": 875,
+      "y": 675,
+      "x2": 1275,
+      "y2": 675,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "6b5f6101-a80f-4243-bdbc-c3511eeda4a1",
+      "type": "bar",
+      "x": 1075,
+      "y": 675,
+      "x2": 1075,
+      "y2": 875,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "abbed9a1-cc54-48d3-ba70-8f42f556a902",
+      "type": "support",
+      "x": 875,
+      "y": 675,
+      "label": "",
+      "support": "pin",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "b5f34e09-e95d-4523-91bc-6dad7069b775",
+      "type": "support",
+      "x": 1075,
+      "y": 875,
+      "label": "",
+      "support": "roller",
+      "direction": "down",
+      "rotation": "cw"
+    },
+    {
+      "id": "a9e25829-249d-4af9-96be-d8aeff2ebaa3",
+      "type": "text",
+      "x": 850,
+      "y": 675,
+      "label": "A",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "9ee0e24f-ad74-40f7-9dfd-2423760ee954",
+      "type": "text",
+      "x": 1050,
+      "y": 650,
+      "label": "B",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "c408b877-4112-4059-9b15-53da39416115",
+      "type": "text",
+      "x": 1175,
+      "y": 700,
+      "label": "C",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "6c91426a-f24f-4065-9021-af952d21ecde",
+      "type": "text",
+      "x": 1300,
+      "y": 675,
+      "label": "D",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "da80d8c6-0f3d-440a-80d9-200e1e92f879",
+      "type": "text",
+      "x": 1050,
+      "y": 875,
+      "label": "E",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "2f3ce186-66d5-4829-80d9-7ddc5c96fbfc",
+      "type": "thin",
+      "x": 1175,
+      "y": 175,
+      "x2": 1175,
+      "y2": 125,
+      "label": "",
+      "support": "roller",
+      "direction": "left",
+      "rotation": "ccw"
+    },
+    {
+      "id": "eb210c9d-8b31-4ff5-a069-b34b3c5427ab",
+      "type": "thin",
+      "x": 1175,
+      "y": 125,
+      "x2": 1275,
+      "y2": 175,
+      "label": "",
+      "support": "roller",
+      "direction": "left",
+      "rotation": "ccw"
+    },
+    {
+      "id": "9b01451c-6c75-4395-8a0d-1d3128f238e2",
+      "type": "text",
+      "x": 1191.563691040891,
+      "y": 118.35554434653886,
+      "label": "36",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "labelFormula": "24*1.5",
+      "labelAngle": "deg"
+    },
+    {
+      "id": "d98db492-bd01-43c9-b9a1-b8dda802739d",
+      "type": "hatch",
+      "x": 1175,
+      "y": 175,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 0,
+          "y": -50
+        },
+        {
+          "x": 100,
+          "y": 0
+        }
+      ],
+      "spacing": 8
+    },
+    {
+      "id": "4f587992-3200-4aa9-ba96-66c6f7613496",
+      "type": "thin",
+      "x": 1075,
+      "y": 175,
+      "x2": 1075,
+      "y2": 50,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "2289a023-4a6a-4242-ab95-a72a807dfb75",
+      "type": "thin",
+      "x": 1075,
+      "y": 50,
+      "x2": 1175,
+      "y2": 100,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "4274dbbf-b756-4e62-901f-806c311c4c5b",
+      "type": "thin",
+      "x": 1175,
+      "y": 100,
+      "x2": 1175,
+      "y2": 175,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "cb90cbd2-36aa-45ed-b5cf-658bfc457400",
+      "type": "hatch",
+      "x": 1075,
+      "y": 175,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 0,
+          "y": -125
+        },
+        {
+          "x": 100,
+          "y": -75
+        },
+        {
+          "x": 100,
+          "y": -50
+        },
+        {
+          "x": 100,
+          "y": 0
+        }
+      ],
+      "spacing": 8
+    },
+    {
+      "id": "8a6849b0-2675-42b0-b7e1-1d5ff79aff1b",
+      "type": "text",
+      "x": 1175,
+      "y": 80,
+      "label": "50",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "labelFormula": "24*1.5 +14",
+      "labelAngle": "deg"
+    },
+    {
+      "id": "cb15362b-81db-40dc-b239-5c4b9c31eb04",
+      "type": "text",
+      "x": 1093,
+      "y": 37,
+      "label": "86",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "labelFormula": "24*3 +14",
+      "labelAngle": "deg"
+    },
+    {
+      "id": "20eba9a1-4a38-43c0-9fc8-4a57626a6c3e",
+      "type": "text",
+      "x": 1231,
+      "y": 199,
+      "label": "200",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "labelFormula": "16*5*2.5",
+      "labelAngle": "deg"
+    },
+    {
+      "id": "f07ab1d6-b827-425b-b3f0-d13855fa8b2a",
+      "type": "thin",
+      "x": 1075,
+      "y": 175,
+      "x2": 1075,
+      "y2": -25,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "1c8311b4-2abb-41ce-8214-2790363b5194",
+      "type": "thin",
+      "x": 1075,
+      "y": -25,
+      "x2": 875,
+      "y2": 175,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "c2a8a382-1fba-4520-b3de-6a28deb05bfa",
+      "type": "hatch",
+      "x": 875,
+      "y": 175,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 200,
+          "y": -200
+        },
+        {
+          "x": 200,
+          "y": -125
+        },
+        {
+          "x": 200,
+          "y": 0
+        }
+      ],
+      "spacing": 8
+    },
+    {
+      "id": "bdec0e14-42bf-4754-9c00-8e5877347b1d",
+      "type": "text",
+      "x": 1088.6987671639952,
+      "y": -31.595752648376845,
+      "label": "285.9",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "labelFormula": "95,3*3",
+      "labelAngle": "deg"
+    },
+    {
+      "id": "eed26205-da10-4d37-a6e5-6364926c4019",
+      "type": "thin",
+      "x": 1075,
+      "y": 175,
+      "x2": 1224.2558620646184,
+      "y2": 175,
+      "label": "",
+      "support": "roller",
+      "direction": "up",
+      "rotation": "ccw"
+    },
+    {
+      "id": "bb3918d2-40eb-4159-ae61-f1914606142d",
+      "type": "diagramM",
+      "x": 972,
+      "y": 275,
+      "label": "kN.m",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "a4f0c4b1-e018-4e5e-97e7-7637ae12e615",
+      "type": "text",
+      "x": 975,
+      "y": 775,
+      "label": "95.3",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "95b1ac4e-3f66-49c0-b54f-b976d8535594",
+      "type": "thin",
+      "x": 875,
+      "y": 675,
+      "x2": 875,
+      "y2": 750,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "f3a29f03-40f5-42f1-b59d-66d192d4867f",
+      "type": "thin",
+      "x": 875,
+      "y": 750,
+      "x2": 1075,
+      "y2": 750,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "3e680938-1788-4ade-b1a4-68c511d91700",
+      "type": "thin",
+      "x": 1075,
+      "y": 750,
+      "x2": 1075,
+      "y2": 675,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "6eaf184d-9827-4c0c-a7ee-782fe81c91f8",
+      "type": "hatch",
+      "x": 875,
+      "y": 675,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 200,
+          "y": 0
+        },
+        {
+          "x": 200,
+          "y": 75
+        },
+        {
+          "x": 0,
+          "y": 75
+        }
+      ],
+      "spacing": 8
+    },
+    {
+      "id": "4ba767a1-ecc9-4f57-a782-8cc914f089b5",
+      "type": "negative",
+      "x": 975,
+      "y": 711,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "12ba96c5-a15e-41b6-89b3-55baa408c5b2",
+      "type": "text",
+      "x": 1172.977021546688,
+      "y": 591.1995795837327,
+      "label": "24",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "labelFormula": "(0--36)/1.5",
+      "labelAngle": "deg"
+    },
+    {
+      "id": "9a189f4b-7356-4ce9-b954-ca0485c987f8",
+      "type": "thin",
+      "x": 1075,
+      "y": 675,
+      "x2": 1075,
+      "y2": 600,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "28acf35d-4eef-4a8b-a2a2-07c13968ee38",
+      "type": "thin",
+      "x": 1075,
+      "y": 600,
+      "x2": 1275,
+      "y2": 600,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "e303a29b-ad8b-4938-bfff-dbfab330be9f",
+      "type": "thin",
+      "x": 1275,
+      "y": 600,
+      "x2": 1275,
+      "y2": 675,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "f3f4ab01-327f-4f1b-b473-04cd39f0e9c0",
+      "type": "hatch",
+      "x": 1075,
+      "y": 675,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 0,
+          "y": -75
+        },
+        {
+          "x": 200,
+          "y": -75
+        },
+        {
+          "x": 200,
+          "y": 0
+        }
+      ],
+      "spacing": 8
+    },
+    {
+      "id": "29b56713-5124-4c9b-acd4-2134b58e4d28",
+      "type": "positive",
+      "x": 1175,
+      "y": 639,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "63833085-dd37-4fa0-b3f0-92c67ed4887f",
+      "type": "text",
+      "x": 1100,
+      "y": 875,
+      "label": "0",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "labelFormula": "(200-0)/5 -16*5/2",
+      "labelAngle": "deg"
+    },
+    {
+      "id": "60cf7b6e-5253-4b68-b442-6eb6e8822ba9",
+      "type": "dashed",
+      "x": 1075,
+      "y": 375,
+      "x2": 1224.2558620646184,
+      "y2": 175,
+      "label": "",
+      "support": "roller",
+      "direction": "up",
+      "rotation": "ccw"
+    },
+    {
+      "id": "b0c816cb-894c-4589-b795-a618d5cab04e",
+      "type": "thin",
+      "x": 1149.6279310323093,
+      "y": 275,
+      "x2": 1115.5544180405338,
+      "y2": 275,
+      "label": "",
+      "support": "roller",
+      "direction": "up",
+      "rotation": "ccw"
+    },
+    {
+      "id": "1df19f2b-8c1e-4a15-8b90-6e5af3db358c",
+      "type": "text",
+      "x": 1200,
+      "y": 275,
+      "label": "43.75",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "labelFormula": "14*(5^2)/8",
+      "labelAngle": "deg"
+    },
+    {
+      "id": "0c257910-e83c-4e20-bf0a-2d83502f8fa7",
+      "type": "curve",
+      "x": 1224.2558620646184,
+      "y": 175,
+      "label": "",
+      "support": "roller",
+      "direction": "up",
+      "rotation": "ccw",
+      "curvePoints": [
+        {
+          "x": -108.7014440240846,
+          "y": 100
+        },
+        {
+          "x": -149.25586206461844,
+          "y": 200
+        }
+      ]
+    },
+    {
+      "id": "05768112-a48c-488d-9c61-b4b9d24a6a2d",
+      "type": "hatch",
+      "x": 1075,
+      "y": 175,
+      "label": "",
+      "support": "roller",
+      "direction": "up",
+      "rotation": "ccw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 100,
+          "y": 0
+        },
+        {
+          "x": 149.25586206461844,
+          "y": 0
+        },
+        {
+          "x": 135.31910149295004,
+          "y": 10
+        },
+        {
+          "x": 122.06381118111744,
+          "y": 20
+        },
+        {
+          "x": 109.4899911291202,
+          "y": 30
+        },
+        {
+          "x": 97.5976413369583,
+          "y": 40
+        },
+        {
+          "x": 86.38676180463221,
+          "y": 50
+        },
+        {
+          "x": 75.8573525321417,
+          "y": 60
+        },
+        {
+          "x": 66.00941351948632,
+          "y": 70
+        },
+        {
+          "x": 56.84294476666673,
+          "y": 80
+        },
+        {
+          "x": 48.3579462736825,
+          "y": 90
+        },
+        {
+          "x": 40.55441804053385,
+          "y": 100
+        },
+        {
+          "x": 33.43236006722077,
+          "y": 110
+        },
+        {
+          "x": 26.991772353743045,
+          "y": 120
+        },
+        {
+          "x": 21.232654900100897,
+          "y": 130
+        },
+        {
+          "x": 16.155007706294327,
+          "y": 140
+        },
+        {
+          "x": 11.758830772323108,
+          "y": 150
+        },
+        {
+          "x": 8.044124098187467,
+          "y": 160
+        },
+        {
+          "x": 5.0108876838871765,
+          "y": 170
+        },
+        {
+          "x": 2.6591215294226913,
+          "y": 180
+        },
+        {
+          "x": 0.9888256347935567,
+          "y": 190
+        },
+        {
+          "x": 0,
+          "y": 200
+        }
+      ],
+      "spacing": 8
+    },
+    {
+      "id": "58f99ab9-62e5-435e-ad72-4b394ac68d26",
+      "type": "text",
+      "x": 1250,
+      "y": 700,
+      "label": "80",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "labelFormula": "(200-0)/5 +16*5/2",
+      "labelAngle": "deg"
+    },
+    {
+      "id": "e4a19dcd-3b3c-4e81-b060-c46586cb40c5",
+      "type": "thin",
+      "x": 1075,
+      "y": 875,
+      "x2": 1242.1596293156442,
+      "y2": 675,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "94aaf263-a7f2-4ea7-9862-64b453387ad7",
+      "type": "hatch",
+      "x": 1075,
+      "y": 875,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 0,
+          "y": -200
+        },
+        {
+          "x": 167.15962931564422,
+          "y": -200
+        }
+      ],
+      "spacing": 8
+    },
+    {
+      "id": "ff3f2b44-1696-4903-851c-ec9f257cefea",
+      "type": "positive",
+      "x": 1125,
+      "y": 750,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "563c7951-267c-43e6-9e1e-26868b935b40",
+      "type": "diagramQ",
+      "x": 975,
+      "y": 830,
+      "label": "kN",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "2e2a5e3b-7bcd-4a1c-a5fd-ae39b67f1fa2",
+      "type": "thin",
+      "x": 500,
+      "y": 875,
+      "x2": 575,
+      "y2": 875,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "fff1e400-8437-42d9-be93-8a14a0c61cc8",
+      "type": "thin",
+      "x": 575,
+      "y": 875,
+      "x2": 575,
+      "y2": 675,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "8953f965-00ae-45e5-88f0-1f33618756c5",
+      "type": "hatch",
+      "x": 500,
+      "y": 875,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw",
+      "points": [
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 0,
+          "y": -200
+        },
+        {
+          "x": 75,
+          "y": -200
+        },
+        {
+          "x": 75,
+          "y": 0
+        }
+      ],
+      "spacing": 8
+    },
+    {
+      "id": "b2d62e56-752c-4d27-b24b-b7226a57cf1a",
+      "type": "negative",
+      "x": 538,
+      "y": 775,
+      "label": "",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "300faa6f-bbbd-4789-a367-b2d882352f64",
+      "type": "text",
+      "x": 599.0663272428571,
+      "y": 779.1891357195029,
+      "label": "119.3",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    },
+    {
+      "id": "1ebfad14-57b6-4f1c-b3ed-2807efa28ffa",
+      "type": "diagramN",
+      "x": 393.00952540985236,
+      "y": 780.4679762374333,
+      "label": "kN",
+      "support": "roller",
+      "direction": "right",
+      "rotation": "ccw"
+    }
+  ],
+  "grid": true,
+  "gridSize": 25
+}

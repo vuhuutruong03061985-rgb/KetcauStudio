@@ -1,0 +1,29 @@
+﻿.test-tools/
+__pycache__/
+*.pyc
+tools/pdf-tools/
+dist/
+tests/*.png
+
+# Local dependencies, caches and temporary output
+node_modules/
+.cache/
+*.log
+*.tmp
+*.temp
+
+# Local editor configuration
+/.cursor/
+/.vscode/
+
+# Archived copies and recovery/import artifacts
+/archive/
+/_backup_before_context_update/
+/recovered-templates/
+/data/browser-import-20260913/
+/data/templates.before-import.json
+/data/import-report.json
+*.bak
+/index.updated.html
+/assets/app-WIN-PO3194ATM1S.js
+/screenshot_*.png

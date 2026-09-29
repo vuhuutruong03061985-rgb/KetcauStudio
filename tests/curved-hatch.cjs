@@ -1,0 +1,13 @@
+﻿const {chromium}=require('../.test-tools/node_modules/playwright');const {pathToFileURL}=require('node:url');const path=require('node:path');const assert=require('node:assert/strict');
+(async()=>{const b=await chromium.launch({channel:'msedge',headless:true});try{const p=await b.newPage();await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>items.length>0);
+await p.evaluate(()=>{items=[make('curve',200,400,undefined,undefined,{curvePoints:[{x:200,y:-200},{x:400,y:0}]}),make('thin',200,400,600,400)];setMode('hatch')});
+const poly=await p.evaluate(()=>closedRegionAt({x:400,y:300}));assert(poly&&poly.length>3);assert.equal(await p.evaluate(()=>closedRegionAt({x:400,y:100})),null);
+await p.evaluate(()=>{items.push(make('thin',400,150,400,450))});
+const left=await p.evaluate(()=>closedRegionAt({x:300,y:350}));assert(left&&Math.max(...left.map(p=>p.x))<=400.001);
+const right=await p.evaluate(()=>closedRegionAt({x:500,y:350}));assert(right&&Math.min(...right.map(p=>p.x))>=399.999);
+const q=await p.evaluate(()=>{const q=new DOMPoint(300,350).matrixTransform(svg.getScreenCTM());return{x:q.x,y:q.y}});await p.mouse.click(q.x,q.y);
+assert.equal(await p.evaluate(()=>items.at(-1).type),'hatch');assert(await p.evaluate(()=>validate({format:'ket-cau-studio',version:1,items:copy(items)}).length>0));assert(await p.evaluate(()=>exportSVG().includes('data-id')));
+await p.evaluate(()=>{items=[make('curve',200,400,undefined,undefined,{curvePoints:[{x:200,y:-200},{x:400,y:0}]})]});assert.equal(await p.evaluate(()=>closedRegionAt({x:400,y:300})),null);
+await p.evaluate(()=>items.push(make('curve',200,400,undefined,undefined,{curvePoints:[{x:200,y:100},{x:400,y:0}]})));assert(await p.evaluate(()=>closedRegionAt({x:400,y:400})));
+console.log('PASS curve/line enclosure, outside/open rejection, intersecting divider, two-curve enclosure, hatch creation and JSON/export');
+}finally{await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});

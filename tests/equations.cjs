@@ -1,0 +1,22 @@
+const assert=require('node:assert/strict'),{solveEquations:s}=require('../assets/calculator.js');
+for(const [input,output]of [['2*x+3=7','x = 2'],['x^2-5*x+6=0','x = 2 hoặc 3'],['x^2+1=0','Không có nghiệm thực'],['x+y=3; x-y=1','x = 2; y = 1'],['x+y=2; 2*x+2*y=4','Vô số nghiệm'],['x+y=2; x+y=3','Vô nghiệm'],['2(x+1)=8','x = 3'],['x=x','Vô số nghiệm'],['x=x+1','Vô nghiệm'],['x-y=1; x+y=5; 2*x=6','x = 3; y = 2']])assert.equal(s('giai('+input+')'),output);
+for(const input of ['x*y=2;x+y=3','1/x=3','sin(x)=0','x^3=1','x=','x=1;'])assert.throws(()=>s('giai('+input+')'));
+const {chromium}=require('../.test-tools/node_modules/playwright'),{pathToFileURL}=require('node:url'),path=require('node:path');
+(async()=>{const b=await chromium.launch({channel:'msedge',headless:true});try{
+const p=await b.newPage();await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>items.length>0);
+await p.evaluate(()=>editObjectLabel(items.find(o=>o.type==='force')));const input=p.getByRole('textbox',{name:'Sửa nhãn trên hình'});
+await input.fill('');await input.pressSequentially('giai(x+y=3; x-y=1)');assert.equal(await p.locator('[data-label-expression]').textContent(),'giai(x+y=3; x-y=1) ⇒ x = 2; y = 1');await input.press('Enter');
+assert.equal(await p.evaluate(()=>items.find(o=>o.type==='force').label),'x = 2; y = 1');await p.evaluate(()=>editObjectLabel(items.find(o=>o.type==='force')));
+assert.equal(await input.inputValue(),'giai(x+y=3; x-y=1) ⇒ x = 2; y = 1');await input.fill('giai(x^2-5*x+6=0)');await input.press('=');
+assert.equal(await p.evaluate(()=>items.find(o=>o.type==='force').label),'x = 2 hoặc 3');assert(await p.evaluate(()=>validate(JSON.parse(documentText())).length>0));
+await p.evaluate(()=>editObjectLabel(items.find(o=>o.type==='force')));await input.fill('');await input.pressSequentially('2*x+3-7=0-->');await input.press('Enter');
+assert.equal(await p.evaluate(()=>items.find(o=>o.type==='force').label),'2*x+3-7=0-->x=2');
+await p.evaluate(()=>editObjectLabel(items.find(o=>o.type==='force')));assert.equal(await input.inputValue(),'2*x+3-7=0-->x=2');
+await input.fill('2*x+3--7=0-->x=2');await input.press('Enter');assert.equal(await p.evaluate(()=>items.find(o=>o.type==='force').label),'2*x+3--7=0-->x=-5');
+console.log('PASS equations, rank, invalid input, typed system, arrow presentation, reopen and JSON');
+await p.evaluate(()=>editObjectLabel(items.find(o=>o.type==='force')));await input.fill('');await input.pressSequentially('2*y-7=');await input.press('Enter');
+assert.equal(await p.evaluate(()=>items.find(o=>o.type==='force').label),'2*y-7=0-->y=3.5');
+await p.evaluate(()=>editObjectLabel(items.find(o=>o.type==='force')));await input.fill('2*y-8=0');await input.press('Enter');
+assert.equal(await p.evaluate(()=>items.find(o=>o.type==='force').label),'2*y-8=0-->y=4');
+console.log('PASS direct equation and empty right-hand side interpreted as zero');
+}finally{await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});

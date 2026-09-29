@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),{updateDrawingEquations:u}=require('../assets/calculator.js');
+const objects=[{id:'z',labelFormula:'z=3*y-->'},{id:'y',labelFormula:'2*y-x=0-->'},{id:'x',labelFormula:'2*x+3-7=0-->'}];
+u(objects);assert.equal(objects[1].label,'2*y-x=0-->y=1');assert.equal(objects[0].label,'z=3*y-->z=3');
+objects[2].labelFormula='x=8-->';u(objects);assert.equal(objects[0].label,'z=3*y-->z=12');
+objects.pop();u(objects);assert.equal(objects[1].label,'2*y-x=0-->Chờ dữ kiện');assert.equal(objects[0].label,'z=3*y-->Chờ dữ kiện');
+const cycle=[{id:'a',labelFormula:'x=y+1-->'},{id:'b',labelFormula:'y=x+1-->'}];u(cycle);assert(cycle.every(o=>o.label.endsWith('Chờ dữ kiện')));
+const conflict=[{id:'a',labelFormula:'x=1-->'},{id:'b',labelFormula:'x=2-->'},{id:'c',labelFormula:'y=x+1-->'}];u(conflict);assert.equal(conflict[2].label,'y=x+1-->Chờ dữ kiện');
+const multiple=[{id:'a',labelFormula:'x^2=4-->'},{id:'b',labelFormula:'y=x+1-->'}];u(multiple);assert.equal(multiple[1].label,'y=x+1-->Chờ dữ kiện');
+console.log('PASS dependency order, chain, edits, deletion, cycles, conflicts and ambiguous roots');
+const leftKnown=[{id:'given',label:'x=5'},{id:'dependent',labelFormula:'x=y+1-->'}];
+u(leftKnown);assert.equal(leftKnown[1].label,'x=y+1-->y=4');
+leftKnown[0].label='x=7';u(leftKnown);assert.equal(leftKnown[1].label,'x=y+1-->y=6');
+leftKnown.shift();u(leftKnown);assert.equal(leftKnown[0].label,'x=y+1-->Chờ dữ kiện');
+const invalid=[{id:'bad',labelFormula:'x+=2-->'}];u(invalid);assert(invalid[0].label.includes('chưa hợp lệ'));
+console.log('PASS numeric givens, known left-hand variable, changed/deleted input and invalid equation');
