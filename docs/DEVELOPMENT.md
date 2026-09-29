@@ -50,3 +50,9 @@ Draft/library keys are retained. Storage is specific to the URL origin; JSON is 
 For classroom use, access portable teaching JSON through the browser's file APIs or import/download fallbacks. OneDrive provider availability and write-back must be tested on the actual tablet; importing file contents alone does not confer overwrite access. Prepare the deployed PWA and required documents before offline use. PWA shell caching does not itself make OneDrive documents available offline. Before a production/tablet release, complete the applicable physical-device checks in VALIDATION.md and record unresolved limitations.
 
 The viewBox camera never changes model coordinates. SVG/PNG export resets to 1100 x 720; Word computes its own crop. Touch snapshots state before the first finger and restores it on the second finger, then blocks editor events until all fingers lift. This prevents first-touch edits from leaking into a pinch.
+
+### PWA release check
+
+For every deployed app-shell HTML/CSS/JS change, update `KETCAU_APP_VERSION` in assets/tablet.js and increment the single `CACHE` constant in sw.js (currently shell-v3). Keep each release cache name unique. Publish the complete static package together; a failed required asset prevents the new worker from installing.
+
+Open the installed app online. If an update is waiting, save the drawing, close **all** app windows/tabs for this site, then reopen. No automatic reload or skipWaiting is used. Verify the version in the small header status and the offline-ready message, then close and reopen in Airplane mode before class. The status checks the active shell cache; it does not certify OneDrive files are available offline. Physical Android validation is still required.

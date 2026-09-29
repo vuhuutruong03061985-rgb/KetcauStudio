@@ -431,10 +431,35 @@ installButton.onclick=async()=>{
  await installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;installButton.hidden=true;
 };
 window.addEventListener('appinstalled',()=>{installButton.hidden=true;installPrompt=null});
+const KETCAU_APP_VERSION='shell-v3';
+let pwaRegistration=null;
 if('serviceWorker' in navigator&&window.isSecureContext&&location.protocol!=='file:'){
- navigator.serviceWorker.register('./sw.js').then(()=>navigator.serviceWorker.ready).then(()=>{
-  const indicator=document.createElement('small');indicator.className='offline-ready';indicator.textContent='Sẵn sàng dùng ngoại tuyến';document.querySelector('header>div').append(indicator);
- }).catch(()=>msg('Chưa lưu được ứng dụng ngoại tuyến. Bạn vẫn có thể vẽ và lưu JSON.'));
+ const indicator=document.createElement('small');indicator.className='offline-ready';indicator.id='pwaStatus';indicator.setAttribute('role','status');
+ document.querySelector('header>div').append(indicator);
+ const status=(state,text)=>{indicator.dataset.state=state;indicator.textContent=KETCAU_APP_VERSION+' | '+text};
+ const waiting=()=>{if(!pwaRegistration?.waiting)return false;status('update','Có phiên bản mới. Đóng tất cả cửa sổ ứng dụng rồi mở lại để cập nhật.');return true};
+ function readiness(){
+  if(waiting())return;
+  const worker=pwaRegistration?.active;if(!worker)return;
+  const channel=new MessageChannel();
+  channel.port1.onmessage=event=>{channel.port1.close();if(waiting())return;status(event.data.ready?'ready':'unavailable',event.data.ready?'Đã sẵn sàng ngoại tuyến':'Chưa sẵn sàng ngoại tuyến')};
+  worker.postMessage({type:'OFFLINE_STATUS'},[channel.port2]);
+ }
+ async function checkUpdate(){
+  if(!navigator.onLine||!pwaRegistration)return;
+  try{await pwaRegistration.update()}catch{/* Offline/transient failure must not interrupt drawing. */}
+  readiness();
+ }
+ navigator.serviceWorker.addEventListener('controllerchange',readiness);
+ window.addEventListener('online',checkUpdate);
+ navigator.serviceWorker.register('./sw.js').then(registration=>{
+  pwaRegistration=registration;
+  const observe=()=>{const worker=registration.installing;if(worker)worker.addEventListener('statechange',()=>{if(worker.state==='installed'||worker.state==='activated'){if(!waiting())readiness()}})};
+  registration.addEventListener('updatefound',observe);observe();
+  if(!waiting())status('checking','Đang kiểm tra ngoại tuyến...');
+  navigator.serviceWorker.ready.then(readiness);
+  checkUpdate();
+ }).catch(()=>status('unavailable','Chưa sẵn sàng ngoại tuyến; vẫn có thể vẽ và lưu JSON.'));
 }
 
 // A document is a JSON file. Browser drafts remain a recovery copy, not a file save.
