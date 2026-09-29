@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id),svg=$('drawing'),NS='http://www.w3.org/2000/svg';
-const modes={select:'Chọn',hatch:'Hatch biểu đồ',extend:'Kéo dài tới biên',bar:'Thanh',thin:'Nét liền mảnh',dashed:'Nét đứt mảnh',support:'Gối tựa',hinge:'Khớp',force:'Lực',moment:'Mô men',udl:'Tải đều',dim:'Kích thước',text:'Chữ',positive:'Dấu (+)',negative:'Dấu (−)',diagramM:'Biểu đồ M',diagramQ:'Biểu đồ Q',diagramN:'Biểu đồ N'};
+const modes={person:'H\u00ecnh ng\u01b0\u1eddi',select:'Chọn',hatch:'Hatch biểu đồ',extend:'Kéo dài tới biên',bar:'Thanh',thin:'Nét liền mảnh',dashed:'Nét đứt mảnh',support:'Gối tựa',hinge:'Khớp',force:'Lực',moment:'Mô men',udl:'Tải đều',dim:'Kích thước',text:'Chữ',positive:'Dấu (+)',negative:'Dấu (−)',diagramM:'Biểu đồ M',diagramQ:'Biểu đồ Q',diagramN:'Biểu đồ N'};
 let hatchPoints=[];
 let rigidPoints=[],rigidDrag=null;
 let rigidPivot=null,rigidSnapHint=null;
@@ -441,6 +441,65 @@ function renderBarConstraintPreview(){
  const g=el('g',{'data-bar-preview':'true','pointer-events':'none',stroke:'#087d95','stroke-dasharray':'5 4'});
  line(g,first.x,first.y,endpoint.x,endpoint.y);
 }
+// Person origin is the head center; local +Y points from head to feet.
+// size is a uniform model-unit multiplier; angle is SVG degrees (clockwise on screen).
+const PERSON_DEFAULT_SIZE=2;
+const PERSON_HEAD_RADIUS=2;
+const PERSON_BAR_GAP=3;
+const PERSON_PLACEMENT_TOLERANCE=1e-6; // Model units, independent of camera zoom.
+function solvePersonPlacement({bar,candidatePoint:p,size=PERSON_DEFAULT_SIZE}={}){
+ if(!bar||!p||![bar.x,bar.y,bar.x2,bar.y2,p.x,p.y,size].every(Number.isFinite)||size<=0)return null;
+ const dx=bar.x2-bar.x,dy=bar.y2-bar.y,length=Math.hypot(dx,dy);
+ if(!Number.isFinite(length)||length<=PERSON_PLACEMENT_TOLERANCE||!Number.isFinite(dx*dx+dy*dy))return null;
+ const q=segmentContact(p,bar,{x:bar.x2,y:bar.y2});
+ if(!q||![q.x,q.y].every(Number.isFinite))return null;
+ let nx=-dy/length,ny=dx/length;
+ const side=(p.x-q.x)*nx+(p.y-q.y)*ny;
+ if(!Number.isFinite(side)||Math.abs(side)<=PERSON_PLACEMENT_TOLERANCE)return null;
+ if(side<0){nx=-nx;ny=-ny}
+ // SVG rotation maps local +Y to (-sin(angle), cos(angle)): feet point outward.
+ const angle=(Math.atan2(ny,nx)*180/Math.PI-90+360)%360;
+ const offset=PERSON_BAR_GAP+PERSON_HEAD_RADIUS*size;
+ const x=q.x+nx*offset,y=q.y+ny*offset;
+ return [offset,x,y,angle].every(Number.isFinite)?{x,y,angle}:null;
+}
+const PERSON_HIT_TOLERANCE=24; // CSS pixels, converted at the interaction boundary.
+function findNearestBar(candidatePoint,tolerance){
+ if(!candidatePoint||![candidatePoint.x,candidatePoint.y,tolerance].every(Number.isFinite)||tolerance<0)return null;
+ let nearest=null,distance=tolerance;
+ for(const bar of items){
+  if(bar.type!=='bar'||![bar.x,bar.y,bar.x2,bar.y2].every(Number.isFinite)||Math.hypot(bar.x2-bar.x,bar.y2-bar.y)<=PERSON_PLACEMENT_TOLERANCE)continue;
+  const q=segmentContact(candidatePoint,bar,{x:bar.x2,y:bar.y2});if(!q)continue;
+  const d=Math.hypot(candidatePoint.x-q.x,candidatePoint.y-q.y);
+  if(Number.isFinite(d)&&d<=tolerance&&(!nearest||d<distance-1e-9)){nearest=bar;distance=d}
+ }return nearest;
+}
+function personPlacementAt(e){
+ const p=rawPoint(e),scale=Math.abs(svg.getScreenCTM().a);
+ if(!scale)return null;
+ const bar=findNearestBar(p,PERSON_HIT_TOLERANCE/scale);
+ // Subpixel pointer conversion must not choose an arbitrary side on the bar.
+ if(bar){const q=segmentContact(p,bar,{x:bar.x2,y:bar.y2});if(q&&Math.hypot(p.x-q.x,p.y-q.y)<=.5/scale)return null}
+ const placement=bar&&solvePersonPlacement({bar,candidatePoint:p,size:PERSON_DEFAULT_SIZE});
+ if(!placement)return null;
+ try{validatePerson({...placement,size:PERSON_DEFAULT_SIZE})}catch{return null}
+ return placement;
+}
+function personTransform(o){return `translate(${o.x} ${o.y}) rotate(${o.angle}) scale(${o.size})`}
+function clearPersonPreview(){svg.querySelector('[data-person-preview]')?.remove()}
+function paintPersonPreview(e){
+ clearPersonPreview();const placement=personPlacementAt(e);if(!placement)return;
+ if(!svg.querySelector('#personSymbol'))definePersonSymbol(svg.querySelector('defs'));
+ el('use',{href:'#personSymbol',transform:personTransform({...placement,size:PERSON_DEFAULT_SIZE}),opacity:.45,'pointer-events':'none','data-person-preview':'true'});
+}
+function validatePerson(o){
+ if(!Number.isFinite(o.x)||!Number.isFinite(o.y)||Math.abs(o.x)>10000||Math.abs(o.y)>10000||!Number.isFinite(o.angle)||!Number.isFinite(o.size)||o.size<=0)throw Error('Invalid person');
+}
+function definePersonSymbol(defs){
+ const symbol=el('symbol',{id:'personSymbol',overflow:'visible',stroke:'black','stroke-width':1,'stroke-linecap':'round',fill:'none'},defs);
+ el('circle',{cx:0,cy:0,r:PERSON_HEAD_RADIUS},symbol);
+ for(const [x1,y1,x2,y2]of [[0,2,0,12],[0,5,-5,9],[0,5,5,9],[0,12,-5,20],[0,12,5,20]])line(symbol,x1,y1,x2,y2);
+}
 function render(clean=false){
  if(typeof syncBarNumericInput==='function')syncBarNumericInput();
  if(typeof syncThinNumericInput==='function')syncThinNumericInput();
@@ -455,7 +514,13 @@ function render(clean=false){
  if($('editSelected')){$('editSelected').classList.toggle('active',mode==='labelEdit');$('editSelected').setAttribute('aria-pressed',String(mode==='labelEdit'))}
  if(autosaveReady&&!clean){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(saveDraft,200)}
 svg.replaceChildren();const defs=el('defs'),marker=el('marker',{id:'arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto'},defs);el('path',{d:'M0 0L10 5L0 10Z',fill:'black'},marker);const momentMarker=el('marker',{id:'momentArrow',viewBox:'0 0 10 10',refX:0,refY:5,markerWidth:7,markerHeight:7,orient:'auto',overflow:'visible'},defs);el('path',{d:'M0 0L10 5L0 10Z',fill:'black'},momentMarker);el('rect',{width:1100,height:720,fill:'white'});
-for(const o of [...items].sort((a,b)=>Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(a.type))-Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(b.type)))){if(hiddenSectionAction(o))continue;const {x,y,x2,y2}=o,g=el('g',{'data-id':o.id,...(validObjectColor(o.strokeColor)?{'data-object-color':o.strokeColor}:{}),stroke:objectColor(o),'stroke-width':1.8,fill:'none'});
+if(items.some(o=>o.type==='person'))definePersonSymbol(defs);
+for(const o of [...items].sort((a,b)=>Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(a.type))-Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(b.type)))){if(o.type==='person'){try{validatePerson(o)}catch{continue}}if(hiddenSectionAction(o))continue;const {x,y,x2,y2}=o,g=el('g',{'data-id':o.id,...(validObjectColor(o.strokeColor)?{'data-object-color':o.strokeColor}:{}),stroke:objectColor(o),'stroke-width':1.8,fill:'none'});
+if(o.type==='person'){
+ const instance=el('g',{transform:personTransform(o)},g);
+ el('use',{href:'#personSymbol'},instance);
+ if(!clean)el('rect',{x:-6,y:-3,width:12,height:24,fill:'transparent',stroke:'none','pointer-events':'all','data-hit-area':'true'},instance);
+}
 if(o.type==='bar')line(g,x,y,x2,y2,{'stroke-width':3.5});
 if(o.type==='curve'){
  el('path',{d:curvePath(o),'stroke-width':1},g);
@@ -637,7 +702,7 @@ const selectionGeometry=(()=>{
   for(const group of svg.querySelectorAll(':scope > g[data-id]')){
    if(['data-endpoint','data-move-anchor','data-rigid-point','data-rigid-action'].some(k=>group.hasAttribute(k)))continue;
    const parts=[],add=(points,closed,fill,pad)=>{if(points.length)parts.push({points,closed,fill,pad,bounds:bounds(points,pad)})};
-   for(const node of group.querySelectorAll('line,path,polyline,polygon,rect,circle,ellipse,text')){
+   for(const node of group.querySelectorAll('line,path,polyline,polygon,rect,circle,ellipse,text,use')){
     if(node.closest('[data-hit-area],defs')||node.hasAttribute('data-selection-decoration'))continue;
     const style=getComputedStyle(node);
     if(style.display==='none'||style.visibility==='hidden'||Number(style.opacity)===0)continue;
@@ -651,6 +716,7 @@ const selectionGeometry=(()=>{
      const c=map({x:node.cx.baseVal.value,y:node.cy.baseVal.value}),radius=node.r.baseVal.value*scale;
      parts.push({circle:{...c,radius:radius+pad,inner:Math.max(0,radius-pad)},fill,bounds:{left:c.x-radius-pad,right:c.x+radius+pad,top:c.y-radius-pad,bottom:c.y+radius+pad}});continue;
     }
+    if(node.tagName==='use'){const b=node.getBBox();add(corners({left:b.x,right:b.x+b.width,top:b.y,bottom:b.y+b.height}).map(map),true,true,scale/2);continue}
     if(node.tagName==='text'||node.tagName==='rect'){
      const b=node.getBBox();add(corners({left:b.x,right:b.x+b.width,top:b.y,bottom:b.y+b.height}).map(map),true,fill,pad);continue;
     }
@@ -706,7 +772,7 @@ svg.addEventListener('pointerdown',e=>{
   svg.setPointerCapture(e.pointerId);paintMarquee();return;
  }
  if(selectedObjectIds().size>1&&selectedObjectIds().has(id)){
-  e.stopImmediatePropagation();groupDrag={start:point(e),before:copy(items),ids:selectedObjectIds(),moved:false,...(e.pointerType==='mouse'?{clickId:id,screenStart:{x:e.clientX,y:e.clientY},thresholdPassed:false}:{})};svg.setPointerCapture(e.pointerId);return;
+  e.stopImmediatePropagation();groupDrag={start:items.some(o=>selectedObjectIds().has(o.id)&&o.type==='person')?rawPoint(e):point(e),freeMove:items.some(o=>selectedObjectIds().has(o.id)&&o.type==='person'),before:copy(items),ids:selectedObjectIds(),moved:false,...(e.pointerType==='mouse'?{clickId:id,screenStart:{x:e.clientX,y:e.clientY},thresholdPassed:false}:{})};svg.setPointerCapture(e.pointerId);return;
  }
  multiSelection.clear();
 },true);
@@ -714,7 +780,7 @@ svg.addEventListener('pointermove',e=>{
  if(boxSelect){e.stopImmediatePropagation();boxSelect.end=rawPoint(e);boxSelect.dragged=Math.hypot(e.clientX-boxSelect.screenStart.x,e.clientY-boxSelect.screenStart.y)>=4;paintMarquee();return}
  if(!groupDrag)return;e.stopImmediatePropagation();
  if(groupDrag.screenStart&&!groupDrag.thresholdPassed){if(Math.hypot(e.clientX-groupDrag.screenStart.x,e.clientY-groupDrag.screenStart.y)<4)return;groupDrag.thresholdPassed=true}
- const p=point(e),dx=p.x-groupDrag.start.x,dy=p.y-groupDrag.start.y;
+ const p=groupDrag.freeMove?rawPoint(e):point(e),dx=p.x-groupDrag.start.x,dy=p.y-groupDrag.start.y;
  groupDrag.moved=groupDrag.moved||!!(dx||dy);
  for(const original of [...groupDrag.before,...(groupDrag.sectionAdded||[])]){if(!groupDrag.ids.has(original.id))continue;const o=items.find(o=>o.id===original.id);if(!o)continue;
  o.x=original.x+dx;o.y=original.y+dy;if(original.x2!==undefined){o.x2=original.x2+dx;o.y2=original.y2+dy}}
@@ -746,7 +812,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){extendBoundary=null
 function setMode(m){if(m!=='select')rememberCancelSelection();else cancelSelection=null;cancelConnectionDrag();cancelRigidDrag();rigidPoints=[];if(typeof mirrorSelecting!=='undefined')mirrorSelecting=false;if(typeof cancelLoadPlacement==='function')cancelLoadPlacement();hatchPoints=[];extendBoundary=null;multiSelection.clear();mode=m;first=null;second=null;hover=null;for(const b of document.querySelectorAll('button[data-mode]')){const active=b.dataset.mode===m;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}if($('delete')){$('delete').classList.toggle('active',m==='erase');$('delete').setAttribute('aria-pressed',String(m==='erase'))}svg.classList.toggle('erase-cursor',m==='erase');svg.style.cursor='';$('help').textContent=m==='curve'?'Chọn điểm đầu, điểm đi qua, rồi điểm cuối.':m==='erase'?'Bấm trực tiếp vào đối tượng để xóa. Esc để thoát; Hoàn tác để khôi phục.':m==='hatch'?'Bấm các điểm bao vùng biểu đồ. Enter để hoàn tất; Esc để hủy.':m==='extend'?'Chọn đường biên, rồi bấm gần đầu nét cần kéo dài. Shift + bấm để đổi biên.':m==='dim'?'Chọn hai điểm trên thanh, sau đó bấm vị trí đặt đường kích thước.':m==='select'?'Bấm chọn hoặc kéo đối tượng.':['bar','udl','dim','thin','dashed'].includes(m)?'Bấm hai điểm để tạo đối tượng.':'Nhập thuộc tính rồi bấm điểm đặt.';render()}
 for(const [m,title]of Object.entries(modes)){const b=document.createElement('button');b.textContent=title;b.dataset.mode=m;b.onclick=()=>chooseToolOptions(m);$('tools').append(b)}
 function props(){return Object.fromEntries(['label','support','direction','rotation'].map(k=>[k,$(k).value]))}
-function make(type,x,y,x2,y2,p={}){return {id:newId(),type,x,y,...(x2===undefined?{}:{x2,y2}),...props(),label:({force:'P',moment:'M',udl:'q',dim:'L',text:'A',diagramM:'kN.m',diagramQ:'kN',diagramN:'kN'})[type]||'',...p}}
+function make(type,x,y,x2,y2,p={}){if(type==='person')return {id:newId(),type,x,y,angle:p.angle??0,size:p.size??PERSON_DEFAULT_SIZE};return {id:newId(),type,x,y,...(x2===undefined?{}:{x2,y2}),...props(),label:({force:'P',moment:'M',udl:'q',dim:'L',text:'A',diagramM:'kN.m',diagramQ:'kN',diagramN:'kN'})[type]||'',...p}}
 function point(e,exclude=rigidDrag?.kind==='pivot'?null:(rigidDrag?.id||(drag?selected:null))){const p=rawPoint(e);
  const hit=geometricSnap(p,exclude);if(hit)return hit.point;
  // The visible canvas can extend beyond the original page after panning/zooming.
@@ -856,10 +922,14 @@ if(mode==='select'&&e.target.closest('text')){
  const o=items.find(o=>o.id===id);
  if(o){selected=id;Object.keys(props()).forEach(k=>$(k).value=o[k]);if(o.labelFormula){e.preventDefault();editLabel(o,e.target.closest('text'));return}render();return}
 }
+if(mode==='person'){
+ const placement=personPlacementAt(e);clearPersonPreview();if(!placement)return;
+ checkpoint();const o=make('person',placement.x,placement.y,undefined,undefined,{angle:placement.angle});items.push(o);selected=o.id;render();return;
+}
 let p=drawingPoint(e);
 if(mode==='thin'&&first){commitThinCandidate(p,e);return}
 if(mode==='bar'&&first){commitBarCandidate(p,e);return}
-if(mode==='select'){selected=e.target.closest('[data-id]')?.dataset.id||null;const o=items.find(o=>o.id===selected);if(o){Object.keys(props()).forEach(k=>$(k).value=o[k]);drag={p:o.type==='rigidRegion'||drawingConnection(o)?rawPoint(e):p,o:copy(o),before:copy(items),moved:false,endpoint:e.target.closest('[data-endpoint]')?.dataset.endpoint,anchor:o.type!=='rigidRegion'&&!drawingConnection(o)&&!!e.target.closest('[data-move-anchor]')};svg.setPointerCapture(e.pointerId)}render();return}if(mode==='dim'){
+if(mode==='select'){selected=e.target.closest('[data-id]')?.dataset.id||null;const o=items.find(o=>o.id===selected);if(o){if(o.type!=='person')Object.keys(props()).forEach(k=>$(k).value=o[k]);drag={p:o.type==='person'||o.type==='rigidRegion'||drawingConnection(o)?rawPoint(e):p,o:copy(o),before:copy(items),moved:false,endpoint:e.target.closest('[data-endpoint]')?.dataset.endpoint,anchor:o.type!=='rigidRegion'&&!drawingConnection(o)&&!!e.target.closest('[data-move-anchor]')};svg.setPointerCapture(e.pointerId)}render();return}if(mode==='dim'){
  if(!second){const q=snapToBar(rawPoint(e))||point(e);if(!q){msg('Đưa chuột gần đầu thanh hoặc một điểm trên thanh.');return}
  if(!first){first=q;render();msg('Chọn điểm đo thứ hai trên thanh.');return}
  if(Math.hypot(q.x-first.x,q.y-first.y)<0.01)return;
@@ -867,7 +937,12 @@ if(mode==='select'){selected=e.target.closest('[data-id]')?.dataset.id||null;con
  checkpoint();items.push(make('dim',first.x,first.y,second.x,second.y,{offset:snapDimensionOffset(first,second,offsetAt(first,second,point(e)))}));
  first=null;second=null;hover=null;selected=items.at(-1).id;render();msg('Đã tạo kích thước.');return;
  }if(mode==='linkBar'){if(!first){first=p;render();return}if(Math.hypot(p.x-first.x,p.y-first.y)<1)return;const o=make('linkBar',first.x,first.y,p.x,p.y);try{validateConnection(o)}catch{return}checkpoint();items.push(o);first=null;hover=null;selected=o.id;render();return}if(['bar','udl','thin','dashed'].includes(mode)){if(!first){first=p;if(mode==='bar'&&typeof beginBarNumericInput==='function')beginBarNumericInput(e);if(mode==='thin'&&typeof beginThinNumericInput==='function')beginThinNumericInput(e);render();msg('Bấm điểm thứ hai.');return}if(first.x===p.x&&first.y===p.y)return;checkpoint();items.push(make(mode,first.x,first.y,p.x,p.y));first={...p};hover=null}else{checkpoint();items.push(make(mode,p.x,p.y))}selected=items.at(-1).id;render();msg('Đã thêm đối tượng.');if(mode==='text'){e.preventDefault();editObjectLabel(items.at(-1))}};
-svg.onpointermove=e=>{if(!drag){if(first&&['bar','thin','dashed','udl','linkBar'].includes(mode)){hover=drawingPoint(e);render();return;}if(mode==='dim'||mode==='moment'){hover=second?point(e):(snapToBar(rawPoint(e))||point(e));render()}return;}const o=items.find(o=>o.id===selected);if(!o)return;
+svg.onpointermove=e=>{if(mode==='person'&&!drag){paintPersonPreview(e);return}if(!drag){if(first&&['bar','thin','dashed','udl','linkBar'].includes(mode)){hover=drawingPoint(e);render();return;}if(mode==='dim'||mode==='moment'){hover=second?point(e):(snapToBar(rawPoint(e))||point(e));render()}return;}const o=items.find(o=>o.id===selected);if(!o)return;
+if(o.type==='person'){
+ const p=rawPoint(e),x=drag.o.x+p.x-drag.p.x,y=drag.o.y+p.y-drag.p.y;
+ try{validatePerson({...o,x,y})}catch{return}
+ o.x=x;o.y=y;drag.moved=x!==drag.o.x||y!==drag.o.y;render();return;
+}
 if(drawingConnection(o)){
  const next=copy(drag.o),raw=rawPoint(e);
  if(drag.endpoint){const q=point(e,o.id),start=drag.endpoint==='start';next[start?'x':'x2']=q.x;next[start?'y':'y2']=q.y}
@@ -886,7 +961,9 @@ if(drag.endpoint){
 } 
 const dx=p.x-(drag.anchor?(['bar','dim','udl','thin','dashed'].includes(o.type)?(drag.o.x+drag.o.x2)/2:drag.o.x):drag.p.x),dy=p.y-(drag.anchor?(['bar','dim','udl','thin','dashed'].includes(o.type)?(drag.o.y+drag.o.y2)/2:drag.o.y):drag.p.y);
 drag.moved=drag.moved||!!(dx||dy);if(o.type==='dim'&&!drag.anchor){o.offset=snapDimensionOffset(drag.o,{x:drag.o.x2,y:drag.o.y2},(drag.o.offset??0)+offsetAt(drag.o,{x:drag.o.x2,y:drag.o.y2},{x:drag.o.x+dx,y:drag.o.y+dy}),o.id);render();return}o.x=drag.o.x+dx;o.y=drag.o.y+dy;if(o.x2!==undefined){o.x2=drag.o.x2+dx;o.y2=drag.o.y2+dy}render()};
-svg.onpointerup=svg.onpointercancel=e=>{if(e.type==='pointercancel'&&drawingConnection(drag?.o)){cancelConnectionDrag();render();return}const rigid=drag?.o.type==='rigidRegion';if(e.type==='pointercancel'&&rigid){cancelRigidDrag();render();return}rigidSnapHint=null;if(drag?.moved){past.push(drag.before);if(rigid&&past.length>100)past.shift();future=[]}drag=null;if(rigid)render()};
+svg.addEventListener('pointerleave',clearPersonPreview);
+svg.addEventListener('pointercancel',clearPersonPreview);
+svg.onpointerup=svg.onpointercancel=e=>{if(e.type==='pointercancel'&&drag?.o.type==='person'){items=drag.before;drag=null;render();return}if(e.type==='pointercancel'&&drawingConnection(drag?.o)){cancelConnectionDrag();render();return}const rigid=drag?.o.type==='rigidRegion';if(e.type==='pointercancel'&&rigid){cancelRigidDrag();render();return}rigidSnapHint=null;if(drag?.moved){past.push(drag.before);if(rigid&&past.length>100)past.shift();future=[]}drag=null;if(rigid)render()};
 function lengthValue(label){
  const m=label.trim().match(/(?:^|=)\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\s*$/i);
  return m?{value:Number(m[1].replace(',','.')),unit:(m[2]||'').toLowerCase()}:null;
@@ -930,9 +1007,9 @@ function template(t){checkpoint();items=[];restoreDrawingScales();const add=(...
 for(const b of document.querySelectorAll('[data-template]'))b.onclick=()=>template(b.dataset.template);
 function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),5000)}
 function exportSVG(){render(true);try{const out=svg.cloneNode(true);out.setAttribute('viewBox','0 0 1100 720');out.setAttribute('width','1100');out.setAttribute('height','720');return new XMLSerializer().serializeToString(out)}finally{render()}}
-const actions={undo:['↶ Hoàn tác',()=>{if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!past.length)return;future.push(copy(items));items=past.pop();selected=null;first=null;second=null;hover=null;render()}],redo:['↷ Làm lại',()=>{if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!future.length)return;past.push(copy(items));items=future.pop();selected=null;first=null;second=null;hover=null;render()}],delete:['Tẩy',()=>{selected=null;setMode(mode==='erase'?'select':'erase')}],clear:['Bản vẽ trống',()=>{checkpoint();items=[];restoreDrawingScales();selected=null;first=null;second=null;hover=null;render()}],save:['Lưu JSON',()=>download(new Blob([JSON.stringify({format:'ket-cau-studio',version:1,items,geometryScale,internalForceScale},null,2)],{type:'application/json'}),'ket-cau.json')],open:['Mở JSON',()=>$('file').click()],svg:['Xuất SVG',()=>download(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'}),'ket-cau.svg')],png:['Xuất PNG',()=>{const u=URL.createObjectURL(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'})),im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=3300;c.height=2160;c.getContext('2d').drawImage(im,0,0,3300,2160);URL.revokeObjectURL(u);c.toBlob(b=>b?download(b,'ket-cau.png'):msg('Không xuất được PNG.'))};im.onerror=()=>{URL.revokeObjectURL(u);msg('Không xuất được PNG. Hãy thử SVG.')};im.src=u}]};
+const actions={undo:['↶ Hoàn tác',()=>{clearPersonPreview();if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!past.length)return;future.push(copy(items));items=past.pop();selected=null;first=null;second=null;hover=null;render()}],redo:['↷ Làm lại',()=>{clearPersonPreview();if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!future.length)return;past.push(copy(items));items=future.pop();selected=null;first=null;second=null;hover=null;render()}],delete:['Tẩy',()=>{selected=null;setMode(mode==='erase'?'select':'erase')}],clear:['Bản vẽ trống',()=>{checkpoint();items=[];restoreDrawingScales();selected=null;first=null;second=null;hover=null;render()}],save:['Lưu JSON',()=>download(new Blob([JSON.stringify({format:'ket-cau-studio',version:1,items,geometryScale,internalForceScale},null,2)],{type:'application/json'}),'ket-cau.json')],open:['Mở JSON',()=>$('file').click()],svg:['Xuất SVG',()=>download(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'}),'ket-cau.svg')],png:['Xuất PNG',()=>{const u=URL.createObjectURL(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'})),im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=3300;c.height=2160;c.getContext('2d').drawImage(im,0,0,3300,2160);URL.revokeObjectURL(u);c.toBlob(b=>b?download(b,'ket-cau.png'):msg('Không xuất được PNG.'))};im.onerror=()=>{URL.revokeObjectURL(u);msg('Không xuất được PNG. Hãy thử SVG.')};im.src=u}]};
 for(const [id,[title,fn]]of Object.entries(actions)){const b=document.createElement('button');b.id=id;b.textContent=title;b.onclick=fn;$('actions').append(b)}
-function validate(d){if(!d||d.format!=='ket-cau-studio'||d.version!==1||!Array.isArray(d.items)||d.items.length>2000)throw Error('Sai định dạng.');const ids=new Set();for(const o of d.items){if(!o||!Object.hasOwn(modes,o.type)||['select','extend'].includes(o.type)||typeof o.id!=='string'||ids.has(o.id))throw Error('Đối tượng không hợp lệ.');ids.add(o.id);if(o.sectionVisible!==undefined&&(typeof o.sectionVisible!=='boolean'||!sectionForceAction(o)))throw Error('Invalid section visibility');if(drawingConnection(o))validateConnection(o);if(o.strokeColor!==undefined&&!validObjectColor(o.strokeColor))throw Error('Invalid object strokeColor');if(o.type==='rigidRegion')validateRigidRegion(o);if(o.loadAngle!==undefined&&(!Number.isFinite(o.loadAngle)||Math.abs(o.loadAngle)>360))throw Error('Invalid load angle');if(o.labelFormula!==undefined&&(typeof o.labelFormula!=='string'||o.labelFormula.length>500||!['deg','rad'].includes(o.labelAngle)))throw Error('Invalid label expression');if(o.type==='curve'&&(!Array.isArray(o.curvePoints)||o.curvePoints.length!==2||o.curvePoints.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)))throw Error('Đường cong không hợp lệ.');if(o.type==='hatch'&&(!Array.isArray(o.points)||o.points.length<3||o.points.length>1000||o.points.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)||!Number.isFinite(o.spacing)||o.spacing<3||o.spacing>50))throw Error('Invalid hatch');if(o.offset!==undefined&&(!Number.isFinite(o.offset)||Math.abs(o.offset)>10000))throw Error('Khoảng cách đường kích thước không hợp lệ.');for(const k of ['x','y',...(['bar','udl','dim','thin','dashed'].includes(o.type)?['x2','y2']:[])])if(!Number.isFinite(o[k])||Math.abs(o[k])>10000)throw Error('Tọa độ không hợp lệ.');if(typeof o.label!=='string'||o.label.length>100||!['pin','roller','fixed','pin-plain','roller-plain'].includes(o.support)||!['down','up','left','right'].includes(o.direction)||!['cw','ccw'].includes(o.rotation))throw Error('Thuộc tính không hợp lệ.')}return d.items}
+function validate(d){if(!d||d.format!=='ket-cau-studio'||d.version!==1||!Array.isArray(d.items)||d.items.length>2000)throw Error('Sai định dạng.');const ids=new Set();for(const o of d.items){if(!o||(!Object.hasOwn(modes,o.type)&&o.type!=='person')||['select','extend'].includes(o.type)||typeof o.id!=='string'||ids.has(o.id))throw Error('Đối tượng không hợp lệ.');ids.add(o.id);if(o.type==='person'){validatePerson(o);continue}if(o.sectionVisible!==undefined&&(typeof o.sectionVisible!=='boolean'||!sectionForceAction(o)))throw Error('Invalid section visibility');if(drawingConnection(o))validateConnection(o);if(o.strokeColor!==undefined&&!validObjectColor(o.strokeColor))throw Error('Invalid object strokeColor');if(o.type==='rigidRegion')validateRigidRegion(o);if(o.loadAngle!==undefined&&(!Number.isFinite(o.loadAngle)||Math.abs(o.loadAngle)>360))throw Error('Invalid load angle');if(o.labelFormula!==undefined&&(typeof o.labelFormula!=='string'||o.labelFormula.length>500||!['deg','rad'].includes(o.labelAngle)))throw Error('Invalid label expression');if(o.type==='curve'&&(!Array.isArray(o.curvePoints)||o.curvePoints.length!==2||o.curvePoints.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)))throw Error('Đường cong không hợp lệ.');if(o.type==='hatch'&&(!Array.isArray(o.points)||o.points.length<3||o.points.length>1000||o.points.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)||!Number.isFinite(o.spacing)||o.spacing<3||o.spacing>50))throw Error('Invalid hatch');if(o.offset!==undefined&&(!Number.isFinite(o.offset)||Math.abs(o.offset)>10000))throw Error('Khoảng cách đường kích thước không hợp lệ.');for(const k of ['x','y',...(['bar','udl','dim','thin','dashed'].includes(o.type)?['x2','y2']:[])])if(!Number.isFinite(o[k])||Math.abs(o[k])>10000)throw Error('Tọa độ không hợp lệ.');if(typeof o.label!=='string'||o.label.length>100||!['pin','roller','fixed','pin-plain','roller-plain'].includes(o.support)||!['down','up','left','right'].includes(o.direction)||!['cw','ccw'].includes(o.rotation))throw Error('Thuộc tính không hợp lệ.')}return d.items}
 $('file').onchange=async e=>{try{const f=e.target.files[0];if(!f)return;if(f.size>2000000)throw Error('Tệp quá lớn.');const data=JSON.parse(await f.text()),next=validate(data);checkpoint();items=next;restoreDrawingScales(data);selected=null;first=null;second=null;hover=null;render();msg('Đã mở bản vẽ.')}catch(err){msg('Không mở được: '+err.message)}e.target.value=''};
 let wordBridgeToken=null;
 const wordButton=document.createElement('button');wordButton.hidden=true;wordButton.textContent='Chèn vào Word';$('actions').append(wordButton);

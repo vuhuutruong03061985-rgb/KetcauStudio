@@ -87,6 +87,7 @@ svg.addEventListener('pointermove',e=>{
  svg.querySelector('[data-endpoint-hint]')?.remove();
  svg.querySelector('[data-intersection-hint]')?.remove();
  svg.querySelector('[data-extra-snap-hint]')?.remove();
+ if(mode==='person'||drag?.o.type==='person'||groupDrag?.freeMove)return;
  if(!snapEnabled||panEnabled||gesture||['labelEdit','erase','extend'].includes(mode))return;
  if(rigidDrag||drag?.o.type==='rigidRegion')return;
  const raw=rawPoint(e),exclude=drag?selected:null;
@@ -128,6 +129,7 @@ svg.addEventListener('pointermove',e=>{
 });
 svg.addEventListener('pointerleave',()=>{svg.querySelector('[data-extra-snap-hint]')?.remove();svg.querySelector('[data-midpoint-hint]')?.remove();svg.querySelector('[data-endpoint-hint]')?.remove();svg.querySelector('[data-intersection-hint]')?.remove()});
 function applyCamera(){
+ clearPersonPreview();
  svg.setAttribute('viewBox',`${camera.x} ${camera.y} ${camera.w} ${camera.h}`);
  $('zoomLevel').textContent=Math.round(1100/camera.w*100)+'%';
 }
@@ -289,7 +291,7 @@ for(const [id,title,types]of [
  ['interactionTools','Thao tác',['select']],
  ['drawingTools','Vẽ',['bar','thin','dashed','curve','extend','hatch','rigidRegion']],
  ['symbolTools','Tải trọng',['support','hinge','force','moment','udl']],
- ['annotationTools','Chú thích',['dim','text','positive','negative','diagramM','diagramQ','diagramN']]
+ ['annotationTools','Chú thích',['dim','text','person','positive','negative','diagramM','diagramQ','diagramN']]
 ]){
  const section=document.createElement('section');section.id=id;section.className='tool-group';
  const heading=document.createElement('h3');heading.id=id+'Title';heading.textContent=title;
@@ -746,6 +748,7 @@ svg.addEventListener('pointerup',finishJoint,true);svg.addEventListener('pointer
 
 // SVG icons are CSS masks so changing button text/state cannot remove them.
 const toolIconPaths={
+ person:'M14 4A2 2 0 1 1 10 4A2 2 0 1 1 14 4M12 6V15M12 9L7 13M12 9L17 13M12 15L7 23M12 15L17 23',
  drawingScalesToggle:'M3 7h18v10H3z M7 7v5 M11 7v3 M15 7v5 M19 7v3',
  linkBar:'M7 12H17M7 12A3 3 0 1 1 1 12A3 3 0 1 1 7 12M23 12A3 3 0 1 1 17 12A3 3 0 1 1 23 12',
  weld:'M6 6H18V18H6Z',
@@ -798,7 +801,7 @@ function decorateToolIcons(){
  for(const button of document.querySelectorAll('#tools button,#viewTools button,#actions button,#toggleTools')){
   const key=button.dataset.mode||button.dataset.toolbarIcon||button.id,path=toolIconPaths[key];if(!path)continue;
   const label=button.textContent.trim();
-  const title=label+(drawingShortcutNames[key]?' ('+drawingShortcutNames[key]+')':'');
+  const title=key==='person'?'H\u00ecnh ng\u01b0\u1eddi \u2013 \u0111\u1eb7t v\u1ecb tr\u00ed \u0111\u1ee9ng':label+(drawingShortcutNames[key]?' ('+drawingShortcutNames[key]+')':'');
   if(button.title!==title)button.title=title;
   if(button.getAttribute('aria-label')!==label)button.setAttribute('aria-label',label);
   if(!button.classList.contains('icon-button')){
