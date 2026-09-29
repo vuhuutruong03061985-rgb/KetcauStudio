@@ -5,6 +5,15 @@ let hatchPoints=[];
 let rigidPoints=[],rigidDrag=null;
 let rigidPivot=null,rigidSnapHint=null;
 const rigidRadians=o=>(o.rigidAngle||0)*Math.PI/180;
+// Pure support orientation: SVG local +Y points toward the cursor.
+// Degrees in (-180, 180], with positive zero; <= 1e-9 drawing units has no direction.
+function solveSupportAngle(anchorPoint,cursorPoint){
+ if(!anchorPoint||!cursorPoint||![anchorPoint.x,anchorPoint.y,cursorPoint.x,cursorPoint.y].every(Number.isFinite))return null;
+ const dx=cursorPoint.x-anchorPoint.x,dy=cursorPoint.y-anchorPoint.y;
+ if(!Number.isFinite(dx)||!Number.isFinite(dy)||Math.hypot(dx,dy)<=1e-9)return null;
+ const angle=Math.atan2(-dx,dy)*180/Math.PI;
+ return angle===-180?180:angle===0?0:angle;
+}
 function rotateVector(p,a){return {x:Math.cos(a)*p.x-Math.sin(a)*p.y,y:Math.sin(a)*p.x+Math.cos(a)*p.y}}
 function rigidWorld(o,p){const q=rotateVector(p,rigidRadians(o));return {x:o.x+q.x,y:o.y+q.y}}
 function rigidLocal(o,p){return rotateVector({x:p.x-o.x,y:p.y-o.y},-rigidRadians(o))}
