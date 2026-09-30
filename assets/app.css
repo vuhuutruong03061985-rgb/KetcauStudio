@@ -153,3 +153,7 @@ main[data-toolbox-mode="auto-hide"],main[data-toolbox-mode="collapsed"]{grid-tem
 main[data-toolbox-mode="auto-hide"] #toolPanel{position:absolute;left:44px;top:var(--toolbox-inset);bottom:var(--toolbox-inset);width:min(var(--toolbox-width),calc(100% - 54px));max-height:none;z-index:900;box-shadow:3px 3px 12px #183e5533}
 @media(max-width:1000px){main[data-toolbox-mode]{--toolbox-width:220px;--toolbox-inset:10px}}
 @media(max-width:700px){main[data-toolbox-mode="pinned-open"] #toolPanel{width:auto}main[data-toolbox-mode="auto-hide"] #toolPanel{flex:none}main[data-toolbox-mode]{--toolbox-width:260px}}
+
+#commandControls{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));display:flex;gap:8px;z-index:1500;padding:4px;background:#fff;border:1px solid #bccbd4;border-radius:8px;box-shadow:0 2px 8px #0002}
+#commandControls[hidden],#commandControls button[hidden]{display:none}
+#commandControls button{min-width:44px;min-height:44px;font-size:24px;touch-action:manipulation}

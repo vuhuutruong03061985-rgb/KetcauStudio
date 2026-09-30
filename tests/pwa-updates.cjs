@@ -8,7 +8,7 @@ const {chromium}=require('../.test-tools/node_modules/playwright');
   if(!['index.html','sw.js','manifest.webmanifest'].includes(file)&&!file.startsWith('assets/')){res.writeHead(404);return res.end()}
   if(file==='sw.js')workerRequests++;
   if(fail&&file==='assets/calculator.js'){res.writeHead(503);return res.end()}
-  try{let body=fs.readFileSync(file);if(file==='sw.js'||file==='assets/tablet.js')body=Buffer.from(body.toString().replaceAll('shell-v3','shell-'+version));res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.html')?'text/html':file.endsWith('.webmanifest')?'application/manifest+json':file.endsWith('.png')?'image/png':'image/svg+xml');res.end(body)}catch{res.writeHead(404);res.end()}
+  try{let body=fs.readFileSync(file);if(file==='sw.js'||file==='assets/tablet.js')body=Buffer.from(body.toString().replaceAll('shell-v4','shell-'+version));res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.html')?'text/html':file.endsWith('.webmanifest')?'application/manifest+json':file.endsWith('.png')?'image/png':'image/svg+xml');res.end(body)}catch{res.writeHead(404);res.end()}
  });await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const browser=await chromium.launch({channel:'msedge',headless:true});try{
  const context=await browser.newContext();let p=await context.newPage();const url='http://127.0.0.1:'+server.address().port+'/';await p.goto(url);

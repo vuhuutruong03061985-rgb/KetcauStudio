@@ -1584,16 +1584,12 @@ for(const key of ['hatchSpacing'])$(key).onchange=()=>{
  const spacing=Number($('hatchSpacing').value);if(!Number.isFinite(spacing)||spacing<3||spacing>50){$('hatchSpacing').value=8;return}
  const o=items.find(o=>o.id===selected);if(o?.type==='hatch'){checkpoint();o.spacing=spacing;render()}
 };
-document.addEventListener('keydown',e=>{
- if(mode!=='hatch'||['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName))return;
- if(e.key==='Escape'){hatchPoints=[];render()}
- if(e.key==='Enter'){
-  e.preventDefault();if(hatchPoints.length<3){msg('Chọn ít nhất 3 điểm.');return}
+function finishHatchCommand(){
+ if(hatchPoints.length<3)return;
   const origin=hatchPoints[0];const spacing=Math.max(3,Math.min(50,Number($('hatchSpacing').value)||8));
   checkpoint();const o=make('hatch',origin.x,origin.y,undefined,undefined,{points:hatchPoints.map(p=>({x:p.x-origin.x,y:p.y-origin.y})),spacing});
   items.push(o);hatchPoints=[];setMode('select');selected=o.id;render();
- }
-});
+}
 document.addEventListener('keydown',e=>{
  const arrows={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
  if(!arrows[e.key]||e.ctrlKey||e.metaKey||e.altKey||mode!=='select')return;
@@ -1919,7 +1915,7 @@ function endRigidDrag(e){
 svg.addEventListener('pointerup',endRigidDrag,true);
 svg.addEventListener('pointercancel',endRigidDrag,true);
 document.addEventListener('keydown',e=>{
- if(mode==='rigidRegion'&&e.key==='Enter'&&!e.isComposing&&!e.target.matches('input,select,textarea')){e.preventDefault();finishRigidRegion()}
+ if(mode==='rigidRegion'&&e.key==='Enter'&&!e.isComposing&&!e.target.matches('input,select,textarea')){e.preventDefault();finishActiveCommand()}
 });
 function openRigidOptions(){
  const object=mode==='select'?items.find(o=>o.id===selected&&o.type==='rigidRegion'):null;

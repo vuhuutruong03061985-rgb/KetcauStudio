@@ -31,7 +31,7 @@ document.addEventListener('keydown',e=>{
   return;
  }
  if(e.key==='Escape'){
-  e.preventDefault();e.stopImmediatePropagation();cancelToSelection();return;
+  e.preventDefault();e.stopImmediatePropagation();cancelActiveCommand();return;
  }
  if(e.altKey&&!e.ctrlKey&&e.key.toLowerCase()==='s'){
   e.preventDefault();e.stopImmediatePropagation();
@@ -354,6 +354,7 @@ function captureDrawing(){
  return {items:copy(items),past:copy(past),future:copy(future),selected,first:copy(first),second:copy(second),hover:copy(hover),hatchPoints:copy(hatchPoints),rigidPoints:copy(rigidPoints),rigidPivot:copy(rigidPivot),extendBoundary,multiSelection:[...multiSelection]};
 }
 function restoreDrawing(snapshot){
+ if(mode==='section'||mirrorSelecting)clearMultiPointCommand();
  cancelConcentratedLoadPlacement();
  clearSupportPlacement();
  if(!snapshot)return;
@@ -431,7 +432,7 @@ installButton.onclick=async()=>{
  await installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;installButton.hidden=true;
 };
 window.addEventListener('appinstalled',()=>{installButton.hidden=true;installPrompt=null});
-const KETCAU_APP_VERSION='shell-v3';
+const KETCAU_APP_VERSION='shell-v4';
 let pwaRegistration=null;
 if('serviceWorker' in navigator&&window.isSecureContext&&location.protocol!=='file:'){
  const indicator=document.createElement('small');indicator.className='offline-ready';indicator.id='pwaStatus';indicator.setAttribute('role','status');
@@ -551,6 +552,7 @@ async function loadDocument(file,handle=null){
  setMode('select');saveDraft();msg('Đã mở '+documentName);
 }
 async function openDocument(){
+ clearMultiPointCommand();
  cancelConcentratedLoadPlacement();
  clearSupportPlacement();
  if(fileBusy)return;
@@ -1216,7 +1218,7 @@ document.addEventListener('pointerdown',e=>{
 svg.addEventListener('pointermove',e=>{if(mode==='section'){if(sectionPending)sectionPending.hover=sectionComponentAt(e);paintSection(sectionPending?null:point(e))}});
 document.addEventListener('keydown',e=>{
  if(mode!=='section'||e.target.matches('input,textarea,select'))return;
- if(e.key==='Enter'&&!sectionPending){e.preventDefault();finishSection()}
+ if(e.key==='Enter'&&!sectionPending){e.preventDefault();finishActiveCommand()}
 });
 
 function mirroredObjects(source,a,b){
@@ -1261,7 +1263,7 @@ mirrorButton.onclick=()=>{
  startMirrorAxis();
 };
 document.addEventListener('keydown',e=>{
- if(mirrorSelecting&&e.key==='Enter'&&!e.target.matches('input,textarea,select')){e.preventDefault();startMirrorAxis()}
+ if(mirrorSelecting&&e.key==='Enter'&&!e.target.matches('input,textarea,select')){e.preventDefault();finishActiveCommand()}
 });
 function completeMirror(end){
  let reflected;try{reflected=mirroredObjects(mirrorSource,mirrorAxis,end)}catch(error){msg(error.message);return}
@@ -1869,3 +1871,45 @@ window.addEventListener('keydown',e=>{
  if(thinNumericSession!==session||session.valueMode!=='locked')return;
  commitThinCandidate(hover||first,{clientX:session.capture.clientX,clientY:session.capture.clientY,pointerType:session.pointerType});
 },true);
+
+// Shared command actions: native editors/Dynamic Input retain their own key lifecycle.
+function finishActiveCommand(){
+ if(mode==='section'&&!sectionPending)finishSection();
+ else if(mode==='rigidRegion')finishRigidRegion();
+ else if(mode==='hatch')finishHatchCommand();
+ else if(mirrorSelecting)startMirrorAxis();
+ updateCommandControls();
+}
+function cancelActiveCommand(){cancelToSelection();updateCommandControls()}
+const commandControls=document.createElement('div');commandControls.id='commandControls';commandControls.hidden=true;
+const commandCancel=document.createElement('button'),commandFinish=document.createElement('button');
+commandCancel.type=commandFinish.type='button';commandCancel.textContent='\u00d7';commandFinish.textContent='\u2713';
+commandCancel.setAttribute('aria-label','H\u1ee7y (Esc)');commandFinish.setAttribute('aria-label','Ho\u00e0n t\u1ea5t (Enter)');
+commandControls.append(commandCancel,commandFinish);document.body.append(commandControls);
+commandControls.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation()});
+commandCancel.onclick=cancelActiveCommand;commandFinish.onclick=finishActiveCommand;
+function updateCommandControls(){
+ const touch=matchMedia('(any-pointer: coarse)').matches;
+ const editing=inlineEditor||document.querySelector('dialog[open]')||document.activeElement?.matches('input,textarea,select')||document.activeElement?.isContentEditable;
+ const active=mode!=='select'||mirrorSelecting;
+ const finish=mode==='section'&&!sectionPending&&sectionPoints.length>=2||mode==='rigidRegion'&&rigidPoints.length>=3||mode==='hatch'&&hatchPoints.length>=3||mirrorSelecting&&selectedObjectIds().size>0;
+ commandControls.hidden=!touch||!!editing||!active;
+ commandFinish.hidden=!finish;
+ // Keep clear of the existing numeric editor; do not create a second confirmation UI.
+ const input=$('dynamicInput');
+ if(input&&!input.hidden){const r=input.getBoundingClientRect();commandControls.style.bottom=Math.max(16,innerHeight-r.top+12)+'px'}else commandControls.style.bottom='';
+}
+new MutationObserver(updateCommandControls).observe(svg,{childList:true,subtree:true});
+for(const event of ['focusin','focusout','pointerup','keydown'])document.addEventListener(event,()=>queueMicrotask(updateCommandControls));
+window.addEventListener('resize',updateCommandControls);
+document.addEventListener('keydown',e=>{if(mode==='hatch'&&e.key==='Enter'&&!e.isComposing&&!e.target.matches('input,textarea,select')){e.preventDefault();finishActiveCommand()}});
+// Clear multi-point sessions on lifecycle actions that previously left point arrays alive.
+function clearMultiPointCommand(){
+ if(!['section','hatch','rigidRegion'].includes(mode)&&!mirrorSelecting)return;
+ sectionPoints=[];sectionPending=null;hatchPoints=[];rigidPoints=[];mirrorSelecting=false;
+ document.querySelector('[data-section-dialog]')?.remove();setMode('select');updateCommandControls();
+}
+for(const name of ['undo','redo']){const action=actions[name][1];actions[name][1]=()=>{clearMultiPointCommand();action()};$(name).onclick=actions[name][1]}
+svg.addEventListener('pointercancel',clearMultiPointCommand);
+$('open').addEventListener('click',clearMultiPointCommand,true);
+updateCommandControls();
