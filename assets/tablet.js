@@ -2037,3 +2037,132 @@ ribbonScroll.addEventListener('scroll',()=>{for(const menu of ribbonScroll.query
 floatingToolsMedia.addEventListener('change',()=>{for(const panel of ribbonScroll.querySelectorAll('.file-commands')){panel.style.removeProperty('left');panel.style.removeProperty('top')}paintCommandRibbon()});
 window.addEventListener('resize',positionRibbonMenus);
 paintCommandRibbon();
+
+// Task 2B: dormant, session-only prototype. Nothing mounts until explicitly called.
+const semicircleEngine=(()=>{
+ const gap=2;let nextMenuId=0;
+ function point(cx,cy,r,a,side){return {x:cx+(side==='left'?1:-1)*r*Math.cos(a),y:cy+r*Math.sin(a)}}
+ function sectorIconPosition(s){return point(s.cx,s.cy,(s.r0+s.r1)/2,(s.a0+s.a1)/2,s.side)}
+ function solveRadialSectorPath(s){
+  const a=point(s.cx,s.cy,s.r1,s.a0,s.side),b=point(s.cx,s.cy,s.r1,s.a1,s.side),c=point(s.cx,s.cy,s.r0,s.a1,s.side),d=point(s.cx,s.cy,s.r0,s.a0,s.side),sweep=s.side==='left'?1:0;
+  return `M${a.x},${a.y} A${s.r1},${s.r1} 0 0 ${sweep} ${b.x},${b.y} L${c.x},${c.y} A${s.r0},${s.r0} 0 0 ${1-sweep} ${d.x},${d.y} Z`;
+ }
+ function hitTestRadialSector(s,x,y){
+  const dx=(x-s.cx)*(s.side==='left'?1:-1),dy=y-s.cy,r=Math.hypot(dx,dy),a=Math.atan2(dy,dx);
+  return r>=s.r0&&r<=s.r1&&a>=s.a0&&a<=s.a1;
+ }
+ function solveSemicircleLayout({side='left',innerCount=3,outerCount=0,minTarget=44,bounds,centerY,preferred={}}){
+  if(!['left','right'].includes(side)||![innerCount,outerCount].every(n=>Number.isInteger(n)&&n>=0&&n<=12)||!Number.isFinite(minTarget)||minTarget<44)throw new RangeError('Invalid semicircle options');
+  if(!bounds||!['left','right','top','bottom'].every(k=>Number.isFinite(bounds[k]))||bounds.right<=bounds.left||bounds.bottom<=bounds.top)throw new RangeError('Invalid safe bounds');
+  if(centerY!==undefined&&!Number.isFinite(centerY))throw new RangeError('Invalid center');
+  for(const key of ['inner','outer'])if(preferred[key]!==undefined&&(!Number.isFinite(preferred[key])||preferred[key]<0))throw new RangeError('Invalid preferred radius');
+  const hubRadius=24,thickness=minTarget+4;
+  function ring(count,start,preference){
+   if(!count)return {r0:start,r1:start,step:0,span:0,count};
+   // Fit a 44px disk, not just a 44px arc. Account for both radial edges.
+   const step=Math.min(Math.PI/4,Math.PI/count),mid=Math.max(start+thickness/2,(minTarget/2+gap)/Math.sin(step/2));
+   const r1=Math.max(mid+thickness/2,preference||0),r0=r1-thickness;
+   return {r0,r1,step,span:count*step,count};
+  }
+  let inner=ring(innerCount,hubRadius+gap,preferred.inner),outer=ring(outerCount,inner.r1+gap,preferred.outer);
+  let radius=outerCount?outer.r1:innerCount?inner.r1:hubRadius;
+  // Preferences may yield to bounds; minimum target dimensions never shrink.
+  if(radius>bounds.right-bounds.left||2*radius>bounds.bottom-bounds.top){inner=ring(innerCount,hubRadius+gap);outer=ring(outerCount,inner.r1+gap);radius=outerCount?outer.r1:innerCount?inner.r1:hubRadius}
+  const fits=radius<=bounds.right-bounds.left&&2*radius<=bounds.bottom-bounds.top;
+  const cy=fits?Math.max(bounds.top+radius,Math.min(centerY??(bounds.top+bounds.bottom)/2,bounds.bottom-radius)):(bounds.top+bounds.bottom)/2,cx=side==='left'?bounds.left:bounds.right;
+  function sectors(ring){return Array.from({length:ring.count},(_,index)=>{
+   const mid=-ring.span/2+(index+.5)*ring.step,half=ring.step/2-Math.asin(gap/((ring.r0+ring.r1)/2));
+   const s={side,cx,cy,r0:ring.r0,r1:ring.r1,a0:mid-half,a1:mid+half,index};
+   return {...s,icon:sectorIconPosition(s),path:solveRadialSectorPath(s)};
+  })}
+  return {side,cx,cy,hubRadius,radius,fits,inner:sectors(inner),outer:sectors(outer),bounds:{...bounds}};
+ }
+ function mirrorSemicircleLayout(layout){
+  const side=layout.side==='left'?'right':'left',cx=layout.bounds.left+layout.bounds.right-layout.cx;
+  const mirror=s=>{const next={...s,side,cx};return {...next,icon:sectorIconPosition(next),path:solveRadialSectorPath(next)}};
+  return {...layout,side,cx,inner:layout.inner.map(mirror),outer:layout.outer.map(mirror),bounds:{...layout.bounds}};
+ }
+ function createMenu({side,items:entries,getBounds,centerY,onAction=()=>{}}){
+  const insetId='semicircle-inset-'+(++nextMenuId);
+  const host=document.createElement('div');host.className='semicircle-prototype';host.dataset.side=side;
+  const surface=document.createElementNS(NS,'svg');surface.setAttribute('aria-label',`Demo ${side}`);host.append(surface);document.body.append(host);
+  const state={side,open:false,activeGroup:null,hoveredSector:null};
+  const pressed=new Map(),active=new Map();let layout,destroyed=false;
+  const node=(name,attrs,parent=surface)=>{const n=document.createElementNS(NS,name);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,String(v));parent.append(n);return n};
+  function control(id,label,path,icon,position,action,options={}){
+   const g=node('g',{role:'button',tabindex:options.disabled?-1:0,'aria-label':label,'aria-disabled':!!options.disabled,'data-demo-id':id,class:'semicircle-control'});
+   if(options.expanded!==undefined)g.setAttribute('aria-expanded',String(options.expanded));
+   if(pressed.has(id))g.setAttribute('aria-pressed',String(pressed.get(id)));
+   g.classList.toggle('active',active.get(id)===true);g.style.setProperty('--sector-tint',options.tint||'#edf2f6');g.style.setProperty('--sector-inset',`url(#${insetId})`);
+   node('title',{},g).textContent=label;
+   node('path',{d:path,class:'semicircle-hit'},g);
+   node('path',{d:toolIconPaths[icon]||toolIconPaths.toggleTools,class:'semicircle-icon',transform:`translate(${position.x-12} ${position.y-12})`,fill:icon==='weld'?'currentColor':'none'},g);
+   const invoke=()=>{if(!options.disabled)action()};
+   g.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation()});
+   g.addEventListener('click',e=>{e.stopPropagation();invoke()});
+   g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(!e.repeat)invoke()}});
+   g.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')state.hoveredSector=id});
+   g.addEventListener('pointerleave',()=>{if(state.hoveredSector===id)state.hoveredSector=null});
+  }
+  function paint(){
+   if(destroyed)return;
+   const focused=host.contains(document.activeElement)?document.activeElement.getAttribute('data-demo-id'):null;
+   const group=entries.find(entry=>entry.id===state.activeGroup),children=group?.children||[];
+   // Reserve the largest group while closed too: opening cannot move the hub.
+   const reserve=solveSemicircleLayout({side,innerCount:entries.length,outerCount:Math.max(0,...entries.map(e=>e.children?.length||0)),bounds:getBounds(),centerY});
+   layout=solveSemicircleLayout({side,innerCount:entries.length,outerCount:state.open?children.length:0,bounds:getBounds(),centerY:reserve.cy});
+   surface.replaceChildren();host.hidden=!reserve.fits;
+   if(!reserve.fits)return; // Caller must page/regroup when safe targets cannot fit.
+   // SVG equivalent of the existing selected button's inset shadow.
+   const defs=node('defs',{}),filter=node('filter',{id:insetId,x:'-10%',y:'-10%',width:'120%',height:'120%'},defs);
+   node('feOffset',{in:'SourceAlpha',dx:2,dy:2,result:'offset'},filter);
+   node('feGaussianBlur',{in:'offset',stdDeviation:2,result:'blur'},filter);
+   node('feComposite',{in:'SourceAlpha',in2:'blur',operator:'out',result:'edge'},filter);
+   node('feFlood',{'flood-color':'#143a55','flood-opacity':.25,result:'color'},filter);
+   node('feComposite',{in:'color',in2:'edge',operator:'in',result:'shadow'},filter);
+   const merge=node('feMerge',{},filter);node('feMergeNode',{in:'SourceGraphic'},merge);node('feMergeNode',{in:'shadow'},merge);
+   const {cx,cy,hubRadius:r}=layout,sign=side==='left'?1:-1;
+   control('hub',`Demo ${side}: mở / đóng`,`M${cx},${cy-r} A${r},${r} 0 0 ${side==='left'?1:0} ${cx},${cy+r} Z`,'toggleTools',{x:cx+sign*r*.5,y:cy},()=>{state.open=!state.open;state.activeGroup=null;paint()},{expanded:state.open});
+   if(state.open){
+    const draw=(entry,sector,isGroup)=>control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>{
+     if(isGroup&&entry.children?.length){state.activeGroup=state.activeGroup===entry.id?null:entry.id;paint()}
+     else{onAction(entry.id);state.open=false;state.activeGroup=null;paint()}
+    },{disabled:entry.disabled,tint:entry.tint,...(entry.children?.length?{expanded:state.activeGroup===entry.id}:{})});
+    entries.forEach((entry,i)=>draw(entry,layout.inner[i],true));children.forEach((entry,i)=>draw(entry,layout.outer[i],false));
+   }
+   if(focused){const target=[...host.querySelectorAll('[data-demo-id]')].find(n=>n.dataset.demoId===focused)||host.querySelector('[data-demo-id="hub"]');target?.focus({preventScroll:true})}
+  }
+  const keydown=e=>{if(host.contains(e.target)&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopImmediatePropagation();if(!e.repeat)e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}))}};
+  const resize=()=>paint();window.addEventListener('keydown',keydown,true);window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);window.visualViewport?.addEventListener('scroll',resize);paint();
+  return {host,state,get layout(){return layout},refresh:paint,close(){state.open=false;state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize)}};
+ }
+ return {solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,createMenu};
+})();
+
+// DevTools: const demo = showSemicircleDemo(); demo.destroy() removes all listeners/UI.
+function showSemicircleDemo(){
+ window.semicircleDemo?.destroy();
+ const entries=[
+  {id:'group',label:'Demo: nhóm',icon:'hatch',tint:'#f5e8db',children:[{id:'child-a',label:'Demo: A',icon:'thin',tint:'#e2eee3'},{id:'child-b',label:'Demo: B',icon:'curve',tint:'#e4e9f4'}]},
+  {id:'toggle',label:'Demo: trạng thái',icon:'positive',tint:'#ede5f2'},
+  {id:'disabled',label:'Demo: không khả dụng',icon:'weld',tint:'#dfeff0',disabled:true}
+ ];
+ const safeProbe=document.createElement('div');safeProbe.className='semicircle-safe-probe';document.body.append(safeProbe);
+ const getBounds=()=>{const vv=window.visualViewport,s=getComputedStyle(safeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;return {left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),document.querySelector('header').getBoundingClientRect().bottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))}};
+ const menus=['left','right'].map(side=>{let menu;menu=semicircleEngine.createMenu({side,items:entries,getBounds,onAction:id=>{if(id==='toggle'){const on=!menu.host.querySelector('[data-demo-id="toggle"]').classList.contains('active');menu.setState(id,{isActive:on,isPressed:on})}}});menu.setState('toggle',{isActive:false,isPressed:false});return menu});
+ // Consume dismissal before document/canvas handlers: never place a point,
+ // blur/commit an editor, dispatch Escape, or cancel a drawing command.
+ const consumed=new Set();let swallowClick=false;
+ const down=e=>{
+  swallowClick=false;
+  if(menus.some(m=>m.host.contains(e.target))){e.preventDefault();e.stopImmediatePropagation();return}
+  if(!menus.some(m=>m.state.open))return;
+  consumed.add(e.pointerId);swallowClick=true;e.preventDefault();e.stopImmediatePropagation();menus.forEach(m=>m.close());
+ };
+ const end=e=>{if(consumed.has(e.pointerId)){e.preventDefault();e.stopImmediatePropagation();consumed.delete(e.pointerId)}};
+ const move=e=>{if(consumed.has(e.pointerId)){e.preventDefault();e.stopImmediatePropagation()}};
+ const click=e=>{if(swallowClick){swallowClick=false;e.preventDefault();e.stopImmediatePropagation()}};
+ window.addEventListener('pointerdown',down,true);window.addEventListener('pointermove',move,true);window.addEventListener('pointerup',end,true);window.addEventListener('pointercancel',end,true);window.addEventListener('click',click,true);
+ const demo={menus,destroy(){menus.forEach(m=>m.destroy());safeProbe.remove();window.removeEventListener('pointerdown',down,true);window.removeEventListener('pointermove',move,true);window.removeEventListener('pointerup',end,true);window.removeEventListener('pointercancel',end,true);window.removeEventListener('click',click,true);if(window.semicircleDemo===demo)delete window.semicircleDemo}};
+ window.semicircleDemo=demo;return demo;
+}
