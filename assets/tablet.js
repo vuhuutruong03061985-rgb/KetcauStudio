@@ -426,18 +426,26 @@ if(location.hostname==='localhost'){
 }
 if(location.search.includes('token='))history.replaceState(null,'',location.pathname);
 const installButton=$('installApp');
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;installButton.hidden=false});
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();if(matchMedia('(display-mode: standalone)').matches)return;installPrompt=e;installButton.hidden=false});
 installButton.onclick=async()=>{
  if(!installPrompt)return;
  await installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;installButton.hidden=true;
 };
 window.addEventListener('appinstalled',()=>{installButton.hidden=true;installPrompt=null});
-const KETCAU_APP_VERSION='shell-v4';
+const KETCAU_APP_VERSION='shell-v5';
 let pwaRegistration=null;
 if('serviceWorker' in navigator&&window.isSecureContext&&location.protocol!=='file:'){
  const indicator=document.createElement('small');indicator.className='offline-ready';indicator.id='pwaStatus';indicator.setAttribute('role','status');
  document.querySelector('header>div').append(indicator);
- const status=(state,text)=>{indicator.dataset.state=state;indicator.textContent=KETCAU_APP_VERSION+' | '+text};
+ const versionLabel=document.createElement('span');versionLabel.className='pwa-version';versionLabel.textContent=KETCAU_APP_VERSION+' | ';
+ const statusLabel=document.createElement('span');indicator.append(versionLabel,statusLabel);
+ let readyNoticeTimer=null;
+ const status=(state,text)=>{
+  if(indicator.dataset.state===state&&statusLabel.textContent===text)return;
+  clearTimeout(readyNoticeTimer);delete indicator.dataset.dismissed;
+  indicator.dataset.state=state;statusLabel.textContent=text;
+  if(state==='ready')readyNoticeTimer=setTimeout(()=>{indicator.dataset.dismissed='true'},5000);
+ };
  const waiting=()=>{if(!pwaRegistration?.waiting)return false;status('update','Có phiên bản mới. Đóng tất cả cửa sổ ứng dụng rồi mở lại để cập nhật.');return true};
  function readiness(){
   if(waiting())return;

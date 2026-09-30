@@ -53,6 +53,6 @@ The viewBox camera never changes model coordinates. SVG/PNG export resets to 110
 
 ### PWA release check
 
-For every deployed app-shell HTML/CSS/JS change, update `KETCAU_APP_VERSION` in assets/tablet.js and increment the single `CACHE` constant in sw.js (currently shell-v4). Keep each release cache name unique. Publish the complete static package together; a failed required asset prevents the new worker from installing.
+For every deployed app-shell HTML/CSS/JS change, update `KETCAU_APP_VERSION` in assets/tablet.js and increment the single `CACHE` constant in sw.js (currently shell-v5). Keep each release cache name unique. Publish the complete static package together; a failed required asset prevents the new worker from installing.
 
 Open the installed app online. If an update is waiting, save the drawing, close **all** app windows/tabs for this site, then reopen. No automatic reload or skipWaiting is used. Verify the version in the small header status and the offline-ready message, then close and reopen in Airplane mode before class. The status checks the active shell cache; it does not certify OneDrive files are available offline. Physical Android validation is still required.
