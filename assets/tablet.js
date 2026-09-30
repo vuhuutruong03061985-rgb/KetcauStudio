@@ -287,6 +287,8 @@ document.addEventListener('keydown',e=>{
  }
 });
 // Session-only toolbox presentation; independent of drawing/document state.
+const floatingToolsMedia=matchMedia('(any-pointer: coarse)');
+let floatingToolsOpen=false,floatingToolsSide='left',floatingToolsRatio=.35,floatingToolsDrag=null,floatingToolsSuppressClick=false;
 const toolboxPanel=$('toolPanel'),toolboxHandle=$('toggleTools'),toolboxShell=toolboxPanel.parentElement;
 const toolboxPin=document.createElement('button');toolboxPin.id='toolboxPin';toolboxPin.type='button';
 toolboxPin.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l-1 7 3 3v2H6v-2l3-3zM12 15v6"/></svg>';
@@ -296,6 +298,7 @@ toolboxShell.append(toolboxHandle);toolboxHandle.className='toolbox-edge-handle'
 let toolboxMode='pinned-open',toolboxOpen=false,toolboxCloseTimer=null,toolboxTouchInteraction=false;
 function cancelToolboxClose(){clearTimeout(toolboxCloseTimer);toolboxCloseTimer=null}
 function paintToolbox(){
+ if(floatingToolsMedia.matches){paintFloatingTools();return}
  const visible=toolboxMode==='pinned-open'||toolboxMode==='auto-hide'&&toolboxOpen;
  toolboxShell.dataset.toolboxMode=toolboxMode;toolboxShell.classList.toggle('toolbox-overlay-open',toolboxMode==='auto-hide'&&toolboxOpen);
  document.body.classList.toggle('tools-collapsed',!visible);
@@ -306,13 +309,15 @@ function paintToolbox(){
  toolboxPin.title=toolboxMode==='pinned-open'?'Tự động ẩn thanh Công cụ':'Ghim thanh Công cụ';toolboxPin.setAttribute('aria-label',toolboxPin.title);
 }
 function setToolboxMode(next){cancelToolboxClose();toolboxMode=next;toolboxOpen=false;paintToolbox()}
-function openToolboxOverlay(){if(toolboxMode!=='auto-hide')return;cancelToolboxClose();toolboxOpen=true;paintToolbox()}
+function openToolboxOverlay(){if(floatingToolsMedia.matches)return;if(toolboxMode!=='auto-hide')return;cancelToolboxClose();toolboxOpen=true;paintToolbox()}
 function toolboxHasKeyboardFocus(){return [toolboxHandle,toolboxPanel].some(el=>el.contains(document.activeElement)&&document.activeElement.matches(':focus-visible'))}
 function scheduleToolboxClose(){
+ if(floatingToolsMedia.matches)return;
  if(toolboxMode!=='auto-hide')return;cancelToolboxClose();
  toolboxCloseTimer=setTimeout(()=>{if(toolboxHasKeyboardFocus())return;toolboxOpen=false;paintToolbox()},400);
 }
 toolboxHandle.onclick=()=>{
+ if(floatingToolsMedia.matches){if(floatingToolsSuppressClick){floatingToolsSuppressClick=false;return}floatingToolsOpen=!floatingToolsOpen;paintFloatingTools();return}
  if(toolboxMode==='collapsed')setToolboxMode('pinned-open');
  else if(toolboxMode==='auto-hide'&&!toolboxOpen)openToolboxOverlay();
  else setToolboxMode('collapsed');
@@ -333,7 +338,7 @@ document.addEventListener('pointerdown',e=>{
  if(toolboxMode!=='auto-hide'||!toolboxOpen||toolboxPanel.contains(e.target)||toolboxHandle.contains(e.target))return;
  cancelToolboxClose();toolboxOpen=false;paintToolbox();
 },true);
-paintToolbox();
+if(!floatingToolsMedia.matches)paintToolbox();
 for(const [id,title,types]of [
  ['interactionTools','Thao tác',['select']],
  ['drawingTools','Vẽ',['bar','thin','dashed','curve','extend','hatch','rigidRegion']],
@@ -432,7 +437,7 @@ installButton.onclick=async()=>{
  await installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;installButton.hidden=true;
 };
 window.addEventListener('appinstalled',()=>{installButton.hidden=true;installPrompt=null});
-const KETCAU_APP_VERSION='shell-v6';
+const KETCAU_APP_VERSION='shell-v7';
 let pwaRegistration=null;
 if('serviceWorker' in navigator&&window.isSecureContext&&location.protocol!=='file:'){
  const indicator=document.createElement('small');indicator.className='offline-ready';indicator.id='pwaStatus';indicator.setAttribute('role','status');
@@ -1924,3 +1929,72 @@ for(const name of ['undo','redo']){const action=actions[name][1];actions[name][1
 svg.addEventListener('pointercancel',clearMultiPointCommand);
 $('open').addEventListener('click',clearMultiPointCommand,true);
 updateCommandControls();
+
+// Tablet presentation adapter: same tool DOM and selection handlers, no drawing state.
+function floatingToolsBounds(){
+ const vv=window.visualViewport,left=vv?.offsetLeft||0,top=vv?.offsetTop||0,w=vv?.width||innerWidth,h=vv?.height||innerHeight;
+ const style=getComputedStyle(toolboxHandle),inset=name=>parseFloat(style.getPropertyValue(name))||0;
+ return {left:left+Math.max(8,inset('--safe-left')),right:left+w-Math.max(8,inset('--safe-right'))-44,
+  top:Math.max(top+8,document.querySelector('header').getBoundingClientRect().bottom+8),bottom:top+h-Math.max(12,inset('--safe-bottom'))-44};
+}
+function avoidFloatingCollision(rect){
+ for(const id of ['commandControls','dynamicInput']){
+  const element=$(id);if(!element||element.hidden)continue;
+  const r=element.getBoundingClientRect();
+  if(rect.x<r.right+8&&rect.x+rect.w>r.left-8&&rect.y<r.bottom+8&&rect.y+rect.h>r.top-8){
+   const bounds=floatingToolsBounds();rect.y=r.top-rect.h-8>=bounds.top?r.top-rect.h-8:Math.min(bounds.bottom+44-rect.h,r.bottom+8);
+  }
+ }
+ return rect;
+}
+function positionFloatingTools(){
+ if(!floatingToolsMedia.matches||floatingToolsDrag)return;
+ const b=floatingToolsBounds(),r=avoidFloatingCollision({x:floatingToolsSide==='left'?b.left:b.right,y:b.top+floatingToolsRatio*Math.max(0,b.bottom-b.top),w:44,h:44});
+ toolboxHandle.style.left=r.x+'px';toolboxHandle.style.top=r.y+'px';
+ if(!floatingToolsOpen)return;
+ const width=Math.min(300,Math.max(120,b.right-b.left-16));
+ const controls=$('commandControls'),reserved=controls&&!controls.hidden?controls.getBoundingClientRect().top-8:b.bottom+44;
+ const height=Math.max(44,Math.min(b.bottom+44,reserved)-b.top);
+ toolboxPanel.style.width=width+'px';toolboxPanel.style.maxHeight=height+'px';
+ const pr=avoidFloatingCollision({x:Math.max(b.left,Math.min(floatingToolsSide==='left'?r.x+52:r.x-width-8,b.right+44-width)),y:Math.max(b.top,Math.min(r.y,Math.min(b.bottom+44,reserved)-toolboxPanel.offsetHeight)),w:width,h:toolboxPanel.offsetHeight});
+ toolboxPanel.style.left=pr.x+'px';toolboxPanel.style.top=Math.max(b.top,pr.y)+'px';
+}
+function paintFloatingTools(){
+ toolboxShell.dataset.floatingTools='true';document.body.classList.remove('tools-collapsed');
+ toolboxPanel.hidden=!floatingToolsOpen;toolboxPanel.inert=!floatingToolsOpen;
+ toolboxHandle.textContent='\u2637';toolboxHandle.setAttribute('aria-label','C\u00f4ng c\u1ee5');toolboxHandle.title='C\u00f4ng c\u1ee5';toolboxHandle.setAttribute('aria-expanded',String(floatingToolsOpen));
+ toolboxHandle.classList.toggle('active',mode!=='select');toolboxHandle.dataset.activeTool=mode;
+ positionFloatingTools();
+}
+toolboxHandle.addEventListener('pointerdown',e=>{
+ if(!floatingToolsMedia.matches||e.button!==0)return;
+ e.preventDefault();e.stopPropagation();floatingToolsSuppressClick=false;
+ floatingToolsDrag={id:e.pointerId,x:e.clientX,y:e.clientY,left:toolboxHandle.getBoundingClientRect().left,top:toolboxHandle.getBoundingClientRect().top,moved:false};toolboxHandle.setPointerCapture(e.pointerId);
+});
+toolboxHandle.addEventListener('pointermove',e=>{
+ const d=floatingToolsDrag;if(!d||d.id!==e.pointerId)return;
+ const dx=e.clientX-d.x,dy=e.clientY-d.y;if(!d.moved&&Math.hypot(dx,dy)<8)return;
+ d.moved=true;floatingToolsOpen=false;toolboxPanel.hidden=true;toolboxPanel.inert=true;toolboxHandle.setAttribute('aria-expanded','false');
+ const b=floatingToolsBounds();toolboxHandle.style.left=Math.max(b.left,Math.min(b.right,d.left+dx))+'px';toolboxHandle.style.top=Math.max(b.top,Math.min(b.bottom,d.top+dy))+'px';e.preventDefault();e.stopPropagation();
+});
+function endFloatingToolsDrag(e){
+ const d=floatingToolsDrag;if(!d||d.id!==e.pointerId)return;floatingToolsDrag=null;
+ if(d.moved){const b=floatingToolsBounds(),r=toolboxHandle.getBoundingClientRect();floatingToolsSide=r.left+22<(b.left+b.right+44)/2?'left':'right';floatingToolsRatio=Math.max(0,Math.min(1,(r.top-b.top)/Math.max(1,b.bottom-b.top)));floatingToolsSuppressClick=true}
+ if(toolboxHandle.hasPointerCapture(e.pointerId))toolboxHandle.releasePointerCapture(e.pointerId);paintFloatingTools();
+}
+for(const event of ['pointerup','pointercancel','lostpointercapture'])toolboxHandle.addEventListener(event,endFloatingToolsDrag);
+toolboxPanel.addEventListener('click',e=>{
+ if(!floatingToolsMedia.matches||!e.target.closest('button[data-mode],button[data-support-type]'))return;
+ floatingToolsOpen=false;paintFloatingTools();
+});
+document.addEventListener('pointerdown',e=>{
+ if(!floatingToolsMedia.matches||!floatingToolsOpen||toolboxPanel.contains(e.target)||toolboxHandle.contains(e.target))return;
+ floatingToolsOpen=false;paintFloatingTools();
+},true);
+floatingToolsMedia.addEventListener('change',()=>{
+ cancelToolboxClose();floatingToolsOpen=false;
+ delete toolboxShell.dataset.floatingTools;toolboxPanel.style.removeProperty('width');toolboxPanel.style.removeProperty('max-height');toolboxPanel.style.removeProperty('left');toolboxPanel.style.removeProperty('top');toolboxHandle.style.removeProperty('left');toolboxHandle.style.removeProperty('top');paintToolbox();
+});
+window.addEventListener('resize',positionFloatingTools);window.visualViewport?.addEventListener('resize',positionFloatingTools);window.visualViewport?.addEventListener('scroll',positionFloatingTools);
+new MutationObserver(()=>{if(floatingToolsMedia.matches)paintFloatingTools()}).observe(svg,{childList:true});
+paintToolbox();
