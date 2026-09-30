@@ -437,7 +437,7 @@ installButton.onclick=async()=>{
  await installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;installButton.hidden=true;
 };
 window.addEventListener('appinstalled',()=>{installButton.hidden=true;installPrompt=null});
-const KETCAU_APP_VERSION='shell-v7';
+const KETCAU_APP_VERSION='shell-v8';
 let pwaRegistration=null;
 if('serviceWorker' in navigator&&window.isSecureContext&&location.protocol!=='file:'){
  const indicator=document.createElement('small');indicator.className='offline-ready';indicator.id='pwaStatus';indicator.setAttribute('role','status');
@@ -1998,3 +1998,40 @@ floatingToolsMedia.addEventListener('change',()=>{
 window.addEventListener('resize',positionFloatingTools);window.visualViewport?.addEventListener('resize',positionFloatingTools);window.visualViewport?.addEventListener('scroll',positionFloatingTools);
 new MutationObserver(()=>{if(floatingToolsMedia.matches)paintFloatingTools()}).observe(svg,{childList:true});
 paintToolbox();
+
+// Tablet-only ribbon presentation; move existing containers without replacing handlers.
+const commandRibbon=document.createElement('div');commandRibbon.id='commandRibbon';
+const ribbonScroll=document.createElement('div');ribbonScroll.id='ribbonScroll';
+const ribbonToggle=document.createElement('button');ribbonToggle.id='ribbonToggle';ribbonToggle.type='button';ribbonToggle.setAttribute('aria-controls','ribbonScroll');
+commandRibbon.append(ribbonScroll,ribbonToggle);
+let ribbonCollapsed=false;
+try{ribbonCollapsed=localStorage.getItem('ket-cau-ribbon-collapsed')==='true'}catch{}
+function paintCommandRibbon(){
+ const tablet=floatingToolsMedia.matches;
+ if(tablet){
+  if(!commandRibbon.isConnected){$('actions').before(commandRibbon);ribbonScroll.append($('actions'),$('viewTools'))}
+  commandRibbon.dataset.collapsed=String(ribbonCollapsed);ribbonScroll.hidden=ribbonCollapsed;
+  ribbonToggle.textContent=ribbonCollapsed?'\u2304':'\u2303';
+  ribbonToggle.title=ribbonCollapsed?'Hi\u1ec7n thanh l\u1ec7nh':'Thu g\u1ecdn thanh l\u1ec7nh';ribbonToggle.setAttribute('aria-label',ribbonToggle.title);ribbonToggle.setAttribute('aria-expanded',String(!ribbonCollapsed));
+ }else if(commandRibbon.isConnected){commandRibbon.before($('actions'),$('viewTools'));commandRibbon.remove()}
+}
+ribbonToggle.addEventListener('pointerdown',e=>e.preventDefault());
+ribbonToggle.onclick=()=>{
+ ribbonCollapsed=!ribbonCollapsed;
+ for(const menu of ribbonScroll.querySelectorAll('details[open]'))menu.open=false;
+ try{localStorage.setItem('ket-cau-ribbon-collapsed',String(ribbonCollapsed))}catch{}
+ paintCommandRibbon();
+};
+// Menus must escape the scrolling strip's clipping rectangle.
+function positionRibbonMenus(){
+ if(!floatingToolsMedia.matches)return;
+ for(const menu of ribbonScroll.querySelectorAll('.command-menu[open]')){
+  const panel=menu.querySelector('.file-commands'),r=menu.querySelector('summary').getBoundingClientRect();
+  panel.style.left=Math.max(8,Math.min(r.left,innerWidth-panel.offsetWidth-8))+'px';panel.style.top=r.bottom+4+'px';
+ }
+}
+for(const menu of [$('fileMenu'),$('editMenu')])menu.addEventListener('toggle',positionRibbonMenus);
+ribbonScroll.addEventListener('scroll',()=>{for(const menu of ribbonScroll.querySelectorAll('details[open]'))menu.open=false});
+floatingToolsMedia.addEventListener('change',()=>{for(const panel of ribbonScroll.querySelectorAll('.file-commands')){panel.style.removeProperty('left');panel.style.removeProperty('top')}paintCommandRibbon()});
+window.addEventListener('resize',positionRibbonMenus);
+paintCommandRibbon();
