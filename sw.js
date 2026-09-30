@@ -1,5 +1,5 @@
 'use strict';
-const CACHE='ket-cau-studio-shell-v5';
+const CACHE='ket-cau-studio-shell-v6';
 const SHELL=['./','./index.html','./assets/app.css','./assets/app.js','./assets/tablet.js','./assets/calculator.js','./manifest.webmanifest','./assets/icon.svg','./assets/icon-192.png','./assets/icon-512.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL))));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>(key.startsWith('ket-cau-studio-shell-')||key==='ket-cau-studio-equation-space-v2')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));

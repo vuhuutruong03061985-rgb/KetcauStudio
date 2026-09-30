@@ -171,3 +171,11 @@ main[data-toolbox-mode="auto-hide"] #toolPanel{position:absolute;left:44px;top:v
  #pwaStatus[data-state="ready"][data-dismissed="true"]{display:none}
 }
 @media(display-mode:standalone){#installApp{display:none!important}}
+
+#headerFileName{display:none}
+@media(any-pointer:coarse){
+ header>div:first-child{display:flex;align-items:center;flex:1;overflow:hidden}
+ header strong{flex-shrink:0}
+ #headerFileName:not([hidden]){display:block;min-width:0;margin-left:12px;padding-left:12px;border-left:1px solid #d1e6ee;font-size:13px;color:#d1e6ee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ #fileStatus{display:none}
+}

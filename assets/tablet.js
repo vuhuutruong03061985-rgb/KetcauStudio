@@ -432,7 +432,7 @@ installButton.onclick=async()=>{
  await installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;installButton.hidden=true;
 };
 window.addEventListener('appinstalled',()=>{installButton.hidden=true;installPrompt=null});
-const KETCAU_APP_VERSION='shell-v5';
+const KETCAU_APP_VERSION='shell-v6';
 let pwaRegistration=null;
 if('serviceWorker' in navigator&&window.isSecureContext&&location.protocol!=='file:'){
  const indicator=document.createElement('small');indicator.className='offline-ready';indicator.id='pwaStatus';indicator.setAttribute('role','status');
@@ -480,10 +480,13 @@ const fileSummary=document.createElement('summary');fileSummary.textContent='Fil
 const fileCommands=document.createElement('div');fileCommands.className='file-commands';
 fileMenu.append(fileSummary,fileCommands);$('actions').prepend(fileMenu);
 const fileStatus=document.createElement('span');fileStatus.id='fileStatus';fileStatus.setAttribute('aria-live','polite');fileMenu.after(fileStatus);
+const headerFileName=document.createElement('span');headerFileName.id='headerFileName';headerFileName.hidden=true;headerFileName.setAttribute('aria-live','polite');document.querySelector('header strong').after(headerFileName);
 function updateFileStatus(){
  syncDrawingScaleControls();
  const status=document.getElementById('fileStatus');if(!status)return;
  const dirty=documentText()!==savedDocument;
+ const named=documentName!=='Chưa đặt tên.json';
+ headerFileName.hidden=!named;headerFileName.textContent=named?documentName+(dirty?' *':''):'';headerFileName.title=named?documentName:'';
  status.textContent=documentName+(dirty?' • Chưa lưu':'');
  document.title=(dirty?'* ':'')+documentName+' — Kết cấu Studio';
 }
