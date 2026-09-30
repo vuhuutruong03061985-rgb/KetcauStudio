@@ -2002,7 +2002,7 @@ paintToolbox();
 // Tablet-only ribbon presentation; move existing containers without replacing handlers.
 const commandRibbon=document.createElement('div');commandRibbon.id='commandRibbon';
 const ribbonScroll=document.createElement('div');ribbonScroll.id='ribbonScroll';
-const ribbonToggle=document.createElement('button');ribbonToggle.id='ribbonToggle';ribbonToggle.type='button';ribbonToggle.setAttribute('aria-controls','ribbonScroll');
+const ribbonToggle=document.createElement('button');ribbonToggle.id='ribbonToggle';ribbonToggle.classList.add('icon-button');ribbonToggle.type='button';ribbonToggle.setAttribute('aria-controls','ribbonScroll');
 commandRibbon.append(ribbonScroll,ribbonToggle);
 let ribbonCollapsed=false;
 try{ribbonCollapsed=localStorage.getItem('ket-cau-ribbon-collapsed')==='true'}catch{}
@@ -2011,8 +2011,10 @@ function paintCommandRibbon(){
  if(tablet){
   if(!commandRibbon.isConnected){$('actions').before(commandRibbon);ribbonScroll.append($('actions'),$('viewTools'))}
   commandRibbon.dataset.collapsed=String(ribbonCollapsed);ribbonScroll.hidden=ribbonCollapsed;
-  ribbonToggle.textContent=ribbonCollapsed?'\u2304':'\u2303';
-  ribbonToggle.title=ribbonCollapsed?'Hi\u1ec7n thanh l\u1ec7nh':'Thu g\u1ecdn thanh l\u1ec7nh';ribbonToggle.setAttribute('aria-label',ribbonToggle.title);ribbonToggle.setAttribute('aria-expanded',String(!ribbonCollapsed));
+  const chevron=ribbonCollapsed?'M6 9l6 6 6-6':'M6 15l6-6 6 6';
+  const ribbonIcon=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${chevron}"/></svg>`;
+  ribbonToggle.style.setProperty('--tool-icon',`url("data:image/svg+xml,${encodeURIComponent(ribbonIcon)}")`);
+  ribbonToggle.title=ribbonCollapsed?'M\u1edf thanh c\u00f4ng c\u1ee5':'Thu g\u1ecdn thanh c\u00f4ng c\u1ee5';ribbonToggle.setAttribute('aria-label',ribbonToggle.title);ribbonToggle.setAttribute('aria-expanded',String(!ribbonCollapsed));
  }else if(commandRibbon.isConnected){commandRibbon.before($('actions'),$('viewTools'));commandRibbon.remove()}
 }
 ribbonToggle.addEventListener('pointerdown',e=>e.preventDefault());
