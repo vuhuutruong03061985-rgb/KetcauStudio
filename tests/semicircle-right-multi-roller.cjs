@@ -1,6 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),{pathToFileURL}=require('node:url');
-const expected=[['resetView','editSelected','copyObjects','pasteObjects','delete','extend','undo','redo'],['clear','open','save','saveAs','svg','png'],['panView','zoomOut','zoomIn','snapToggle','snapOptions'],['drawingScalesToggle']];
+const expected=[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['clear','open','save','saveAs','svg','png'],['panView','zoomOut','zoomIn','snapToggle','snapOptions'],['drawingScalesToggle']];
 const leftExpected=[['bar','thin','dashed','curve'],['hinge','linkBar','weld','pin','roller','fixed'],['force','moment','udl'],['dim','text','person','section','rigidRegion','hatch','joint','positive','negative','diagramM','diagramQ','diagramN']];
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
@@ -53,8 +53,8 @@ const leftExpected=[['bar','thin','dashed','curve'],['hinge','linkBar','weld','p
   const landscape=await geometry();assert(landscape.fits&&landscape.safe&&landscape.targets);console.log('LANDSCAPE',landscape);
   await p.setViewportSize({width:800,height:1280});await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom>1000&&document.body.dataset.radialPrimary==='true');await open();await shot('portrait');const portrait=await geometry();assert(portrait.fits&&portrait.safe&&portrait.targets);assert.equal(portrait.radius,landscape.radius);console.log('PORTRAIT',portrait);
   await p.locator('.semicircle-left-menu [data-demo-id="hub"]').dispatchEvent('click');await shot('left-unchanged');
-  await p.setViewportSize({width:800,height:700});await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom<=684&&rightCommandMenu.layout.fits);await open();await shot('boundary-safe-fit');const boundary=await geometry();assert(boundary.fits&&boundary.safe&&boundary.targets);assert.equal(boundary.radius,landscape.radius);console.log('BOUNDARY FIT',boundary);
-  await p.setViewportSize({width:800,height:690});await p.waitForFunction(()=>!rightCommandMenu.layout.fits&&document.body.dataset.radialPrimary==='false');assert(await p.locator('#toggleTools').isVisible());assert(await p.locator('#commandRibbon').isVisible());await shot('boundary-fallback');const fallback=await geometry();assert.equal(fallback.radius,landscape.radius);console.log('BOUNDARY FALLBACK',fallback);
+  await p.setViewportSize({width:800,height:740});await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom<=724&&rightCommandMenu.layout.fits);await open();await shot('boundary-safe-fit');const boundary=await geometry();assert(boundary.fits&&boundary.safe&&boundary.targets);assert.equal(boundary.radius,landscape.radius);console.log('BOUNDARY FIT',boundary);
+  await p.setViewportSize({width:800,height:730});await p.waitForFunction(()=>!rightCommandMenu.layout.fits&&document.body.dataset.radialPrimary==='false');assert(await p.locator('#toggleTools').isVisible());assert(await p.locator('#commandRibbon').isVisible());await shot('boundary-fallback');const fallback=await geometry();assert.equal(fallback.radius,landscape.radius);console.log('BOUNDARY FALLBACK',fallback);
   await p.setViewportSize({width:1280,height:800});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='true');assert.deepEqual(errors,[]);console.log('PASS RIGHT mapping/defaults, source delegation/Extend/Snap, memory, independent captured mouse/pen/touch, hover/cancel/isolation, stable envelope; screenshots:',out);
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

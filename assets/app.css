@@ -156,6 +156,7 @@ main[data-toolbox-mode="auto-hide"] #toolPanel{position:absolute;left:44px;top:v
 
 #commandControls{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));display:flex;gap:8px;z-index:1500;padding:4px;background:#fff;border:1px solid #bccbd4;border-radius:8px;box-shadow:0 2px 8px #0002}
 #commandControls[hidden],#commandControls button[hidden]{display:none}
+body[data-radial-context="true"] #commandControls{display:none}
 #commandControls button{min-width:44px;min-height:44px;font-size:24px;touch-action:manipulation}
 
 /* Tablet branding occupies one row; PWA notices overlay without reducing the canvas. */
@@ -220,6 +221,8 @@ body .semicircle-multi-roller>svg{touch-action:none}
 .semicircle-left-menu.semicircle-multi-roller [data-focused="true"]:not(.active):not(:focus-visible) .semicircle-hit{fill:var(--ring-tint);stroke:#6585af;stroke-width:2}
 .semicircle-right-menu.semicircle-multi-roller [data-focused="true"]:not(.active):not(:focus-visible) .semicircle-hit{fill:var(--ring-tint);stroke:#6585af;stroke-width:2}
 .roller-slot{fill:none;stroke:#087e90;stroke-width:3;stroke-linecap:round}
+.semicircle-outer-context .semicircle-hit{stroke:#78909f;stroke-width:1.5}
+body:not([data-radial-primary="true"]) :is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-outer-context{display:none}
 :is(.semicircle-left-menu,.semicircle-right-menu) .group-selector .semicircle-hit{filter:saturate(3)}
 :is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-hit{touch-action:none}
 body :is(.semicircle-left-menu,.semicircle-right-menu)>svg{touch-action:none}

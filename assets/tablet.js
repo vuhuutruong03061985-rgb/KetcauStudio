@@ -1899,6 +1899,7 @@ function finishActiveCommand(){
 function cancelActiveCommand(){cancelToSelection();updateCommandControls()}
 const commandControls=document.createElement('div');commandControls.id='commandControls';commandControls.hidden=true;
 const commandCancel=document.createElement('button'),commandFinish=document.createElement('button');
+commandCancel.id='commandCancel';commandFinish.id='commandFinish';
 commandCancel.type=commandFinish.type='button';commandCancel.textContent='\u00d7';commandFinish.textContent='\u2713';
 commandCancel.setAttribute('aria-label','H\u1ee7y (Esc)');commandFinish.setAttribute('aria-label','Ho\u00e0n t\u1ea5t (Enter)');
 commandControls.append(commandCancel,commandFinish);document.body.append(commandControls);
@@ -2086,10 +2087,10 @@ const semicircleEngine=(()=>{
  function mirrorSemicircleLayout(layout){
   const side=layout.side==='left'?'right':'left',cx=layout.bounds.left+layout.bounds.right-layout.cx;
   const mirror=s=>{const next={...s,side,cx};return {...next,icon:sectorIconPosition(next),path:solveRadialSectorPath(next)}};
-  return {...layout,side,cx,inner:layout.inner?.map(mirror),outer:layout.outer?.map(mirror),...(layout.rings?{rings:layout.rings.map(r=>({...r,side,cx,sectors:r.sectors.map(mirror)}))}:{}),bounds:{...layout.bounds}};
+  return {...layout,side,cx,inner:layout.inner?.map(mirror),outer:layout.outer?.map(mirror),...(layout.rings?{rings:layout.rings.map(r=>({...r,side,cx,sectors:r.sectors.map(mirror)}))}:{}),...(layout.contextRing?{contextRing:{...layout.contextRing,sectors:layout.contextRing.sectors.map(mirror)}}:{}),bounds:{...layout.bounds}};
  }
  // General envelope depends only on ring counts/targets, never their UI offsets.
- function solveConcentricRingLayout({side='left',rings,bounds,centerY,minTarget=44}){
+ function solveConcentricRingLayout({side='left',rings,bounds,centerY,minTarget=44,fixedOuter=false}){
   const base=solveSemicircleLayout({side,innerCount:0,outerCount:0,bounds,centerY,minTarget,refined:true});
   if(!Array.isArray(rings)||!rings.length||new Set(rings.map(r=>r.id)).size!==rings.length)throw new RangeError('Invalid concentric rings');
   let radius=base.hubRadius;
@@ -2099,6 +2100,8 @@ const semicircleEngine=(()=>{
    const mid=Math.max(radius+3+thickness/2,(minTarget/2+1.5)/Math.sin(step/2));
    const ring={id:r.id,side,cx:base.cx,r0:mid-thickness/2,r1:mid+thickness/2,step,count:r.count};radius=ring.r1;return ring;
   });
+  const contextR0=radius+3;
+  if(fixedOuter)radius=contextR0+minTarget+4;
   const fits=radius<=bounds.right-bounds.left&&2*radius<=bounds.bottom-bounds.top;
   const cy=fits?Math.max(bounds.top+radius,Math.min(centerY??(bounds.top+bounds.bottom)/2,bounds.bottom-radius)):(bounds.top+bounds.bottom)/2;
   for(const ring of solved){
@@ -2108,7 +2111,14 @@ const semicircleEngine=(()=>{
     return {...s,icon:sectorIconPosition(s),path:solveRadialSectorPath(s)};
    });
   }
-  return {...base,cy,radius,fits,rings:solved};
+  // One fixed annulus: two top slots, empty middle, two bottom slots.
+  // Its envelope never depends on source availability or roller offsets.
+  const contextRing=fixedOuter?{r0:contextR0,r1:radius,sectors:[-2,-1,1,2].map((slot,index)=>{
+   const angle=slot*Math.PI/5,half=Math.PI/10-Math.asin(1.5/((contextR0+radius)/2));
+   const s={side,cx:base.cx,cy,r0:contextR0,r1:radius,a0:angle-half,a1:angle+half,index};
+   return {...s,icon:sectorIconPosition(s),path:solveRadialSectorPath(s)};
+  })}:null;
+  return {...base,cy,radius,fits,rings:solved,...(contextRing?{contextRing}:{})};
  }
  function createRollerState({id,entries,activeIndex=0}){
   if(typeof id!=='string'||!id||!Array.isArray(entries)||!entries.length||entries.length>12||!Number.isInteger(activeIndex)||new Set(entries.map(e=>e.id)).size!==entries.length)throw new RangeError('Invalid roller configuration');
@@ -2117,7 +2127,7 @@ const semicircleEngine=(()=>{
  }
  // Rings navigate by default; activateCentered opts into focus-then-activate.
  // The items API keeps Task 3B semantics for legacy callers.
- function createMenu({side,items:entries=[],rings:ringConfigs=null,getBounds,centerY,onAction=()=>{},production=false,onOpen=()=>{},activateCentered=false,onGesturePointer=()=>false}){
+ function createMenu({side,items:entries=[],rings:ringConfigs=null,getBounds,centerY,onAction=()=>{},production=false,onOpen=()=>{},activateCentered=false,onGesturePointer=()=>false,outerActions=null}){
   const multi=ringConfigs!==null,rotary=production||multi;
   if(multi&&(!Array.isArray(ringConfigs)||!ringConfigs.length||new Set(ringConfigs.map(r=>r.id)).size!==ringConfigs.length))throw new RangeError('Invalid concentric configuration');
   const rings=multi?ringConfigs.map(createRollerState):[{id:'main',entries,activeIndex:0,offset:0,pointerId:null,dragging:false,snapFrame:0,suppressClick:false,controls:new Map()}];
@@ -2127,6 +2137,27 @@ const semicircleEngine=(()=>{
   const menuLabel=side==='right'?'Lệnh và thiết lập':'Công cụ vẽ';
   const surface=document.createElementNS(NS,'svg');surface.setAttribute('aria-label',production?menuLabel:`Demo ${side}`);host.append(surface);document.body.append(host);
   const state={side,open:false,activeGroup:null,hoveredSector:null,rings};
+  if(outerActions&&(!multi||outerActions.length!==4))throw new RangeError('Fixed outer actions require four slots and concentric rings');
+  let fixedContact=null,fixedClickPointer=null;
+  const fixedAvailable=entry=>!entry.source.disabled&&entry.source.getAttribute('aria-disabled')!=='true'&&(!entry.visible||entry.visible());
+  function invokeFixed(entry){if(state.open&&fixedAvailable(entry))entry.source.click()}
+  function fixedPointer(e){
+   if(e.type==='pointerdown'){
+    if(!host.contains(e.target))return;
+    fixedClickPointer=null;
+    const id=e.target.closest?.('[data-fixed-action]')?.dataset.fixedAction,entry=outerActions?.find(a=>a.id===id);
+    if(!entry||!state.open||e.button!==0||fixedContact||!fixedAvailable(entry))return;
+    fixedContact={entry,pointerId:e.pointerId,x:e.clientX,y:e.clientY,dragging:false};
+    try{surface.setPointerCapture(e.pointerId)}catch(error){if(error.name!=='NotFoundError')throw error}
+   }else{
+    if(!fixedContact||fixedContact.pointerId!==e.pointerId)return;
+    if(e.type==='pointermove')fixedContact.dragging||=classifyTapVsDrag(Math.hypot(e.clientX-fixedContact.x,e.clientY-fixedContact.y));
+    else{const contact=fixedContact;fixedContact=null;fixedClickPointer=e.pointerId;if(surface.hasPointerCapture(e.pointerId))surface.releasePointerCapture(e.pointerId);if(e.type==='pointerup'&&!contact.dragging)invokeFixed(contact.entry)}
+   }
+   e.preventDefault();e.stopImmediatePropagation();
+  }
+  const fixedClick=e=>{if(host.contains(e.target)&&e.detail>0&&e.pointerId===fixedClickPointer){fixedClickPointer=null;e.preventDefault();e.stopImmediatePropagation()}};
+  const stopFixed=()=>{const id=fixedContact?.pointerId;fixedContact=null;if(id!==undefined&&surface.hasPointerCapture(id))surface.releasePointerCapture(id)};
   const roller=rings[0];state.roller=roller; // Task 3B compatibility alias.
   // Odd physical slots keep a full-size middle detent even with six real groups.
   const slotCount=entries.length%2?entries.length:entries.length+1,step=Math.PI/slotCount;
@@ -2215,6 +2246,7 @@ const semicircleEngine=(()=>{
   }
   const pointerEvents=['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'];
   for(const type of pointerEvents)window.addEventListener(type,rollerPointer,true);
+  if(outerActions){for(const type of pointerEvents)window.addEventListener(type,fixedPointer,true);window.addEventListener('click',fixedClick,true)}
   const rollerClick=e=>{
    if(!rotary||!host.contains(e.target))return;
    const ring=(e.pointerId!==undefined?rings.find(r=>r.lastPointerId===e.pointerId):undefined)||findRingFromPointerTarget(e.target)||(!multi?roller:undefined);
@@ -2277,7 +2309,7 @@ const semicircleEngine=(()=>{
    const focused=host.contains(document.activeElement)?{id:document.activeElement.getAttribute('data-demo-id'),ring:document.activeElement.dataset.rollerRing}:null;
    const group=entries.find(entry=>entry.id===state.activeGroup),children=group?.children||[];
    // Reserve the largest group while closed too: opening cannot move the hub.
-   const reserve=multi?solveConcentricRingLayout({side,rings:rings.map(r=>({id:r.id,count:r.entries.length})),bounds:getBounds(),centerY}):solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:Math.max(0,...entries.map(e=>e.children?.length||0)),bounds:getBounds(),centerY,refined:production});
+   const reserve=multi?solveConcentricRingLayout({side,rings:rings.map(r=>({id:r.id,count:r.entries.length})),bounds:getBounds(),centerY,fixedOuter:!!outerActions}):solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:Math.max(0,...entries.map(e=>e.children?.length||0)),bounds:getBounds(),centerY,refined:production});
    const parent=reserve.inner[entries.indexOf(group)],outerAnchor=production?0:parent?(parent.a0+parent.a1)/2:0;
    layout=multi?reserve:solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:state.open?children.length:0,bounds:getBounds(),centerY:reserve.cy,refined:production,outerAnchor});
    if(production&&!multi)layout.inner=layout.inner.slice(0,entries.length);
@@ -2317,6 +2349,15 @@ const semicircleEngine=(()=>{
       node('path',{d:`M${cx+sign*(r0-4)},${cy-8} L${cx+sign*(r0+2)},${cy} L${cx+sign*(r0-4)},${cy+8}`,class:'roller-slot'});moveRollerRing(ring)
      }
    }
+   if(state.open&&outerActions){
+    const parent=node('g',{class:'semicircle-outer-context',role:'group','aria-label':'Thao tác lệnh'});
+    outerActions.forEach((entry,index)=>{
+     if(entry.visible&&!entry.visible())return;
+     const sector=layout.contextRing.sectors[index],g=control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>invokeFixed(entry),{parent,source:entry.source,oneShot:true,tint:'#e6edf2'});
+     g.dataset.fixedAction=entry.id;
+     if(entry.artwork)g.querySelector('.semicircle-icon').setAttribute('d',entry.artwork);
+    });
+   }
    if(focused){const target=[...host.querySelectorAll('[data-demo-id]')].find(n=>n.dataset.demoId===focused.id&&n.dataset.rollerRing===focused.ring)||host.querySelector('[data-demo-id="hub"]');target?.focus({preventScroll:true})}
   }
   function stopRoller(ring){
@@ -2327,15 +2368,21 @@ const semicircleEngine=(()=>{
    if(id!==null&&surface.hasPointerCapture?.(id))surface.releasePointerCapture(id);
    if(interrupted){ring.offset=snapGroupIndex(ring.startOffset??ring.offset,ring.entries.length);ring.activeIndex=snapGroupIndex(ring.offset,ring.entries.length)}
   }
-  const stopRollers=()=>rings.forEach(stopRoller);
+  const stopRollers=()=>{stopFixed();rings.forEach(stopRoller)};
   const keydown=e=>{if(host.contains(e.target)&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopImmediatePropagation();if(!e.repeat)e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}))}};
   const resize=()=>{stopRollers();paint()};window.addEventListener('keydown',keydown,true);window.addEventListener('blur',resize);window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);window.visualViewport?.addEventListener('scroll',resize);paint();
-  return {host,state,get layout(){return layout},refresh:paint,close(){stopRollers();state.open=false;if(!production)state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){stopRollers();for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])window.removeEventListener(type,rollerPointer,true);window.removeEventListener('click',rollerClick,true);destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('blur',resize);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);if(production)queueRadialPrimaryUpdate()}};
+  return {host,state,get layout(){return layout},refresh:paint,close(){stopRollers();state.open=false;if(!production)state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){stopRollers();for(const type of pointerEvents){window.removeEventListener(type,rollerPointer,true);window.removeEventListener(type,fixedPointer,true)}window.removeEventListener('click',fixedClick,true);window.removeEventListener('click',rollerClick,true);destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('blur',resize);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);if(production)queueRadialPrimaryUpdate()}};
  }
  return {normalizeAngle,shortestAngleDelta,snapGroupIndex,classifyTapVsDrag,rollerDelta,solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,solveConcentricRingLayout,createRollerState,createMenu};
 })();
 
 // Task 2C: DOM controls remain authoritative for actions, state and artwork.
+const sharedOuterActions=[
+ {id:'commandCancel',source:commandCancel,artwork:'M6 6L18 18M18 6L6 18',visible:()=>!commandControls.hidden&&!commandCancel.hidden},
+ {id:'commandFinish',source:commandFinish,artwork:'M4 12L9 17L20 6',visible:()=>!commandControls.hidden&&!commandFinish.hidden},
+ {id:'undo',source:$('undo'),icon:'undo'},
+ {id:'redo',source:$('redo'),icon:'redo'}
+];
 const leftDrawingGroups=[
  {id:'geometry',label:'Thanh',icon:'bar',tools:['bar','thin','dashed','curve','extend']},
  {id:'connections',label:'Liên kết',icon:'hinge',tools:['hinge','linkBar','weld','pin','roller','fixed']},
@@ -2361,10 +2408,10 @@ const leftDrawingSafeProbe=document.createElement('div');leftDrawingSafeProbe.cl
 function leftDrawingBounds(){
  const vv=window.visualViewport,s=getComputedStyle(leftDrawingSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
  const bounds={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),document.querySelector('header').getBoundingClientRect().bottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
- const reach=leftDrawingMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'left',rings:leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),bounds}).radius;
+ const reach=leftDrawingMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'left',rings:leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}).radius;
  // Use a free vertical interval when input/contextual controls occupy the left edge.
  // The engine keeps minimum targets and falls back to the old palette if it cannot fit.
- for(const id of ['dynamicInput','commandControls']){
+ for(const id of ['dynamicInput']){
   const el=document.getElementById(id);if(!el||el.hidden)continue;
   const r=el.getBoundingClientRect();
   if(r.width&&r.left<bounds.left+reach&&r.right>bounds.left&&r.bottom>bounds.top&&r.top<bounds.bottom){
@@ -2379,7 +2426,7 @@ function mountLeftDrawingMenu(){
  if(!floatingToolsMedia.matches){leftDrawingMenu?.destroy();leftDrawingMenu=null;leftDrawingSafeProbe.remove();return}
  if(leftDrawingMenu)return;
  document.body.append(leftDrawingSafeProbe);
- try{leftDrawingMenu=semicircleEngine.createMenu({side:'left',production:true,rings:leftDrawingRings,activateCentered:true,onGesturePointer:leftRingGesturePointer,getBounds:leftDrawingBounds,onOpen:()=>{
+ try{leftDrawingMenu=semicircleEngine.createMenu({side:'left',production:true,rings:leftDrawingRings,outerActions:sharedOuterActions,activateCentered:true,onGesturePointer:leftRingGesturePointer,getBounds:leftDrawingBounds,onOpen:()=>{
   rightCommandMenu?.close();
   // Center only the ring owning the active real source; other session positions survive.
   for(const ring of leftDrawingMenu.state.rings){const index=ring.entries.findIndex(entry=>entry.source.classList.contains('active'));if(index>=0)ring.offset=ring.activeIndex=index}
@@ -2463,7 +2510,7 @@ const rightCommandGroups=[
 const rightOneShot=new Set(['clear','open','save','saveAs','svg','png','insertWord','undo','redo','copyObjects','pasteObjects','zoomOut','zoomIn']);
 // Transitional complete command access, using the existing authoritative controls.
 const rightCommandRings=[
- {id:'R1',label:'Chỉnh sửa / Chọn',ids:['resetView','editSelected','copyObjects','pasteObjects','delete','extend','undo','redo'],defaultTool:'resetView',tint:'#edf2f6'},
+ {id:'R1',label:'Chỉnh sửa / Chọn',ids:['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],defaultTool:'resetView',tint:'#edf2f6'},
  {id:'R2',label:'Tệp tin',ids:['clear','open','save','saveAs','svg','png','insertWord'],defaultTool:'save',tint:'#edf3ef'},
  {id:'R3',label:'Chế độ xem / Bắt điểm',ids:['panView','zoomOut','zoomIn','snapToggle','snapOptions'],defaultTool:'panView',tint:'#edf2f4'},
  {id:'R4',label:'Tiện ích',ids:['drawingScalesToggle','openCalculator'],defaultTool:'drawingScalesToggle',tint:'#f3f0e9'}
@@ -2491,8 +2538,8 @@ const rightCommandSafeProbe=document.createElement('div');rightCommandSafeProbe.
 function rightCommandBounds(){
  const vv=window.visualViewport,s=getComputedStyle(rightCommandSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
  const b={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),document.querySelector('header').getBoundingClientRect().bottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
- const reach=rightCommandMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'right',rings:rightCommandRings.map(r=>({id:r.id,count:r.entries.length})),bounds:b}).radius;
- for(const id of ['dynamicInput','commandControls']){
+ const reach=rightCommandMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'right',rings:rightCommandRings.map(r=>({id:r.id,count:r.entries.length})),bounds:b,fixedOuter:true}).radius;
+ for(const id of ['dynamicInput']){
   const control=$(id);if(!control||control.hidden)continue;
   const r=control.getBoundingClientRect();
   if(r.width&&r.right>b.right-reach&&r.left<b.right&&r.bottom>b.top&&r.top<b.bottom){
@@ -2506,7 +2553,7 @@ function mountRightCommandMenu(){
  if(rightCommandMenu)return;
  refreshRightCommandEntries();document.body.append(rightCommandSafeProbe);
  let firstOpen=true;
- try{rightCommandMenu=semicircleEngine.createMenu({side:'right',production:true,rings:rightCommandRings,activateCentered:true,getBounds:rightCommandBounds,onOpen:()=>{
+ try{rightCommandMenu=semicircleEngine.createMenu({side:'right',production:true,rings:rightCommandRings,outerActions:sharedOuterActions,activateCentered:true,getBounds:rightCommandBounds,onOpen:()=>{
   leftDrawingMenu?.close();
   if(firstOpen){firstOpen=false;return}
   // Persistent source states may center only their own ring. Prefer the remembered
@@ -2534,6 +2581,11 @@ const rightCommandObserver=new MutationObserver(records=>{
 });
 for(const source of new Set(rightCommandRings.flatMap(r=>r.ids.map(rightCommandSource)).filter(Boolean)))rightCommandObserver.observe(source,{attributes:true,attributeOldValue:true,attributeFilter:['class','aria-pressed','aria-expanded','aria-label','title','disabled','aria-disabled','hidden']});
 for(const id of ['dynamicInput','commandControls'])if($(id))rightCommandObserver.observe($(id),{attributes:true,attributeOldValue:true,attributeFilter:['hidden','style']});
+const outerContextObserver=new MutationObserver(records=>{
+ if(!records.some(r=>r.oldValue!==r.target.getAttribute(r.attributeName)))return;
+ leftDrawingMenu?.refresh();rightCommandMenu?.refresh();
+});
+for(const source of [commandControls,...sharedOuterActions.map(a=>a.source)])outerContextObserver.observe(source,{attributes:true,attributeOldValue:true,attributeFilter:['hidden','disabled','aria-disabled','aria-label','title']});
 const rightCommandConsumed=new Set();let rightCommandSwallowClick=false;
 window.addEventListener('pointerdown',e=>{
  rightCommandSwallowClick=false;
@@ -2588,6 +2640,8 @@ function syncRadialPrimaryPresentation(){
  // Unsafe fans remain hidden by the engine; close only their navigation state.
  if(keyboard)for(const menu of [leftDrawingMenu,rightCommandMenu])if(!usable(menu)&&menu.state.open)menu.close();
  const value=String(!!(fitted||keyboard));
+ const context=String(fitted&&[leftDrawingMenu,rightCommandMenu].some(menu=>menu.state.open&&menu.layout.contextRing));
+ if(document.body.dataset.radialContext!==context)document.body.dataset.radialContext=context;
  if(document.body.dataset.radialPrimary===value)return;
  document.body.dataset.radialPrimary=value;
  // Only positioning is refreshed; no popup state, command or preference is changed.

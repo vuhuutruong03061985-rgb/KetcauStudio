@@ -70,7 +70,7 @@ const expected={L1:['bar','thin','dashed','curve'],L2:['hinge','linkBar','weld',
     separation:l.rings.every((r,i)=>r.r0>=(i?l.rings[i-1].r1:l.hubRadius)+3-1e-8),
     centers:l.rings.every(r=>r.cx===l.cx&&r.cy===l.cy),
     upright:[...m.host.querySelectorAll('.semicircle-icon')].every(el=>!el.getAttribute('transform')?.includes('rotate'))}});
-   assert(geometry.fits&&geometry.safe&&geometry.targets&&geometry.centers&&geometry.separation&&geometry.upright);assert(geometry.radius<260);assert.equal(await root.locator('.semicircle-roller-ring').count(),4);assert.equal(await root.locator('text,button').count(),0);console.log('GEOMETRY',viewport,geometry);
+   assert(geometry.fits&&geometry.safe&&geometry.targets&&geometry.centers&&geometry.separation&&geometry.upright);assert(geometry.radius<310);assert.equal(await root.locator('.semicircle-roller-ring').count(),4);assert.equal(await root.locator('text,button').count(),0);console.log('GEOMETRY',viewport,geometry);
    await activate('bar');await openGroup();await focusTool('thin');await p.mouse.move(viewport.width-100,100);
    const styleOf=id=>sector(id).locator('.semicircle-hit').evaluate(el=>{const s=getComputedStyle(el);return{fill:s.fill,stroke:s.stroke,width:s.strokeWidth,dash:s.strokeDasharray}});
    const active=await styleOf('bar'),focusedTool=await styleOf('thin');assert.equal(active.fill,'rgb(184, 220, 224)');assert.notEqual(active.fill,focusedTool.fill);assert.equal(await sector('bar').getAttribute('aria-pressed'),'true');assert.equal(await sector('thin').getAttribute('aria-pressed'),'false');assert.equal(await sector('thin').getAttribute('data-focused'),'true');

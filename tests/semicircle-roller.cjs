@@ -41,7 +41,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
    },{side,type,cancel});
    await p.waitForTimeout(210);
    const end=await p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;return {offset:m.state.roller.offset,pointer:m.state.roller.pointerId,dragging:m.state.roller.dragging,hub:JSON.stringify(m.host.querySelector('[data-demo-id="hub"] .semicircle-hit').getAttribute('d')),clicks:rollerClicks}},side);
-   assert.equal(end.offset,cancel?start.offset:(start.offset+1)%(side==='left'?4:8));assert.equal(end.hub,start.hub);assert.equal(end.pointer,null);assert.equal(end.dragging,false);assert.equal(end.clicks,0);
+   assert.equal(end.offset,cancel?start.offset:(start.offset+1)%(side==='left'?4:6));assert.equal(end.hub,start.hub);assert.equal(end.pointer,null);assert.equal(end.dragging,false);assert.equal(end.clicks,0);
   };
   await open('left');
   await p.evaluate(()=>{window.hoverBefore=JSON.stringify(leftDrawingMenu.state.roller);for(let i=0;i<30;i++)leftDrawingMenu.host.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:77,pointerType:'pen',clientX:i*20,clientY:i*10}));});

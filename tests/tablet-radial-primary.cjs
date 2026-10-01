@@ -14,7 +14,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    const tap=async(id,side)=>{
     await settled();
     const q=await p.evaluate(({id,side})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;
-     if(id==='hub')return{x:m.layout.cx+(side==='left'?13:-13),y:m.layout.cy};
+     if(id==='hub')return{x:m.layout.cx+(side==='left'?13:-13),y:m.layout.cy};if(['undo','redo','commandCancel','commandFinish'].includes(id))return m.layout.contextRing.sectors[sharedOuterActions.findIndex(e=>e.id===id)].icon;
      if(side==='left'){
       const aliases={geometry:'L1',connections:'L2',loads:'L3',region:'L4',dimensions:'L4',annotation:'L4',diagrams:'L4'};
       const r=aliases[id]?m.state.rings.find(r=>r.id===aliases[id]):m.state.rings.find(r=>r.entries.some(e=>e.id===id));
@@ -26,7 +26,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    const command=async(side,group,id)=>{
     if(!await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.open,side))await tap('hub',side);
     if(side==='left'){if(!await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side)}
-    else if(!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side);
+    else if(!['undo','redo'].includes(id)&&!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side);
     await tap(id,side);
    };
    const snapshot=()=>p.evaluate(()=>({doc:documentText(),items:JSON.stringify(items),dirty:documentText()!==savedDocument,past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,selected,multi:[...multiSelection],geometryScale,internalForceScale,snap:JSON.stringify(snapOptions),snapEnabled,name:documentName,handle:documentHandle?.name,storage:JSON.stringify(localStorage)}));
