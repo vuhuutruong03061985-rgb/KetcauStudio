@@ -99,6 +99,32 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    await p.setViewportSize(viewport);await ready(true);
    assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
    await p.evaluate(()=>{closeDrawingScales();cancelToSelection()});await settled();
+   // Xiaomi field switching can leave body focused for a full event turn.
+   await p.evaluate(()=>{setMode('bar');first={x:300,y:300};beginBarNumericInput({clientX:400,clientY:400,pointerType:'touch'});saveDraft()});
+   await p.locator('#dynamicInputValue').focus();
+   const fieldBefore=await snapshot(),fieldPoint=await p.evaluate(()=>JSON.stringify(first));
+   const preserved=async()=>{
+    await settled();assert.equal(await p.locator('body').getAttribute('data-radial-primary'),'true');
+    for(const id of ['commandRibbon','ribbonToggle','toggleTools'])assert(await p.locator('#'+id).isHidden());
+    assert.deepEqual(await snapshot(),fieldBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),fieldPoint);
+   };
+   await p.setViewportSize(keyboardViewport);await preserved();
+   for(const [from,to] of [['dynamicInputValue','dynamicInputSecondary'],['dynamicInputSecondary','dynamicInputValue']]){
+    await p.locator('#'+from).blur();assert.equal(await p.evaluate(()=>document.activeElement===document.body),true);await preserved();
+    await p.locator('#'+to).focus();await preserved();
+   }
+   await p.setViewportSize(viewport);await preserved();assert.equal(await p.evaluate(()=>radialKeyboardSession),null);
+   await p.setViewportSize(keyboardViewport);await preserved();
+   await p.setViewportSize({width:viewport.height,height:240});await ready(false);
+   assert.equal(await p.evaluate(()=>radialKeyboardSession),null);assert(await p.locator('#toggleTools').isVisible());
+   assert.deepEqual(await snapshot(),fieldBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),fieldPoint);
+   await p.setViewportSize(viewport);await settled();await ready(true);
+   await p.locator('#dynamicInputValue').focus();await p.setViewportSize(keyboardViewport);await preserved();
+   await p.evaluate(()=>hideDynamicInput());await ready(false);
+   assert.equal(await p.evaluate(()=>radialKeyboardSession),null);
+   assert(await p.locator('#toggleTools').isVisible());assert.deepEqual(await snapshot(),fieldBefore);
+   await p.setViewportSize(viewport);await settled();await ready(true);
+   await p.evaluate(()=>cancelToSelection());
    // Hidden sources retain real anchor rectangles; collapsed Ribbon preference is preserved.
    await p.evaluate(()=>ribbonToggle.click());await ready(true);
    const anchors=await p.evaluate(()=>[drawingScalesButton,snapButton,momentButton].map(el=>{const r=el.getBoundingClientRect();return {width:r.width,height:r.height}}));assert(anchors.every(r=>r.width>0&&r.height>0));

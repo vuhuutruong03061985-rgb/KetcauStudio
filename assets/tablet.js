@@ -2329,17 +2329,27 @@ function queueRadialPrimaryUpdate(){
  if(radialPrimaryQueued)return;
  radialPrimaryQueued=true;queueMicrotask(()=>{radialPrimaryQueued=false;syncRadialPrimaryPresentation()});
 }
+let radialKeyboardSession=null;
 function radialKeyboardShrink(){
  const el=document.activeElement,vv=window.visualViewport,baseline=radialPrimaryLayout;
  const editable=el&&(el.isContentEditable||el.matches('input:not([readonly]):not([disabled]),textarea:not([readonly]):not([disabled]),select:not([disabled])'));
- // Focus is required; a smaller viewport alone must still trigger normal fallback.
+ // Editable focus identifies the keyboard initially. Only the same open Dynamic
+ // Input capture may retain it through the temporary blur between its fields.
  // Android may shrink both heights. Compare with the last fitted layout, while
  // substantial width changes (orientation/split view) still use normal fallback.
- return floatingToolsMedia.matches&&document.body.dataset.radialPrimary==='true'&&editable&&vv&&baseline&&
+ const shrunk=floatingToolsMedia.matches&&vv&&baseline&&
   [innerWidth,innerHeight,vv.width,vv.height].every(n=>Number.isFinite(n)&&n>0)&&
   Math.abs(innerWidth-baseline.width)<=baseline.width*.05&&Math.abs(vv.width-baseline.width)<=baseline.width*.05&&
   Math.min(innerHeight,vv.height)<baseline.height*.75&&
   leftDrawingMenu?.host.isConnected&&rightCommandMenu?.host.isConnected;
+ const capture=dynamicNumericCapture;
+ const sameSession=radialKeyboardSession&&radialKeyboardSession===capture&&dynamicInputUI.owns(capture.confirm);
+ if(!shrunk){radialKeyboardSession=null;return false}
+ if(sameSession)return true;
+ radialKeyboardSession=null;
+ if(document.body.dataset.radialPrimary!=='true'||!editable)return false;
+ if(capture&&dynamicInputUI.owns(capture.confirm)&&$('dynamicInput').contains(el))radialKeyboardSession=capture;
+ return true;
 }
 function syncRadialPrimaryPresentation(){
  const usable=menu=>{
