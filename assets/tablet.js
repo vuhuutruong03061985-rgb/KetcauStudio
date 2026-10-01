@@ -2086,76 +2086,126 @@ const semicircleEngine=(()=>{
  function mirrorSemicircleLayout(layout){
   const side=layout.side==='left'?'right':'left',cx=layout.bounds.left+layout.bounds.right-layout.cx;
   const mirror=s=>{const next={...s,side,cx};return {...next,icon:sectorIconPosition(next),path:solveRadialSectorPath(next)}};
-  return {...layout,side,cx,inner:layout.inner.map(mirror),outer:layout.outer.map(mirror),bounds:{...layout.bounds}};
+  return {...layout,side,cx,inner:layout.inner?.map(mirror),outer:layout.outer?.map(mirror),...(layout.rings?{rings:layout.rings.map(r=>({...r,side,cx,sectors:r.sectors.map(mirror)}))}:{}),bounds:{...layout.bounds}};
  }
- function createMenu({side,items:entries,getBounds,centerY,onAction=()=>{},production=false,onOpen=()=>{}}){
+ // General envelope depends only on ring counts/targets, never their UI offsets.
+ function solveConcentricRingLayout({side='left',rings,bounds,centerY,minTarget=44}){
+  const base=solveSemicircleLayout({side,innerCount:0,outerCount:0,bounds,centerY,minTarget,refined:true});
+  if(!Array.isArray(rings)||!rings.length||new Set(rings.map(r=>r.id)).size!==rings.length)throw new RangeError('Invalid concentric rings');
+  let radius=base.hubRadius;
+  const solved=rings.map(r=>{
+   if(typeof r.id!=='string'||!r.id||!Number.isInteger(r.count)||r.count<1||r.count>12)throw new RangeError('Invalid roller ring');
+   const slots=r.count%2?r.count:r.count+1,step=Math.min(Math.PI/4,Math.PI/slots),thickness=minTarget+4;
+   const mid=Math.max(radius+3+thickness/2,(minTarget/2+1.5)/Math.sin(step/2));
+   const ring={id:r.id,side,cx:base.cx,r0:mid-thickness/2,r1:mid+thickness/2,step,count:r.count};radius=ring.r1;return ring;
+  });
+  const fits=radius<=bounds.right-bounds.left&&2*radius<=bounds.bottom-bounds.top;
+  const cy=fits?Math.max(bounds.top+radius,Math.min(centerY??(bounds.top+bounds.bottom)/2,bounds.bottom-radius)):(bounds.top+bounds.bottom)/2;
+  for(const ring of solved){
+   ring.cy=cy;const half=ring.step/2-Math.asin(1.5/((ring.r0+ring.r1)/2));
+   ring.sectors=Array.from({length:ring.count},(_,index)=>{
+    const a=(index-(ring.count-1)/2)*ring.step,s={side,cx:base.cx,cy,r0:ring.r0,r1:ring.r1,a0:a-half,a1:a+half,index};
+    return {...s,icon:sectorIconPosition(s),path:solveRadialSectorPath(s)};
+   });
+  }
+  return {...base,cy,radius,fits,rings:solved};
+ }
+ function createRollerState({id,entries,activeIndex=0}){
+  if(typeof id!=='string'||!id||!Array.isArray(entries)||!entries.length||entries.length>12||!Number.isInteger(activeIndex)||new Set(entries.map(e=>e.id)).size!==entries.length)throw new RangeError('Invalid roller configuration');
+  const index=snapGroupIndex(activeIndex,entries.length);
+  return {id,entries,activeIndex:index,offset:index,pointerId:null,dragging:false,snapFrame:0,suppressClick:false,controls:new Map()};
+ }
+ // Opt-in rings:[{id,entries,activeIndex,tint}] navigate only; items keeps Task 3B semantics.
+ function createMenu({side,items:entries=[],rings:ringConfigs=null,getBounds,centerY,onAction=()=>{},production=false,onOpen=()=>{}}){
+  const multi=ringConfigs!==null,rotary=production||multi;
+  if(multi&&(!Array.isArray(ringConfigs)||!ringConfigs.length||new Set(ringConfigs.map(r=>r.id)).size!==ringConfigs.length))throw new RangeError('Invalid concentric configuration');
+  const rings=multi?ringConfigs.map(createRollerState):[{id:'main',entries,activeIndex:0,offset:0,pointerId:null,dragging:false,snapFrame:0,suppressClick:false,controls:new Map()}];
   const insetId='semicircle-inset-'+(++nextMenuId);
   const host=document.createElement('div');host.className=production?`semicircle-${side}-menu`:'semicircle-prototype';host.dataset.side=side;
+  if(multi)host.classList.add('semicircle-multi-roller');
   const menuLabel=side==='right'?'Lệnh và thiết lập':'Công cụ vẽ';
   const surface=document.createElementNS(NS,'svg');surface.setAttribute('aria-label',production?menuLabel:`Demo ${side}`);host.append(surface);document.body.append(host);
-  const state={side,open:false,activeGroup:null,hoveredSector:null};
-  const roller={offset:0,pointerId:null,dragging:false};state.roller=roller;
-  let snapFrame=0,suppressClick=false;
+  const state={side,open:false,activeGroup:null,hoveredSector:null,rings};
+  const roller=rings[0];state.roller=roller; // Task 3B compatibility alias.
   // Odd physical slots keep a full-size middle detent even with six real groups.
   const slotCount=entries.length%2?entries.length:entries.length+1,step=Math.PI/slotCount;
-  function selectGroup(index){
-   roller.offset=snapGroupIndex(index,entries.length);state.activeGroup=entries[roller.offset]?.id;paint();
+  function ringLayout(ring){return multi?layout.rings.find(r=>r.id===ring.id):{sectors:layout.inner,step}}
+  function selectGroup(index,ring=roller){
+   ring.activeIndex=snapGroupIndex(index,ring.entries.length);ring.offset=ring.activeIndex;
+   if(!multi){state.activeGroup=ring.entries[ring.activeIndex]?.id;paint()}
+   else moveRollerRing(ring);
   }
-  // Move only group paths and upright artwork. Hub/children never rotate.
-  function moveGroups(){
-   if(!production||!state.open)return;
-   const half=entries.length/2;
-   entries.forEach((entry,i)=>{
-    const base=layout.inner[i],g=host.querySelector(`[data-demo-id="${entry.id}"]`);if(!g)return;
-    const relative=((i-roller.offset+half)%entries.length+entries.length)%entries.length-half;
-    const angle=relative*step,width=base.a1-base.a0;
-    const s={...base,a0:angle-width/2,a1:angle+width/2};
-    s.icon=sectorIconPosition(s);s.path=solveRadialSectorPath(s);layout.inner[i]=s;
-    g.querySelector('.semicircle-hit').setAttribute('d',s.path);
+  // Only this ring's paths and upright artwork move; capture stays on the surface.
+  function moveRollerRing(ring){
+   if(!rotary||!state.open)return;
+   const geometry=ringLayout(ring),half=ring.entries.length/2;
+   ring.entries.forEach((entry,i)=>{
+    const base=geometry.sectors[i],g=ring.controls.get(i);if(!g)return;
+    const relative=((i-ring.offset+half)%ring.entries.length+ring.entries.length)%ring.entries.length-half;
+    const angle=relative*geometry.step,width=base.a1-base.a0;
+    const sector={...base,a0:angle-width/2,a1:angle+width/2};
+    sector.icon=sectorIconPosition(sector);sector.path=solveRadialSectorPath(sector);geometry.sectors[i]=sector;
+    g.querySelector('.semicircle-hit').setAttribute('d',sector.path);
     const artwork=g.querySelector('.semicircle-icon');
     if(!g._rollerOrigin)g._rollerOrigin={...base.icon};
-    // A wrapper translation preserves artwork transforms and source SVG viewBoxes.
     let wrapper=g.querySelector('.roller-artwork');
     if(!wrapper){wrapper=node('g',{class:'roller-artwork'},g);wrapper.append(artwork)}
-    wrapper.setAttribute('transform',`translate(${s.icon.x-g._rollerOrigin.x} ${s.icon.y-g._rollerOrigin.y})`);
-    g.classList.toggle('roller-candidate',snapGroupIndex(roller.offset,entries.length)===i);
+    wrapper.setAttribute('transform',`translate(${sector.icon.x-g._rollerOrigin.x} ${sector.icon.y-g._rollerOrigin.y})`);
+    g.classList.toggle('roller-candidate',snapGroupIndex(ring.offset,ring.entries.length)===i);
+    if(multi){g.setAttribute('aria-pressed',String(ring.activeIndex===i));g.classList.toggle('selected-group',ring.activeIndex===i)}
     g.style.opacity=String(1-Math.min(Math.abs(relative),3)*.1);
    });
   }
-  function finishRoller(cancel=false){
-   if(roller.pointerId===null)return;
-   const id=roller.pointerId;roller.pointerId=null;
+  function finishRoller(ring,cancel=false){
+   if(ring.pointerId===null)return;
+   const id=ring.pointerId;ring.pointerId=null;
    if(surface.hasPointerCapture?.(id))surface.releasePointerCapture(id);
-   if(roller.dragging){
-    suppressClick=true;const start=roller.offset,end=cancel?roller.startOffset:Math.round(start);
+   if(ring.dragging){
+    ring.suppressClick=true;const start=ring.offset,end=cancel?ring.startOffset:Math.round(start);
     const begin=performance.now(),duration=matchMedia('(prefers-reduced-motion: reduce)').matches?0:160;
-    const animate=now=>{const t=duration?Math.min(1,(now-begin)/duration):1;roller.offset=start+(end-start)*(1-(1-t)**3);moveGroups();
-     if(t<1)snapFrame=requestAnimationFrame(animate);else{snapFrame=0;roller.dragging=false;selectGroup(end)}};
-    snapFrame=requestAnimationFrame(animate);
+    const animate=now=>{const t=duration?Math.min(1,(now-begin)/duration):1;ring.offset=start+(end-start)*(1-(1-t)**3);moveRollerRing(ring);
+     if(t<1)ring.snapFrame=requestAnimationFrame(animate);else{ring.snapFrame=0;ring.dragging=false;selectGroup(end,ring)}};
+    ring.snapFrame=requestAnimationFrame(animate);
    }
   }
+  function findRingFromPointerTarget(target){
+   const control=target.closest?.('[data-roller-ring]');
+   return host.contains(control)?rings.find(r=>r.id===control.dataset.rollerRing):undefined;
+  }
   function rollerPointer(e){
-   if(!production)return;
+   if(!rotary)return;
+   let ring;
    if(e.type==='pointerdown'){
-    suppressClick=false;
-    const g=e.target.closest?.('[data-demo-id]');
-    if(!state.open||!host.contains(e.target)||!entries.some(entry=>entry.id===g?.dataset.demoId)||e.button!==0||roller.pointerId!==null)return;
-    cancelAnimationFrame(snapFrame);snapFrame=0;suppressClick=false;
-    Object.assign(roller,{pointerId:e.pointerId,dragging:false,tapIndex:entries.findIndex(entry=>entry.id===g.dataset.demoId),startX:e.clientX,startY:e.clientY,startOffset:roller.offset,lastAngle:Math.atan2(e.clientY-layout.cy,e.clientX-layout.cx)});
+    if(!host.contains(e.target))return;
+    // Browsers reuse a mouse/pen ID across rings. Retire only that ID's old click token.
+    for(const previous of rings)if(previous.lastPointerId===e.pointerId&&previous.pointerId!==e.pointerId){previous.suppressClick=false;delete previous.lastPointerId}
+    ring=findRingFromPointerTarget(e.target);
+    // A fresh unrelated child/hub gesture must not inherit drag-click suppression.
+    if(!ring){if(!multi)roller.suppressClick=false;return}
+    if(!state.open||e.button!==0||ring.pointerId!==null||rings.some(r=>r.pointerId===e.pointerId))return;
+    const g=e.target.closest('[data-roller-ring]');
+    if(g.getAttribute('aria-disabled')==='true')return;
+    cancelAnimationFrame(ring.snapFrame);ring.snapFrame=0;ring.suppressClick=false;
+    Object.assign(ring,{pointerId:e.pointerId,lastPointerId:e.pointerId,dragging:false,tapIndex:Number(g.dataset.rollerIndex),startX:e.clientX,startY:e.clientY,startOffset:ring.offset,lastAngle:Math.atan2(e.clientY-layout.cy,e.clientX-layout.cx)});
     try{surface.setPointerCapture?.(e.pointerId)}catch(error){if(error.name!=='NotFoundError')throw error}
    }else{
-    if(e.pointerId!==roller.pointerId)return;
+    ring=rings.find(r=>r.pointerId===e.pointerId);if(!ring)return;
     if(e.type==='pointermove'){
      const a=Math.atan2(e.clientY-layout.cy,e.clientX-layout.cx);
-     if(classifyTapVsDrag(Math.hypot(e.clientX-roller.startX,e.clientY-roller.startY)))roller.dragging=true;
-     if(roller.dragging){roller.offset=Math.max(roller.startOffset-entries.length+1,Math.min(roller.startOffset+entries.length-1,roller.offset-rollerDelta(roller.lastAngle,a,side)/step));moveGroups()}
-     roller.lastAngle=a;
-    }else{const tap=!roller.dragging&&e.type==='pointerup';finishRoller(e.type!=='pointerup');if(tap){suppressClick=true;selectGroup(roller.tapIndex)}}
+     if(classifyTapVsDrag(Math.hypot(e.clientX-ring.startX,e.clientY-ring.startY)))ring.dragging=true;
+     if(ring.dragging){ring.offset=Math.max(ring.startOffset-ring.entries.length+1,Math.min(ring.startOffset+ring.entries.length-1,ring.offset-rollerDelta(ring.lastAngle,a,side)/ringLayout(ring).step));moveRollerRing(ring)}
+     ring.lastAngle=a;
+    }else{const tap=!ring.dragging&&e.type==='pointerup';finishRoller(ring,e.type!=='pointerup');if(tap){ring.suppressClick=true;selectGroup(ring.tapIndex,ring)}}
    }
    e.preventDefault();e.stopImmediatePropagation();
   }
-  for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])window.addEventListener(type,rollerPointer,true);
-  const rollerClick=e=>{if(production&&host.contains(e.target)&&(roller.dragging||snapFrame||(suppressClick&&e.detail>0))){suppressClick=false;e.preventDefault();e.stopImmediatePropagation()}};
+  const pointerEvents=['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'];
+  for(const type of pointerEvents)window.addEventListener(type,rollerPointer,true);
+  const rollerClick=e=>{
+   if(!rotary||!host.contains(e.target))return;
+   const ring=(e.pointerId!==undefined?rings.find(r=>r.lastPointerId===e.pointerId):undefined)||findRingFromPointerTarget(e.target)||(!multi?roller:undefined);
+   if(ring&&(ring.dragging||ring.snapFrame||(ring.suppressClick&&e.detail>0))){ring.suppressClick=false;e.preventDefault();e.stopImmediatePropagation()}
+  };
   window.addEventListener('click',rollerClick,true);
   const pressed=new Map(),active=new Map();let layout,destroyed=false;
   const entryActive=entry=>!entry.oneShot&&(entry.popupOnly?entry.source?.getAttribute('aria-expanded')==='true':entry.source?.classList.contains('active'));
@@ -2163,7 +2213,8 @@ const semicircleEngine=(()=>{
   function control(id,label,path,icon,position,action,options={}){
    const source=options.source;
    if(source){label=options.label||source.getAttribute('aria-label')||source.title;options.disabled=options.disabled||source.disabled||source.getAttribute('aria-disabled')==='true';}
-   const g=node('g',{role:'button',tabindex:options.disabled?-1:0,'aria-label':label,'aria-disabled':!!options.disabled,'data-demo-id':id,class:'semicircle-control'});
+   const g=node('g',{role:'button',tabindex:options.disabled?-1:0,'aria-label':label,'aria-disabled':!!options.disabled,'data-demo-id':id,class:'semicircle-control'},options.parent||surface);
+   if(options.ring){g.dataset.rollerRing=options.ring.id;g.dataset.rollerIndex=options.index;options.ring.controls.set(options.index,g)}
    if(options.expanded!==undefined)g.setAttribute('aria-expanded',String(options.expanded));
    if(pressed.has(id))g.setAttribute('aria-pressed',String(pressed.get(id)));
    if(source)for(const attr of ['aria-pressed','aria-expanded','aria-controls','aria-haspopup'])if(source.hasAttribute(attr))g.setAttribute(attr,source.getAttribute(attr));
@@ -2189,16 +2240,17 @@ const semicircleEngine=(()=>{
    g.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation()});
    g.addEventListener('click',e=>{e.stopPropagation();invoke()});
    g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(!e.repeat)invoke()}});
-   if(source?.dataset.mode==='moment'){
+   if(source?.dataset.mode==='moment'&&!options.navigationOnly){
     g.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();if(options.disabled)return;source.dispatchEvent(new MouseEvent('contextmenu'));state.open=false;state.activeGroup=null;paint()});
     g.addEventListener('keydown',e=>{if(e.key==='ArrowDown'&&!options.disabled){e.preventDefault();e.stopPropagation();source.dispatchEvent(new KeyboardEvent('keydown',{key:e.key}));state.open=false;state.activeGroup=null;paint()}});
    }
    g.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')state.hoveredSector=id});
    g.addEventListener('pointerleave',()=>{if(state.hoveredSector===id)state.hoveredSector=null});
+   return g;
   }
   function paint(){
    if(destroyed)return;
-   if(roller.pointerId!==null||snapFrame)return;
+   if(rings.some(r=>r.pointerId!==null||r.snapFrame))return;
    try{paintLayout()}
    catch(error){
     if(!production)throw error;
@@ -2208,13 +2260,14 @@ const semicircleEngine=(()=>{
   }
   function paintLayout(){
    if(destroyed)return;
-   const focused=host.contains(document.activeElement)?document.activeElement.getAttribute('data-demo-id'):null;
+   const focused=host.contains(document.activeElement)?{id:document.activeElement.getAttribute('data-demo-id'),ring:document.activeElement.dataset.rollerRing}:null;
    const group=entries.find(entry=>entry.id===state.activeGroup),children=group?.children||[];
    // Reserve the largest group while closed too: opening cannot move the hub.
-   const reserve=solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:Math.max(0,...entries.map(e=>e.children?.length||0)),bounds:getBounds(),centerY,refined:production});
+   const reserve=multi?solveConcentricRingLayout({side,rings:rings.map(r=>({id:r.id,count:r.entries.length})),bounds:getBounds(),centerY}):solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:Math.max(0,...entries.map(e=>e.children?.length||0)),bounds:getBounds(),centerY,refined:production});
    const parent=reserve.inner[entries.indexOf(group)],outerAnchor=production?0:parent?(parent.a0+parent.a1)/2:0;
-   layout=solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:state.open?children.length:0,bounds:getBounds(),centerY:reserve.cy,refined:production,outerAnchor});
-   if(production)layout.inner=layout.inner.slice(0,entries.length);
+   layout=multi?reserve:solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:state.open?children.length:0,bounds:getBounds(),centerY:reserve.cy,refined:production,outerAnchor});
+   if(production&&!multi)layout.inner=layout.inner.slice(0,entries.length);
+   rings.forEach(r=>r.controls.clear());
    surface.replaceChildren();host.hidden=!reserve.fits;
    if(host.dataset.safeFit!==String(reserve.fits))host.dataset.safeFit=String(reserve.fits);
    if(!reserve.fits)return; // Caller must page/regroup when safe targets cannot fit.
@@ -2227,33 +2280,44 @@ const semicircleEngine=(()=>{
    node('feComposite',{in:'color',in2:'edge',operator:'in',result:'shadow'},filter);
    const merge=node('feMerge',{},filter);node('feMergeNode',{in:'SourceGraphic'},merge);node('feMergeNode',{in:'shadow'},merge);
    const {cx,cy,hubRadius:r}=layout,sign=side==='left'?1:-1;
-   control('hub',production?`${menuLabel}: mở / đóng`:`Demo ${side}: mở / đóng`,`M${cx},${cy-r} A${r},${r} 0 0 ${side==='left'?1:0} ${cx},${cy+r} Z`,'toggleTools',{x:cx+sign*r*.5,y:cy},()=>{state.open=!state.open;if(state.open)onOpen();if(production&&state.open){const current=entries.findIndex(e=>e.children?.some(entryActive));selectGroup(current>=0?current:roller.offset)}else if(!production)state.activeGroup=null;paint()},{expanded:state.open});
-   if(state.open){
+   control('hub',production?`${menuLabel}: mở / đóng`:`Demo ${side}: mở / đóng`,`M${cx},${cy-r} A${r},${r} 0 0 ${side==='left'?1:0} ${cx},${cy+r} Z`,'toggleTools',{x:cx+sign*r*.5,y:cy},()=>{state.open=!state.open;if(state.open)onOpen();else stopRollers();if(production&&!multi&&state.open){const current=entries.findIndex(e=>e.children?.some(entryActive));selectGroup(current>=0?current:roller.offset)}else if(!production)state.activeGroup=null;paint()},{expanded:state.open});
+   if(state.open&&multi){
+    rings.forEach((ring,index)=>{
+     const parent=node('g',{class:'semicircle-roller-ring','data-ring-id':ring.id});
+     const config=ringConfigs[index];parent.style.setProperty('--ring-tint',config.tint||'#edf2f6');
+     ring.entries.forEach((entry,i)=>{const sector=layout.rings[index].sectors[i];control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>selectGroup(i,ring),{parent,ring,index:i,source:entry.source,label:entry.label,disabled:entry.disabled,navigationOnly:true,tint:entry.tint||config.tint})});
+    });
+   }
+   if(state.open&&!multi){
     const draw=(entry,sector,isGroup)=>control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>{
      if(isGroup&&entry.children?.length){if(production)selectGroup(entries.indexOf(entry));else{state.activeGroup=state.activeGroup===entry.id?null:entry.id;paint()}}
      else{onAction(entry.id);state.open=false;if(!production)state.activeGroup=null;paint()}
-    },{isGroup,source:entry.source,label:entry.proxyLabel,oneShot:entry.oneShot,popupOnly:entry.popupOnly,disabled:entry.disabled,tint:entry.tint||(production?'#f3f7fa':undefined),hasActiveChild:entry.children?.some(entryActive),...(entry.children?.length?{expanded:state.activeGroup===entry.id}:{})});
+    },{isGroup,...(isGroup&&production?{ring:roller,index:entries.indexOf(entry)}:{}),source:entry.source,label:entry.proxyLabel,oneShot:entry.oneShot,popupOnly:entry.popupOnly,disabled:entry.disabled,tint:entry.tint||(production?'#f3f7fa':undefined),hasActiveChild:entry.children?.some(entryActive),...(entry.children?.length?{expanded:state.activeGroup===entry.id}:{})});
     entries.forEach((entry,i)=>draw(entry,layout.inner[i],true));children.forEach((entry,i)=>draw(entry,layout.outer[i],false));
-    if(production){
-     const clip=node('clipPath',{id:insetId+'-arc'},defs);node('rect',{x:side==='left'?cx:cx-layout.radius,y:cy-layout.radius,width:layout.radius,height:layout.radius*2},clip);
-     for(const entry of entries)host.querySelector(`[data-demo-id="${entry.id}"]`).setAttribute('clip-path',`url(#${insetId}-arc)`);
-     node('path',{d:`M${cx+sign*(layout.inner[0].r0-4)},${cy-8} L${cx+sign*(layout.inner[0].r0+2)},${cy} L${cx+sign*(layout.inner[0].r0-4)},${cy+8}`,class:'roller-slot'});moveGroups()
-    }
    }
-   if(focused){const target=[...host.querySelectorAll('[data-demo-id]')].find(n=>n.dataset.demoId===focused)||host.querySelector('[data-demo-id="hub"]');target?.focus({preventScroll:true})}
+   if(state.open&&rotary){
+     const clip=node('clipPath',{id:insetId+'-arc'},defs);node('rect',{x:side==='left'?cx:cx-layout.radius,y:cy-layout.radius,width:layout.radius,height:layout.radius*2},clip);
+     for(const ring of rings){
+      for(const g of ring.controls.values())g.setAttribute('clip-path',`url(#${insetId}-arc)`);
+      const r0=ringLayout(ring).sectors[0].r0;
+      node('path',{d:`M${cx+sign*(r0-4)},${cy-8} L${cx+sign*(r0+2)},${cy} L${cx+sign*(r0-4)},${cy+8}`,class:'roller-slot'});moveRollerRing(ring)
+     }
+   }
+   if(focused){const target=[...host.querySelectorAll('[data-demo-id]')].find(n=>n.dataset.demoId===focused.id&&n.dataset.rollerRing===focused.ring)||host.querySelector('[data-demo-id="hub"]');target?.focus({preventScroll:true})}
   }
-  function stopRoller(){
-   const interrupted=roller.pointerId!==null||snapFrame;
-   cancelAnimationFrame(snapFrame);snapFrame=0;
-   const id=roller.pointerId;roller.pointerId=null;roller.dragging=false;
+  function stopRoller(ring){
+   const interrupted=ring.pointerId!==null||ring.snapFrame;
+   cancelAnimationFrame(ring.snapFrame);ring.snapFrame=0;
+   const id=ring.pointerId;ring.pointerId=null;ring.dragging=false;
    if(id!==null&&surface.hasPointerCapture?.(id))surface.releasePointerCapture(id);
-   if(interrupted)roller.offset=snapGroupIndex(roller.startOffset??roller.offset,entries.length);
+   if(interrupted){ring.offset=snapGroupIndex(ring.startOffset??ring.offset,ring.entries.length);ring.activeIndex=snapGroupIndex(ring.offset,ring.entries.length)}
   }
+  const stopRollers=()=>rings.forEach(stopRoller);
   const keydown=e=>{if(host.contains(e.target)&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopImmediatePropagation();if(!e.repeat)e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}))}};
-  const resize=()=>{stopRoller();paint()};window.addEventListener('keydown',keydown,true);window.addEventListener('blur',resize);window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);window.visualViewport?.addEventListener('scroll',resize);paint();
-  return {host,state,get layout(){return layout},refresh:paint,close(){stopRoller();state.open=false;if(!production)state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){stopRoller();for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])window.removeEventListener(type,rollerPointer,true);window.removeEventListener('click',rollerClick,true);destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('blur',resize);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);if(production)queueRadialPrimaryUpdate()}};
+  const resize=()=>{stopRollers();paint()};window.addEventListener('keydown',keydown,true);window.addEventListener('blur',resize);window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);window.visualViewport?.addEventListener('scroll',resize);paint();
+  return {host,state,get layout(){return layout},refresh:paint,close(){stopRollers();state.open=false;if(!production)state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){stopRollers();for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])window.removeEventListener(type,rollerPointer,true);window.removeEventListener('click',rollerClick,true);destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('blur',resize);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);if(production)queueRadialPrimaryUpdate()}};
  }
- return {normalizeAngle,shortestAngleDelta,snapGroupIndex,classifyTapVsDrag,rollerDelta,solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,createMenu};
+ return {normalizeAngle,shortestAngleDelta,snapGroupIndex,classifyTapVsDrag,rollerDelta,solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,solveConcentricRingLayout,createRollerState,createMenu};
 })();
 
 // Task 2C: DOM controls remain authoritative for actions, state and artwork.

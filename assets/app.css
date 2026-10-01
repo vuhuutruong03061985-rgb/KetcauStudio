@@ -212,6 +212,11 @@ main[data-toolbox-mode="auto-hide"] #toolPanel{position:absolute;left:44px;top:v
 
 /* Shared semicircle surfaces. SVG paths, not icon boxes, own hit testing. */
 .roller-artwork,.roller-slot{pointer-events:none}
+.semicircle-roller-ring{pointer-events:none}
+body .semicircle-multi-roller>svg{touch-action:none}
+.semicircle-multi-roller .semicircle-icon *{pointer-events:none}
+.semicircle-multi-roller .roller-candidate .semicircle-hit{stroke:#087e90;stroke-width:2.5}
+.semicircle-multi-roller .selected-group .semicircle-hit{fill:var(--ring-tint);stroke:#6585af;stroke-width:2}
 .roller-slot{fill:none;stroke:#087e90;stroke-width:3;stroke-linecap:round}
 :is(.semicircle-left-menu,.semicircle-right-menu) .group-selector .semicircle-hit{filter:saturate(3)}
 :is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-hit{touch-action:none}
