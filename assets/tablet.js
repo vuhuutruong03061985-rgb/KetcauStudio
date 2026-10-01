@@ -2115,8 +2115,9 @@ const semicircleEngine=(()=>{
   const index=snapGroupIndex(activeIndex,entries.length);
   return {id,entries,activeIndex:index,offset:index,pointerId:null,dragging:false,snapFrame:0,suppressClick:false,controls:new Map()};
  }
- // Opt-in rings:[{id,entries,activeIndex,tint}] navigate only; items keeps Task 3B semantics.
- function createMenu({side,items:entries=[],rings:ringConfigs=null,getBounds,centerY,onAction=()=>{},production=false,onOpen=()=>{}}){
+ // Rings navigate by default; activateCentered opts into focus-then-activate.
+ // The items API keeps Task 3B semantics, including the production RIGHT menu.
+ function createMenu({side,items:entries=[],rings:ringConfigs=null,getBounds,centerY,onAction=()=>{},production=false,onOpen=()=>{},activateCentered=false,onGesturePointer=()=>false}){
   const multi=ringConfigs!==null,rotary=production||multi;
   if(multi&&(!Array.isArray(ringConfigs)||!ringConfigs.length||new Set(ringConfigs.map(r=>r.id)).size!==ringConfigs.length))throw new RangeError('Invalid concentric configuration');
   const rings=multi?ringConfigs.map(createRollerState):[{id:'main',entries,activeIndex:0,offset:0,pointerId:null,dragging:false,snapFrame:0,suppressClick:false,controls:new Map()}];
@@ -2135,6 +2136,16 @@ const semicircleEngine=(()=>{
    if(!multi){state.activeGroup=ring.entries[ring.activeIndex]?.id;paint()}
    else moveRollerRing(ring);
   }
+  function invokeRingEntry(index,ring){
+   if(!activateCentered||ring.activeIndex!==index||Math.abs(ring.offset-index)>1e-8){selectGroup(index,ring);return}
+   onAction(ring.entries[index].id);state.open=false;stopRollers();paint();
+  }
+  let forwardingGesture=false;
+  function notifyGesture(e,ring){
+   forwardingGesture=true;
+   try{return onGesturePointer(e,ring.entries[ring.tapIndex],{centered:ring.tapCentered,dragging:ring.dragging})}
+   finally{forwardingGesture=false}
+  }
   // Only this ring's paths and upright artwork move; capture stays on the surface.
   function moveRollerRing(ring){
    if(!rotary||!state.open)return;
@@ -2152,7 +2163,7 @@ const semicircleEngine=(()=>{
     if(!wrapper){wrapper=node('g',{class:'roller-artwork'},g);wrapper.append(artwork)}
     wrapper.setAttribute('transform',`translate(${sector.icon.x-g._rollerOrigin.x} ${sector.icon.y-g._rollerOrigin.y})`);
     g.classList.toggle('roller-candidate',snapGroupIndex(ring.offset,ring.entries.length)===i);
-    if(multi){g.setAttribute('aria-pressed',String(ring.activeIndex===i));g.classList.toggle('selected-group',ring.activeIndex===i)}
+    if(multi){if(!activateCentered)g.setAttribute('aria-pressed',String(ring.activeIndex===i));else g.setAttribute('aria-current',String(ring.activeIndex===i));g.classList.toggle('selected-group',ring.activeIndex===i);g.dataset.focused=String(ring.activeIndex===i)}
     g.style.opacity=String(1-Math.min(Math.abs(relative),3)*.1);
    });
   }
@@ -2173,7 +2184,7 @@ const semicircleEngine=(()=>{
    return host.contains(control)?rings.find(r=>r.id===control.dataset.rollerRing):undefined;
   }
   function rollerPointer(e){
-   if(!rotary)return;
+   if(!rotary||forwardingGesture)return;
    let ring;
    if(e.type==='pointerdown'){
     if(!host.contains(e.target))return;
@@ -2186,8 +2197,10 @@ const semicircleEngine=(()=>{
     const g=e.target.closest('[data-roller-ring]');
     if(g.getAttribute('aria-disabled')==='true')return;
     cancelAnimationFrame(ring.snapFrame);ring.snapFrame=0;ring.suppressClick=false;
-    Object.assign(ring,{pointerId:e.pointerId,lastPointerId:e.pointerId,dragging:false,tapIndex:Number(g.dataset.rollerIndex),startX:e.clientX,startY:e.clientY,startOffset:ring.offset,lastAngle:Math.atan2(e.clientY-layout.cy,e.clientX-layout.cx)});
+    const tapIndex=Number(g.dataset.rollerIndex);
+    Object.assign(ring,{pointerId:e.pointerId,lastPointerId:e.pointerId,dragging:false,tapIndex,tapCentered:tapIndex===ring.activeIndex&&Math.abs(ring.offset-tapIndex)<1e-8,startX:e.clientX,startY:e.clientY,startOffset:ring.offset,lastAngle:Math.atan2(e.clientY-layout.cy,e.clientX-layout.cx)});
     try{surface.setPointerCapture?.(e.pointerId)}catch(error){if(error.name!=='NotFoundError')throw error}
+    notifyGesture(e,ring);
    }else{
     ring=rings.find(r=>r.pointerId===e.pointerId);if(!ring)return;
     if(e.type==='pointermove'){
@@ -2195,7 +2208,8 @@ const semicircleEngine=(()=>{
      if(classifyTapVsDrag(Math.hypot(e.clientX-ring.startX,e.clientY-ring.startY)))ring.dragging=true;
      if(ring.dragging){ring.offset=Math.max(ring.startOffset-ring.entries.length+1,Math.min(ring.startOffset+ring.entries.length-1,ring.offset-rollerDelta(ring.lastAngle,a,side)/ringLayout(ring).step));moveRollerRing(ring)}
      ring.lastAngle=a;
-    }else{const tap=!ring.dragging&&e.type==='pointerup';finishRoller(ring,e.type!=='pointerup');if(tap){ring.suppressClick=true;selectGroup(ring.tapIndex,ring)}}
+     notifyGesture(e,ring);
+    }else{const tap=!ring.dragging&&e.type==='pointerup',consumed=notifyGesture(e,ring);finishRoller(ring,e.type!=='pointerup');if(tap){ring.suppressClick=true;if(!consumed)invokeRingEntry(ring.tapIndex,ring)}}
    }
    e.preventDefault();e.stopImmediatePropagation();
   }
@@ -2241,8 +2255,8 @@ const semicircleEngine=(()=>{
    g.addEventListener('click',e=>{e.stopPropagation();invoke()});
    g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(!e.repeat)invoke()}});
    if(source?.dataset.mode==='moment'&&!options.navigationOnly){
-    g.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();if(options.disabled)return;source.dispatchEvent(new MouseEvent('contextmenu'));state.open=false;state.activeGroup=null;paint()});
-    g.addEventListener('keydown',e=>{if(e.key==='ArrowDown'&&!options.disabled){e.preventDefault();e.stopPropagation();source.dispatchEvent(new KeyboardEvent('keydown',{key:e.key}));state.open=false;state.activeGroup=null;paint()}});
+    g.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();if(options.disabled)return;source.dispatchEvent(new MouseEvent('contextmenu'));state.open=false;state.activeGroup=null;stopRollers();paint()});
+    g.addEventListener('keydown',e=>{if(e.key==='ArrowDown'&&!options.disabled){e.preventDefault();e.stopPropagation();source.dispatchEvent(new KeyboardEvent('keydown',{key:e.key}));state.open=false;state.activeGroup=null;stopRollers();paint()}});
    }
    g.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')state.hoveredSector=id});
    g.addEventListener('pointerleave',()=>{if(state.hoveredSector===id)state.hoveredSector=null});
@@ -2283,9 +2297,9 @@ const semicircleEngine=(()=>{
    control('hub',production?`${menuLabel}: mở / đóng`:`Demo ${side}: mở / đóng`,`M${cx},${cy-r} A${r},${r} 0 0 ${side==='left'?1:0} ${cx},${cy+r} Z`,'toggleTools',{x:cx+sign*r*.5,y:cy},()=>{state.open=!state.open;if(state.open)onOpen();else stopRollers();if(production&&!multi&&state.open){const current=entries.findIndex(e=>e.children?.some(entryActive));selectGroup(current>=0?current:roller.offset)}else if(!production)state.activeGroup=null;paint()},{expanded:state.open});
    if(state.open&&multi){
     rings.forEach((ring,index)=>{
-     const parent=node('g',{class:'semicircle-roller-ring','data-ring-id':ring.id});
+     const parent=node('g',{class:'semicircle-roller-ring','data-ring-id':ring.id,role:'group','aria-label':ringConfigs[index].label||ring.id});
      const config=ringConfigs[index];parent.style.setProperty('--ring-tint',config.tint||'#edf2f6');
-     ring.entries.forEach((entry,i)=>{const sector=layout.rings[index].sectors[i];control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>selectGroup(i,ring),{parent,ring,index:i,source:entry.source,label:entry.label,disabled:entry.disabled,navigationOnly:true,tint:entry.tint||config.tint})});
+     ring.entries.forEach((entry,i)=>{const sector=layout.rings[index].sectors[i];control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>invokeRingEntry(i,ring),{parent,ring,index:i,source:entry.source,label:activateCentered?undefined:entry.label,disabled:entry.disabled,navigationOnly:!activateCentered,tint:entry.tint||config.tint})});
     });
    }
    if(state.open&&!multi){
@@ -2309,6 +2323,7 @@ const semicircleEngine=(()=>{
    const interrupted=ring.pointerId!==null||ring.snapFrame;
    cancelAnimationFrame(ring.snapFrame);ring.snapFrame=0;
    const id=ring.pointerId;ring.pointerId=null;ring.dragging=false;
+   if(id!==null)notifyGesture(new PointerEvent('pointercancel',{pointerId:id}),ring);
    if(id!==null&&surface.hasPointerCapture?.(id))surface.releasePointerCapture(id);
    if(interrupted){ring.offset=snapGroupIndex(ring.startOffset??ring.offset,ring.entries.length);ring.activeIndex=snapGroupIndex(ring.offset,ring.entries.length)}
   }
@@ -2334,17 +2349,25 @@ const leftDrawingGroups=[
  const source=document.querySelector(['pin','roller','fixed'].includes(id)?`button[data-support-type="${id}"]`:`button[data-mode="${id}"]`);
  return source?[{id,icon:id,label:source.getAttribute('aria-label')||id,source}]:[];
 })}));
+// Production LEFT functions; the old catalog remains reusable for the legacy API/fallback.
+const leftDrawingRings=[
+ {id:'L1',label:'Vẽ / Hình học',tools:['bar','thin','dashed','curve'],defaultTool:'bar',tint:leftDrawingGroups[0].tint},
+ {id:'L2',label:'Liên kết',tools:['hinge','linkBar','weld','pin','roller','fixed'],defaultTool:'pin',tint:leftDrawingGroups[1].tint},
+ {id:'L3',label:'Tải trọng',tools:['force','moment','udl'],defaultTool:'force',tint:leftDrawingGroups[2].tint},
+ {id:'L4',label:'Chú thích / Biểu diễn',tools:['dim','text','person','section','rigidRegion','hatch','joint','positive','negative','diagramM','diagramQ','diagramN'],defaultTool:'dim',tint:leftDrawingGroups[3].tint}
+].map(ring=>({...ring,activeIndex:ring.tools.indexOf(ring.defaultTool),entries:ring.tools.map(id=>leftDrawingGroups.flatMap(g=>g.children).find(entry=>entry.id===id))}));
 let leftDrawingMenu=null,rightCommandMenu=null,radialPrimaryQueued=false,radialPrimaryLayout=null;
 const leftDrawingSafeProbe=document.createElement('div');leftDrawingSafeProbe.className='semicircle-left-safe-probe';
 function leftDrawingBounds(){
  const vv=window.visualViewport,s=getComputedStyle(leftDrawingSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
  const bounds={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),document.querySelector('header').getBoundingClientRect().bottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
+ const reach=leftDrawingMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'left',rings:leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),bounds}).radius;
  // Use a free vertical interval when input/contextual controls occupy the left edge.
  // The engine keeps minimum targets and falls back to the old palette if it cannot fit.
  for(const id of ['dynamicInput','commandControls']){
   const el=document.getElementById(id);if(!el||el.hidden)continue;
   const r=el.getBoundingClientRect();
-  if(r.width&&r.left<bounds.left+170&&r.right>bounds.left&&r.bottom>bounds.top&&r.top<bounds.bottom){
+  if(r.width&&r.left<bounds.left+reach&&r.right>bounds.left&&r.bottom>bounds.top&&r.top<bounds.bottom){
    if(r.top-bounds.top>=bounds.bottom-r.bottom)bounds.bottom=Math.min(bounds.bottom,r.top-8);
    else bounds.top=Math.max(bounds.top,r.bottom+8);
   }
@@ -2356,8 +2379,12 @@ function mountLeftDrawingMenu(){
  if(!floatingToolsMedia.matches){leftDrawingMenu?.destroy();leftDrawingMenu=null;leftDrawingSafeProbe.remove();return}
  if(leftDrawingMenu)return;
  document.body.append(leftDrawingSafeProbe);
- try{leftDrawingMenu=semicircleEngine.createMenu({side:'left',production:true,items:leftDrawingGroups,getBounds:leftDrawingBounds,onOpen:()=>rightCommandMenu?.close(),onAction:id=>{
-  const source=leftDrawingGroups.flatMap(g=>g.children).find(c=>c.id===id)?.source;
+ try{leftDrawingMenu=semicircleEngine.createMenu({side:'left',production:true,rings:leftDrawingRings,activateCentered:true,onGesturePointer:leftRingGesturePointer,getBounds:leftDrawingBounds,onOpen:()=>{
+  rightCommandMenu?.close();
+  // Center only the ring owning the active real source; other session positions survive.
+  for(const ring of leftDrawingMenu.state.rings){const index=ring.entries.findIndex(entry=>entry.source.classList.contains('active'));if(index>=0)ring.offset=ring.activeIndex=index}
+ },onAction:id=>{
+  const source=leftDrawingRings.flatMap(r=>r.entries).find(c=>c.id===id)?.source;
   if(source&&!source.disabled&&source.getAttribute('aria-disabled')!=='true')source.click();
  }})}catch(error){document.querySelector('.semicircle-left-menu')?.remove();leftDrawingMenu=null;console.warn('Left radial unavailable:',error)}
  queueRadialPrimaryUpdate();
@@ -2368,7 +2395,7 @@ const leftDrawingObserver=new MutationObserver(records=>{
  if(leftDrawingMomentPointer!==null&&momentPalette.open)leftDrawingMenu?.close();
  else leftDrawingMenu?.refresh();
 });
-for(const child of leftDrawingGroups.flatMap(g=>g.children))if(child.source)leftDrawingObserver.observe(child.source,{attributes:true,attributeOldValue:true,attributeFilter:['class','aria-pressed','aria-expanded','aria-label','title','disabled','aria-disabled','style']});
+for(const child of leftDrawingRings.flatMap(r=>r.entries))if(child?.source)leftDrawingObserver.observe(child.source,{attributes:true,attributeOldValue:true,attributeFilter:['class','aria-pressed','aria-expanded','aria-label','title','disabled','aria-disabled','style']});
 for(const id of ['dynamicInput','commandControls'])if($(id))leftDrawingObserver.observe($(id),{attributes:true,attributeOldValue:true,attributeFilter:['hidden','style']});
 // Dismissal consumes the complete pointer sequence before canvas/editor listeners.
 // Opening/group navigation never dispatches Escape or touches document state.
@@ -2378,6 +2405,23 @@ function forwardLeftMomentPointer(e,type=e.type){
  try{momentButton.dispatchEvent(new PointerEvent(type,{pointerId:e.pointerId,pointerType:e.pointerType,button:e.button,clientX:e.clientX,clientY:e.clientY}))}
  finally{leftDrawingForwarding=false}
 }
+function leftRingGesturePointer(e,entry,{centered,dragging}){
+ if(entry?.id!=='moment')return false;
+ if(e.type==='pointerdown'){
+  if(centered){leftDrawingMomentPointer=e.pointerId;forwardLeftMomentPointer(e)}
+  return false;
+ }
+ if(leftDrawingMomentPointer!==e.pointerId)return false;
+ if(dragging){forwardLeftMomentPointer(e,'pointercancel');leftDrawingMomentPointer=null;return false}
+ if(e.type==='pointermove')return false;
+ forwardLeftMomentPointer(e,e.type==='lostpointercapture'?'pointercancel':e.type);
+ // When the hold opens the existing palette, close() releases capture. The old
+ // pointer-up consumer completes that sequence and clears Moment's hold flag.
+ if(e.type==='pointercancel'&&momentHoldOpened&&momentPalette.open)return true;
+ leftDrawingMomentPointer=null;
+ if(e.type==='pointerup'&&momentHoldOpened){momentButton.click();return true}
+ return e.type!=='pointerup';
+}
 window.addEventListener('pointerdown',e=>{
  if(leftDrawingForwarding)return;
  leftDrawingSwallowClick=false;
@@ -2385,7 +2429,7 @@ window.addEventListener('pointerdown',e=>{
  if(rightCommandMenu?.host.contains(e.target))return;
  if(leftDrawingMenu.host.contains(e.target)){
   const control=e.target.closest('[data-demo-id]');
-  if(control?.dataset.demoId==='moment'&&control.getAttribute('aria-disabled')!=='true'){
+  if(leftDrawingMenu.state.rings.length===1&&control?.dataset.demoId==='moment'&&control.getAttribute('aria-disabled')!=='true'){
    leftDrawingMomentPointer=e.pointerId;forwardLeftMomentPointer(e);
   }
   e.preventDefault();e.stopImmediatePropagation();return;

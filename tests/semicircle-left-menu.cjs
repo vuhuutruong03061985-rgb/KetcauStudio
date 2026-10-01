@@ -1,6 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
-const expected={geometry:['bar','thin','dashed','curve','extend'],connections:['hinge','linkBar','weld','pin','roller','fixed'],loads:['force','moment','udl'],region:['section','rigidRegion','hatch','joint'],dimensions:['dim'],annotation:['text','person'],diagrams:['positive','negative','diagramM','diagramQ','diagramN']};
+const expected={L1:['bar','thin','dashed','curve'],L2:['hinge','linkBar','weld','pin','roller','fixed'],L3:['force','moment','udl'],L4:['dim','text','person','section','rigidRegion','hatch','joint','positive','negative','diagramM','diagramQ','diagramN']};
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -13,13 +13,16 @@ const expected={geometry:['bar','thin','dashed','curve','extend'],connections:['
    p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.resolve('index.html')).href);
    const root=p.locator('.semicircle-left-menu'),sector=id=>root.locator(`[data-demo-id="${id}"]`);
    assert.equal(await root.count(),1);assert.equal(await p.locator('.semicircle-prototype').count(),0);
-   assert.equal(await p.evaluate(()=>leftDrawingGroups.map(g=>g.label).join('|')),'Thanh|Liên kết|Tải trọng|Mặt cắt|Kích thước|Ghi chú|Khác');
-   assert.deepEqual(await p.evaluate(()=>Object.fromEntries(leftDrawingGroups.map(g=>[g.id,g.children.map(c=>c.id)]))),expected);
+   assert.equal(await p.evaluate(()=>leftDrawingRings.map(g=>g.label).join('|')),'Vẽ / Hình học|Liên kết|Tải trọng|Chú thích / Biểu diễn');
+   assert.deepEqual(await p.evaluate(()=>Object.fromEntries(leftDrawingRings.map(g=>[g.id,g.entries.map(c=>c.id)]))),expected);
+   const point=id=>p.evaluate(id=>{const m=leftDrawingMenu;if(id==='hub')return{x:m.layout.cx+13,y:m.layout.cy};const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));return m.layout.rings.find(l=>l.id===r.id).sectors[r.entries.findIndex(e=>e.id===id)].icon},id);
+   const focusTool=async(id,pointer='touch')=>{const centered=await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id);if(!centered){const q=await point(id);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)}};
    const activate=async(id,pointer='touch')=>{
-    const q=await p.evaluate(id=>{const m=leftDrawingMenu;if(id==='hub')return {x:m.layout.cx+12,y:m.layout.cy};const g=leftDrawingGroups.findIndex(g=>g.id===id);return g>=0?m.layout.inner[g].icon:m.layout.outer[leftDrawingGroups.find(g=>g.id===m.state.activeGroup).children.findIndex(c=>c.id===id)].icon},id);
-    if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y);
+    if(id==='region'||id==='connections'){await focusTool(id==='region'?'text':'fixed',pointer);return}
+    if(id!=='hub')await focusTool(id,pointer);
+    const q=await point(id);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y);
    };
-   const openGroup=async group=>{if(!await p.evaluate(()=>leftDrawingMenu.state.open))await activate('hub');if(await p.evaluate(()=>leftDrawingMenu.state.activeGroup)!==group)await activate(group)};
+   const openGroup=async()=>{if(!await p.evaluate(()=>leftDrawingMenu.state.open))await activate('hub')};
    const reset=()=>p.evaluate(()=>{document.activeElement?.blur();cancelToSelection();selected=null;multiSelection.clear();closeSecondaryTools();closeMomentPalette();leftDrawingMenu.close()});
    const state=()=>p.evaluate(()=>({mode,selected,first,second,rotation:currentMomentRotation,support:$('support').value,secondary:secondaryTools.hidden,options:secondaryTools.textContent,load:loadPlacement,doc:documentText(),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument}));
    // Compare every actual source click with a hit-tested radial touch, including option UI.
@@ -30,7 +33,7 @@ const expected={geometry:['bar','thin','dashed','curve','extend'],connections:['
     assert(source.real);assert.equal(await sector(id).getAttribute('aria-label'),source.label);assert.equal(await sector(id).locator('title').textContent(),source.title);
     await activate(id);assert.equal(await p.evaluate(()=>sourceClicks),source.clicks+1,id+' delegates one click');
     assert.deepEqual(await state(),original,id+' same behavior');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
-    await activate('hub');assert.equal(await sector(id).getAttribute('aria-pressed'),'true',id);assert((await sector(group).getAttribute('class')).includes('has-active-child'));
+    await activate('hub');assert.equal(await sector(id).getAttribute('aria-pressed'),'true',id);assert.equal(await sector(id).getAttribute('data-focused'),'true');
     if(['pin','roller','fixed'].includes(id))assert.equal(await p.evaluate(()=>$('support').value),id);
    }
    // Moment artwork follows the existing session choice, including CCW.
@@ -38,7 +41,7 @@ const expected={geometry:['bar','thin','dashed','curve','extend'],connections:['
    assert.equal(await p.evaluate(()=>currentMomentRotation),'ccw');await openGroup('loads');
    assert.equal(await sector('moment').locator('image').getAttribute('href'),await p.evaluate(()=>momentButton.style.getPropertyValue('--tool-icon').slice(5,-2)));
    // The original Moment palette also receives right-click, keyboard and hold.
-   const momentPoint=()=>p.evaluate(()=>leftDrawingMenu.layout.outer[1].icon);
+   const momentPoint=()=>point('moment');
    let mp=await momentPoint();await p.mouse.click(mp.x,mp.y,{button:'right'});
    assert(await p.locator('#momentDirectionPalette').evaluate(el=>el.open));assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
    await p.locator('#momentDirectionPalette input[value=cw]').check();assert.equal(await p.evaluate(()=>currentMomentRotation),'cw');
@@ -52,7 +55,7 @@ const expected={geometry:['bar','thin','dashed','curve','extend'],connections:['
    await p.evaluate(()=>{document.querySelector('button[data-mode=force]').disabled=true});
    assert.equal(await sector('force').getAttribute('aria-disabled'),'true');assert.equal(await sector('force').getAttribute('tabindex'),'-1');await activate('force');assert.equal(await p.evaluate(()=>mode),'moment');
    await p.evaluate(()=>{document.querySelector('button[data-mode=force]').disabled=false});
-   await sector('force').focus();await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>mode),'force');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
+   await sector('force').focus();await p.keyboard.press('Enter');await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>mode),'force');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
    // An in-progress drawing survives menu navigation and outside dismissal exactly.
    await reset();await p.evaluate(()=>{setMode('bar');first={x:300,y:300};selected=items[0].id;multiSelection=new Set([selected]);saveDraft()});
    const snapshot=()=>p.evaluate(()=>({doc:documentText(),items:JSON.stringify(items),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,first,selected,selection:[...multiSelection],geometryScale,internalForceScale,storage:JSON.stringify(localStorage)}));
@@ -61,42 +64,18 @@ const expected={geometry:['bar','thin','dashed','curve','extend'],connections:['
    await activate('hub','mouse');await p.mouse.click(viewport.width-220,viewport.height-220);assert.deepEqual(await snapshot(),before);
    // Every actual ring admits a 44px disk, preserves fan hit testing and upright icons.
    await reset();
-   const spans={};
-   for(const group of Object.keys(expected)){
-    await openGroup(group);assert.equal(await root.locator('text,button').count(),0);
-    const geometry=await p.evaluate(()=>{const m=leftDrawingMenu,l=m.layout;return {fits:l.fits,radius:l.radius,inner:l.inner[0].r1,span:l.outer.at(-1).a1-l.outer[0].a0,safe:l.cy-l.radius>=l.bounds.top&&l.cy+l.radius<=l.bounds.bottom,targets:[...l.inner,...l.outer].every(s=>{
-     for(let a=0;a<Math.PI*2;a+=Math.PI/36)if(!semicircleEngine.hitTestRadialSector(s,s.icon.x+22*Math.cos(a),s.icon.y+22*Math.sin(a)))return false;
-     return document.elementFromPoint(s.icon.x,s.icon.y)?.classList.contains('semicircle-hit');
-    })}});
-    assert(geometry.fits&&geometry.safe&&geometry.targets);assert(geometry.radius<185);if(group==='loads')assert(geometry.span<Math.PI*.8);
-    spans[expected[group].length]=geometry.span;
-    const refinement=await p.evaluate(()=>{
-     const m=leftDrawingMenu,l=m.layout,parent=l.inner[leftDrawingGroups.findIndex(g=>g.id===m.state.activeGroup)],outer=l.outer;
-     const center=(outer[0].a0+outer.at(-1).a1)/2,step=(outer[0].a0+outer[0].a1)/2-(outer[1]?(outer[1].a0+outer[1].a1)/2:(outer[0].a0+outer[0].a1)/2+outer[0].a1-outer[0].a0);
-     const limit=(Math.PI-Math.abs(step)*outer.length)/2,anchor=(parent.a0+parent.a1)/2;
-     const gaps=ring=>ring.slice(1).map((s,i)=>2*(s.r0+s.r1)/2*Math.sin((s.a0-ring[i].a1)/2));
-     const paths=[...m.host.querySelectorAll('.semicircle-hit')];
-     return {gaps:[...gaps([...l.inner].sort((a,b)=>a.a0-b.a0)),...gaps(outer)],radialGap:outer[0].r0-l.inner[0].r1,hub:l.hubRadius,anchorError:Math.abs(center-Math.max(-limit,Math.min(anchor,limit))),
-      pathHits:paths.every(el=>getComputedStyle(el).pointerEvents==='fill'),
-      upright:[...m.host.querySelectorAll('.semicircle-icon')].every(el=>!el.getAttribute('transform')?.includes('rotate')),
-      icons:[...m.host.querySelectorAll('.semicircle-control:not([data-demo-id="hub"]) .semicircle-icon')].map(el=>el.tagName==='path'?24*Math.hypot(el.getCTM().a,el.getCTM().b):Number(el.getAttribute('width')))};
-    });
-    assert(refinement.gaps.every(g=>Math.abs(g-3)<1e-8),'consistent 3px angular separators');
-    assert.equal(refinement.radialGap,3);assert.equal(refinement.hub,26);assert(refinement.anchorError<1e-8,'nearest safe parent alignment');
-    assert(refinement.pathHits&&refinement.upright);assert(refinement.icons.every(size=>Math.abs(size-28)<.001),'28px icon frames: '+JSON.stringify(refinement.icons));
-    console.log('GEOMETRY',viewport,group,geometry);
-    for(const icon of await root.locator('.semicircle-icon').all())assert.equal(await icon.evaluate(e=>getComputedStyle(e).pointerEvents),'none');
-   }
-   assert(spans[3]<spans[5]&&spans[5]<spans[6]);assert(spans[3]<Math.PI/2);assert(spans[6]<Math.PI*.81);
-   await openGroup('geometry');await activate('bar');await openGroup('geometry');await p.mouse.move(viewport.width-100,100);
-   const styleOf=id=>sector(id).locator('.semicircle-hit').evaluate(el=>{const s=getComputedStyle(el);return {fill:s.fill,stroke:s.stroke,width:s.strokeWidth,dash:s.strokeDasharray}});
-   const active=await styleOf('bar'),parent=await styleOf('geometry'),passive=await styleOf('region');
-   assert.equal(active.fill,'rgb(184, 220, 224)');assert.notEqual(active.fill,parent.fill);assert.notEqual(active.stroke,parent.stroke);
-   assert.equal(await sector('geometry').getAttribute('aria-expanded'),'true');assert((await sector('geometry').getAttribute('class')).includes('selected-group'));assert.notEqual(parent.fill,passive.fill);assert.equal(parent.width,'1.5px');assert.equal(passive.width,'1px');
-   await sector('bar').focus();const focused=await styleOf('bar');assert.equal(focused.fill,active.fill);assert.equal(focused.width,'3px');assert.notEqual(focused.dash,'none');
-   await p.evaluate(()=>document.activeElement.blur());
-   await openGroup('geometry');const point=await p.evaluate(()=>leftDrawingMenu.layout.outer[0].icon);await p.mouse.move(point.x,point.y);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.hoveredSector),'bar');
-   await sector('bar').dispatchEvent('pointerenter',{pointerType:'pen'});assert.equal(await p.evaluate(()=>leftDrawingMenu.state.hoveredSector),'bar');assert(await sector('bar').locator('title').textContent());
+   await openGroup();
+   const geometry=await p.evaluate(()=>{const m=leftDrawingMenu,l=m.layout;return {fits:l.fits,radius:l.radius,safe:l.cy-l.radius>=l.bounds.top&&l.cy+l.radius<=l.bounds.bottom,
+    targets:l.rings.every(r=>r.sectors.every(s=>{for(let a=0;a<2*Math.PI;a+=Math.PI/36)if(!semicircleEngine.hitTestRadialSector(s,s.icon.x+22*Math.cos(a),s.icon.y+22*Math.sin(a)))return false;return document.elementFromPoint(s.icon.x,s.icon.y)?.classList.contains('semicircle-hit')})),
+    separation:l.rings.every((r,i)=>r.r0>=(i?l.rings[i-1].r1:l.hubRadius)+3-1e-8),
+    centers:l.rings.every(r=>r.cx===l.cx&&r.cy===l.cy),
+    upright:[...m.host.querySelectorAll('.semicircle-icon')].every(el=>!el.getAttribute('transform')?.includes('rotate'))}});
+   assert(geometry.fits&&geometry.safe&&geometry.targets&&geometry.centers&&geometry.separation&&geometry.upright);assert(geometry.radius<260);assert.equal(await root.locator('.semicircle-roller-ring').count(),4);assert.equal(await root.locator('text,button').count(),0);console.log('GEOMETRY',viewport,geometry);
+   await activate('bar');await openGroup();await focusTool('thin');await p.mouse.move(viewport.width-100,100);
+   const styleOf=id=>sector(id).locator('.semicircle-hit').evaluate(el=>{const s=getComputedStyle(el);return{fill:s.fill,stroke:s.stroke,width:s.strokeWidth,dash:s.strokeDasharray}});
+   const active=await styleOf('bar'),focusedTool=await styleOf('thin');assert.equal(active.fill,'rgb(184, 220, 224)');assert.notEqual(active.fill,focusedTool.fill);assert.equal(await sector('bar').getAttribute('aria-pressed'),'true');assert.equal(await sector('thin').getAttribute('aria-pressed'),'false');assert.equal(await sector('thin').getAttribute('data-focused'),'true');
+   await sector('bar').focus();const focused=await styleOf('bar');assert.equal(focused.fill,active.fill);assert.equal(focused.width,'3px');assert.notEqual(focused.dash,'none');await p.evaluate(()=>document.activeElement.blur());
+   const hoverPoint=await point('bar');await p.mouse.move(hoverPoint.x,hoverPoint.y);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.hoveredSector),'bar');await sector('bar').dispatchEvent('pointerenter',{pointerType:'pen'});assert.equal(await p.evaluate(()=>leftDrawingMenu.state.hoveredSector),'bar');assert(await sector('bar').locator('title').textContent());
    // Representative canvas workflows start immediately after radial selection.
    const tap=async(x,y)=>{const q=await p.evaluate(([x,y])=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},[x,y]);await p.touchscreen.tap(q.x,q.y)};
    for(const [group,id]of [['geometry','bar'],['loads','force'],['loads','moment'],['loads','udl'],['connections','roller'],['dimensions','dim'],['diagrams','diagramM']]){

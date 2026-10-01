@@ -78,9 +78,9 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
   await synthetic(1,'pen','pointerup',10);assert.equal(await p.evaluate(()=>gestureWasDrag),true);
   // Duplicate item IDs route by ring identity. Taps/keyboard select without invoking sources.
   const tap=await point(2,0);await p.touchscreen.tap(tap.x,tap.y);assert.equal((await states())[2].activeIndex,0);
-  await p.locator('.semicircle-multi-roller [data-roller-ring="ring-1"][data-roller-index="4"]').focus();await p.keyboard.press('Space');assert.equal((await states())[1].activeIndex,4);
+  await p.locator('.semicircle-prototype.semicircle-multi-roller [data-roller-ring="ring-1"][data-roller-index="4"]').focus();await p.keyboard.press('Space');assert.equal((await states())[1].activeIndex,4);
   await synthetic(1);assert.equal((await states())[1].activeIndex,0);
-  const saved=await states();await p.evaluate(()=>multiMenu.close());await p.locator('.semicircle-multi-roller [data-demo-id="hub"]').focus();await p.keyboard.press('Enter');assert.deepEqual(await states(),saved);
+  const saved=await states();await p.evaluate(()=>multiMenu.close());await p.locator('.semicircle-prototype.semicircle-multi-roller [data-demo-id="hub"]').focus();await p.keyboard.press('Enter');assert.deepEqual(await states(),saved);
   // Two pointers own separate rings; cancellation of B must leave A active.
   await p.evaluate(()=>{
    const m=multiMenu;
@@ -130,7 +130,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
    await p.screenshot({path:path.join(out,name+'.png')});
    if(name==='left-3'){await synthetic(1);await p.screenshot({path:path.join(out,'middle-rotated.png')})}
   }
-  await p.evaluate(()=>multiMenu.destroy());assert.equal(await p.locator('.semicircle-multi-roller').count(),0);
+  await p.evaluate(()=>multiMenu.destroy());assert.equal(await p.locator('.semicircle-prototype.semicircle-multi-roller').count(),0);
   assert.deepEqual(await snapshot(),before);assert.deepEqual(errors,[]);
   console.log('PASS per-ring tap/drag/threshold/cancel/loss/blur/memory, independent states/DOM, source/document isolation; screenshots:',out);
  }finally{await browser.close()}

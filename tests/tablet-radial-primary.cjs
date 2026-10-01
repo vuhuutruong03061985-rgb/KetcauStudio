@@ -13,10 +13,22 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    const settled=()=>p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const tap=async(id,side)=>{
     await settled();
-    const q=await p.evaluate(({id,side})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu,groups=side==='left'?leftDrawingGroups:rightCommandGroups;
-     if(id==='hub')return{x:m.layout.cx+(side==='left'?13:-13),y:m.layout.cy};const index=groups.findIndex(g=>g.id===id);return index>=0?m.layout.inner[index].icon:m.layout.outer[groups.find(g=>g.id===m.state.activeGroup).children.findIndex(c=>c.id===id)].icon},{id,side});await p.touchscreen.tap(q.x,q.y);
+    const q=await p.evaluate(({id,side})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;
+     if(id==='hub')return{x:m.layout.cx+(side==='left'?13:-13),y:m.layout.cy};
+     if(side==='left'){
+      const aliases={geometry:'L1',connections:'L2',loads:'L3',region:'L4',dimensions:'L4',annotation:'L4',diagrams:'L4'};
+      const r=aliases[id]?m.state.rings.find(r=>r.id===aliases[id]):m.state.rings.find(r=>r.entries.some(e=>e.id===id));
+      const i=aliases[id]?(r.activeIndex+1)%r.entries.length:r.entries.findIndex(e=>e.id===id);return m.layout.rings.find(l=>l.id===r.id).sectors[i].icon;
+     }
+     const index=rightCommandGroups.findIndex(g=>g.id===id);return index>=0?m.layout.inner[index].icon:m.layout.outer[rightCommandGroups.find(g=>g.id===m.state.activeGroup).children.findIndex(c=>c.id===id)].icon;
+    },{id,side});await p.touchscreen.tap(q.x,q.y);
    };
-   const command=async(side,group,id)=>{if(!await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.open,side))await tap('hub',side);if(await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.activeGroup,side)!==group)await tap(group,side);await tap(id,side)};
+   const command=async(side,group,id)=>{
+    if(!await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.open,side))await tap('hub',side);
+    if(side==='left'){if(!await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side)}
+    else if(await p.evaluate(()=>rightCommandMenu.state.activeGroup)!==group)await tap(group,side);
+    await tap(id,side);
+   };
    const snapshot=()=>p.evaluate(()=>({doc:documentText(),items:JSON.stringify(items),dirty:documentText()!==savedDocument,past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,selected,multi:[...multiSelection],geometryScale,internalForceScale,snap:JSON.stringify(snapOptions),snapEnabled,name:documentName,handle:documentHandle?.name,storage:JSON.stringify(localStorage)}));
    const canvasHeight=()=>p.locator('#drawing').evaluate(el=>el.getBoundingClientRect().height);
    assert(await p.locator('#commandRibbon').isHidden());assert(await p.locator('#toggleTools').isHidden());assert(await p.locator('#toolPanel').isHidden());
@@ -38,7 +50,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
     await p.screenshot({path:`tests/task3a-${side}-open-${viewport.width}.png`});
     await tap(group,side);
     const root=p.locator(`.semicircle-${side}-menu`);
-    assert.equal(await root.locator('.selected-group').count(),1);
+    assert.equal(await root.locator('.selected-group').count(),side==='left'?4:1);
     assert.equal(await root.locator('text,button').count(),0);
     await p.screenshot({path:`tests/task3a-${side}-expanded-${viewport.width}.png`});
     await tap('hub',side);
