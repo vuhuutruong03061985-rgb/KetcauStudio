@@ -2038,7 +2038,7 @@ floatingToolsMedia.addEventListener('change',()=>{for(const panel of ribbonScrol
 window.addEventListener('resize',positionRibbonMenus);
 paintCommandRibbon();
 
-// Task 2B: dormant, session-only prototype. Nothing mounts until explicitly called.
+// Shared Task 2B geometry/renderer; demo instances remain opt-in and session-only.
 const semicircleEngine=(()=>{
  const gap=2;let nextMenuId=0;
  function point(cx,cy,r,a,side){return {x:cx+(side==='left'?1:-1)*r*Math.cos(a),y:cy+r*Math.sin(a)}}
@@ -2051,56 +2051,74 @@ const semicircleEngine=(()=>{
   const dx=(x-s.cx)*(s.side==='left'?1:-1),dy=y-s.cy,r=Math.hypot(dx,dy),a=Math.atan2(dy,dx);
   return r>=s.r0&&r<=s.r1&&a>=s.a0&&a<=s.a1;
  }
- function solveSemicircleLayout({side='left',innerCount=3,outerCount=0,minTarget=44,bounds,centerY,preferred={}}){
+ function solveSemicircleLayout({side='left',innerCount=3,outerCount=0,minTarget=44,bounds,centerY,preferred={},refined=false,outerAnchor=0}){
   if(!['left','right'].includes(side)||![innerCount,outerCount].every(n=>Number.isInteger(n)&&n>=0&&n<=12)||!Number.isFinite(minTarget)||minTarget<44)throw new RangeError('Invalid semicircle options');
   if(!bounds||!['left','right','top','bottom'].every(k=>Number.isFinite(bounds[k]))||bounds.right<=bounds.left||bounds.bottom<=bounds.top)throw new RangeError('Invalid safe bounds');
   if(centerY!==undefined&&!Number.isFinite(centerY))throw new RangeError('Invalid center');
   for(const key of ['inner','outer'])if(preferred[key]!==undefined&&(!Number.isFinite(preferred[key])||preferred[key]<0))throw new RangeError('Invalid preferred radius');
-  const hubRadius=24,thickness=minTarget+4;
-  function ring(count,start,preference){
+  const hubRadius=refined?26:24,thickness=minTarget+4,halfGap=refined?1.5:gap,radialGap=refined?3:gap;
+  function ring(count,start,preference,isOuter=false){
    if(!count)return {r0:start,r1:start,step:0,span:0,count};
    // Fit a 44px disk, not just a 44px arc. Account for both radial edges.
-   const step=Math.min(Math.PI/4,Math.PI/count),mid=Math.max(start+thickness/2,(minTarget/2+gap)/Math.sin(step/2));
+   const step=Math.min(refined&&isOuter?Math.PI/7.5:Math.PI/4,Math.PI/count),mid=Math.max(start+thickness/2,(minTarget/2+halfGap)/Math.sin(step/2));
    const r1=Math.max(mid+thickness/2,preference||0),r0=r1-thickness;
    return {r0,r1,step,span:count*step,count};
   }
-  let inner=ring(innerCount,hubRadius+gap,preferred.inner),outer=ring(outerCount,inner.r1+gap,preferred.outer);
+  let inner=ring(innerCount,hubRadius+radialGap,preferred.inner),outer=ring(outerCount,inner.r1+radialGap,preferred.outer,true);
   let radius=outerCount?outer.r1:innerCount?inner.r1:hubRadius;
   // Preferences may yield to bounds; minimum target dimensions never shrink.
-  if(radius>bounds.right-bounds.left||2*radius>bounds.bottom-bounds.top){inner=ring(innerCount,hubRadius+gap);outer=ring(outerCount,inner.r1+gap);radius=outerCount?outer.r1:innerCount?inner.r1:hubRadius}
+  if(radius>bounds.right-bounds.left||2*radius>bounds.bottom-bounds.top){inner=ring(innerCount,hubRadius+radialGap);outer=ring(outerCount,inner.r1+radialGap,undefined,true);radius=outerCount?outer.r1:innerCount?inner.r1:hubRadius}
   const fits=radius<=bounds.right-bounds.left&&2*radius<=bounds.bottom-bounds.top;
   const cy=fits?Math.max(bounds.top+radius,Math.min(centerY??(bounds.top+bounds.bottom)/2,bounds.bottom-radius)):(bounds.top+bounds.bottom)/2,cx=side==='left'?bounds.left:bounds.right;
-  function sectors(ring){return Array.from({length:ring.count},(_,index)=>{
-   const mid=-ring.span/2+(index+.5)*ring.step,half=ring.step/2-Math.asin(gap/((ring.r0+ring.r1)/2));
+  function sectors(ring,anchor=0){return Array.from({length:ring.count},(_,index)=>{
+   const center=Math.max(-(Math.PI-ring.span)/2,Math.min(anchor,(Math.PI-ring.span)/2));
+   const mid=center-ring.span/2+(index+.5)*ring.step,half=ring.step/2-Math.asin(halfGap/((ring.r0+ring.r1)/2));
    const s={side,cx,cy,r0:ring.r0,r1:ring.r1,a0:mid-half,a1:mid+half,index};
    return {...s,icon:sectorIconPosition(s),path:solveRadialSectorPath(s)};
   })}
-  return {side,cx,cy,hubRadius,radius,fits,inner:sectors(inner),outer:sectors(outer),bounds:{...bounds}};
+  return {side,cx,cy,hubRadius,radius,fits,inner:sectors(inner),outer:sectors(outer,refined?outerAnchor:0),bounds:{...bounds}};
  }
  function mirrorSemicircleLayout(layout){
   const side=layout.side==='left'?'right':'left',cx=layout.bounds.left+layout.bounds.right-layout.cx;
   const mirror=s=>{const next={...s,side,cx};return {...next,icon:sectorIconPosition(next),path:solveRadialSectorPath(next)}};
   return {...layout,side,cx,inner:layout.inner.map(mirror),outer:layout.outer.map(mirror),bounds:{...layout.bounds}};
  }
- function createMenu({side,items:entries,getBounds,centerY,onAction=()=>{}}){
+ function createMenu({side,items:entries,getBounds,centerY,onAction=()=>{},production=false}){
   const insetId='semicircle-inset-'+(++nextMenuId);
-  const host=document.createElement('div');host.className='semicircle-prototype';host.dataset.side=side;
-  const surface=document.createElementNS(NS,'svg');surface.setAttribute('aria-label',`Demo ${side}`);host.append(surface);document.body.append(host);
+  const host=document.createElement('div');host.className=production?'semicircle-left-menu':'semicircle-prototype';host.dataset.side=side;
+  const surface=document.createElementNS(NS,'svg');surface.setAttribute('aria-label',production?'Công cụ vẽ':`Demo ${side}`);host.append(surface);document.body.append(host);
   const state={side,open:false,activeGroup:null,hoveredSector:null};
   const pressed=new Map(),active=new Map();let layout,destroyed=false;
   const node=(name,attrs,parent=surface)=>{const n=document.createElementNS(NS,name);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,String(v));parent.append(n);return n};
   function control(id,label,path,icon,position,action,options={}){
+   const source=options.source;
+   if(source){label=source.getAttribute('aria-label')||source.title;options.disabled=source.disabled||source.getAttribute('aria-disabled')==='true';}
    const g=node('g',{role:'button',tabindex:options.disabled?-1:0,'aria-label':label,'aria-disabled':!!options.disabled,'data-demo-id':id,class:'semicircle-control'});
    if(options.expanded!==undefined)g.setAttribute('aria-expanded',String(options.expanded));
    if(pressed.has(id))g.setAttribute('aria-pressed',String(pressed.get(id)));
+   if(source)for(const attr of ['aria-pressed','aria-expanded','aria-controls','aria-haspopup'])if(source.hasAttribute(attr))g.setAttribute(attr,source.getAttribute(attr));
    g.classList.toggle('active',active.get(id)===true);g.style.setProperty('--sector-tint',options.tint||'#edf2f6');g.style.setProperty('--sector-inset',`url(#${insetId})`);
-   node('title',{},g).textContent=label;
+   if(source)g.classList.toggle('active',source.classList.contains('active'));
+   g.classList.toggle('has-active-child',!!options.hasActiveChild);
+   node('title',{},g).textContent=source?.title||label;
    node('path',{d:path,class:'semicircle-hit'},g);
-   node('path',{d:toolIconPaths[icon]||toolIconPaths.toggleTools,class:'semicircle-icon',transform:`translate(${position.x-12} ${position.y-12})`,fill:icon==='weld'?'currentColor':'none'},g);
+   const iconSize=production&&id!=='hub'?28:24,iconHalf=iconSize/2;
+   if(source?.querySelector('svg')){
+    const artwork=source.querySelector('svg').cloneNode(true);artwork.setAttribute('x',position.x-14);artwork.setAttribute('y',position.y-14);artwork.setAttribute('width',28);artwork.setAttribute('height',28);artwork.classList.add('semicircle-icon');g.append(artwork);
+    // Fit existing support artwork uniformly, removing excess source-viewBox whitespace.
+    if(production){const b=artwork.getBBox();if(b.width&&b.height)artwork.setAttribute('viewBox',`${b.x-3} ${b.y-3} ${b.width+6} ${b.height+6}`)}
+   }else if(source?.dataset.mode==='moment'){
+    const href=source.style.getPropertyValue('--tool-icon').match(/^url\("(.*)"\)$/)?.[1];
+    node('image',{href,x:position.x-iconHalf,y:position.y-iconHalf,width:iconSize,height:iconSize,class:'semicircle-icon'},g);
+   }else node('path',{d:toolIconPaths[icon]||toolIconPaths.toggleTools,class:'semicircle-icon',transform:`translate(${position.x-iconHalf} ${position.y-iconHalf})${production?` scale(${iconSize/24})`:''}`,fill:icon==='weld'?'currentColor':'none',...(production?{'vector-effect':'non-scaling-stroke'}:{})},g);
    const invoke=()=>{if(!options.disabled)action()};
    g.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation()});
    g.addEventListener('click',e=>{e.stopPropagation();invoke()});
    g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(!e.repeat)invoke()}});
+   if(source?.dataset.mode==='moment'){
+    g.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();if(options.disabled)return;source.dispatchEvent(new MouseEvent('contextmenu'));state.open=false;state.activeGroup=null;paint()});
+    g.addEventListener('keydown',e=>{if(e.key==='ArrowDown'&&!options.disabled){e.preventDefault();e.stopPropagation();source.dispatchEvent(new KeyboardEvent('keydown',{key:e.key}));state.open=false;state.activeGroup=null;paint()}});
+   }
    g.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')state.hoveredSector=id});
    g.addEventListener('pointerleave',()=>{if(state.hoveredSector===id)state.hoveredSector=null});
   }
@@ -2109,8 +2127,9 @@ const semicircleEngine=(()=>{
    const focused=host.contains(document.activeElement)?document.activeElement.getAttribute('data-demo-id'):null;
    const group=entries.find(entry=>entry.id===state.activeGroup),children=group?.children||[];
    // Reserve the largest group while closed too: opening cannot move the hub.
-   const reserve=solveSemicircleLayout({side,innerCount:entries.length,outerCount:Math.max(0,...entries.map(e=>e.children?.length||0)),bounds:getBounds(),centerY});
-   layout=solveSemicircleLayout({side,innerCount:entries.length,outerCount:state.open?children.length:0,bounds:getBounds(),centerY:reserve.cy});
+   const reserve=solveSemicircleLayout({side,innerCount:entries.length,outerCount:Math.max(0,...entries.map(e=>e.children?.length||0)),bounds:getBounds(),centerY,refined:production});
+   const parent=reserve.inner[entries.indexOf(group)],outerAnchor=parent?(parent.a0+parent.a1)/2:0;
+   layout=solveSemicircleLayout({side,innerCount:entries.length,outerCount:state.open?children.length:0,bounds:getBounds(),centerY:reserve.cy,refined:production,outerAnchor});
    surface.replaceChildren();host.hidden=!reserve.fits;
    if(!reserve.fits)return; // Caller must page/regroup when safe targets cannot fit.
    // SVG equivalent of the existing selected button's inset shadow.
@@ -2122,12 +2141,12 @@ const semicircleEngine=(()=>{
    node('feComposite',{in:'color',in2:'edge',operator:'in',result:'shadow'},filter);
    const merge=node('feMerge',{},filter);node('feMergeNode',{in:'SourceGraphic'},merge);node('feMergeNode',{in:'shadow'},merge);
    const {cx,cy,hubRadius:r}=layout,sign=side==='left'?1:-1;
-   control('hub',`Demo ${side}: mở / đóng`,`M${cx},${cy-r} A${r},${r} 0 0 ${side==='left'?1:0} ${cx},${cy+r} Z`,'toggleTools',{x:cx+sign*r*.5,y:cy},()=>{state.open=!state.open;state.activeGroup=null;paint()},{expanded:state.open});
+   control('hub',production?'Công cụ vẽ: mở / đóng':`Demo ${side}: mở / đóng`,`M${cx},${cy-r} A${r},${r} 0 0 ${side==='left'?1:0} ${cx},${cy+r} Z`,'toggleTools',{x:cx+sign*r*.5,y:cy},()=>{state.open=!state.open;state.activeGroup=production&&state.open?entries.find(e=>e.children?.some(c=>c.source?.classList.contains('active')))?.id||null:null;paint()},{expanded:state.open});
    if(state.open){
     const draw=(entry,sector,isGroup)=>control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>{
      if(isGroup&&entry.children?.length){state.activeGroup=state.activeGroup===entry.id?null:entry.id;paint()}
      else{onAction(entry.id);state.open=false;state.activeGroup=null;paint()}
-    },{disabled:entry.disabled,tint:entry.tint,...(entry.children?.length?{expanded:state.activeGroup===entry.id}:{})});
+    },{source:entry.source,disabled:entry.disabled,tint:entry.tint||(production?group?.tint:undefined),hasActiveChild:entry.children?.some(c=>c.source?.classList.contains('active')),...(entry.children?.length?{expanded:state.activeGroup===entry.id}:{})});
     entries.forEach((entry,i)=>draw(entry,layout.inner[i],true));children.forEach((entry,i)=>draw(entry,layout.outer[i],false));
    }
    if(focused){const target=[...host.querySelectorAll('[data-demo-id]')].find(n=>n.dataset.demoId===focused)||host.querySelector('[data-demo-id="hub"]');target?.focus({preventScroll:true})}
@@ -2138,6 +2157,88 @@ const semicircleEngine=(()=>{
  }
  return {solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,createMenu};
 })();
+
+// Task 2C: DOM controls remain authoritative for actions, state and artwork.
+const leftDrawingGroups=[
+ {id:'geometry',label:'Geometry',icon:'bar',tools:['bar','thin','dashed','curve','extend']},
+ {id:'region',label:'Region / Shape editing',icon:'hatch',tools:['hatch','rigidRegion','joint']},
+ {id:'connections',label:'Connections',icon:'hinge',tools:['hinge','linkBar','weld','pin','roller','fixed']},
+ {id:'loads',label:'Loads',icon:'force',tools:['force','moment','udl']},
+ {id:'annotation',label:'Annotation',icon:'dim',tools:['dim','text','person']},
+ {id:'diagrams',label:'Diagram / Signs',icon:'diagramM',tools:['positive','negative','diagramM','diagramQ','diagramN']}
+].map((group,index)=>({...group,tint:['#edf2f6','#f3f0e9','#edf3ef','#edf2f4','#f2eef4','#eef0f6'][index],children:group.tools.map(id=>{
+ const source=document.querySelector(['pin','roller','fixed'].includes(id)?`button[data-support-type="${id}"]`:`button[data-mode="${id}"]`);
+ return {id,icon:id,label:source?.getAttribute('aria-label')||id,source,disabled:!source};
+})}));
+let leftDrawingMenu=null;
+const leftDrawingSafeProbe=document.createElement('div');leftDrawingSafeProbe.className='semicircle-left-safe-probe';
+function leftDrawingBounds(){
+ const vv=window.visualViewport,s=getComputedStyle(leftDrawingSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
+ const bounds={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),document.querySelector('header').getBoundingClientRect().bottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
+ // Use a free vertical interval when input/contextual controls occupy the left edge.
+ // The engine keeps minimum targets and falls back to the old palette if it cannot fit.
+ for(const id of ['dynamicInput','commandControls']){
+  const el=document.getElementById(id);if(!el||el.hidden)continue;
+  const r=el.getBoundingClientRect();
+  if(r.width&&r.left<bounds.left+170&&r.right>bounds.left&&r.bottom>bounds.top&&r.top<bounds.bottom){
+   if(r.top-bounds.top>=bounds.bottom-r.bottom)bounds.bottom=Math.min(bounds.bottom,r.top-8);
+   else bounds.top=Math.max(bounds.top,r.bottom+8);
+  }
+ }
+ bounds.bottom=Math.max(bounds.top+1,bounds.bottom);bounds.right=Math.max(bounds.left+1,bounds.right);
+ return bounds;
+}
+function mountLeftDrawingMenu(){
+ if(!floatingToolsMedia.matches){leftDrawingMenu?.destroy();leftDrawingMenu=null;leftDrawingSafeProbe.remove();return}
+ if(leftDrawingMenu)return;
+ document.body.append(leftDrawingSafeProbe);
+ leftDrawingMenu=semicircleEngine.createMenu({side:'left',production:true,items:leftDrawingGroups,getBounds:leftDrawingBounds,onAction:id=>{
+  const source=leftDrawingGroups.flatMap(g=>g.children).find(c=>c.id===id)?.source;
+  if(source&&!source.disabled&&source.getAttribute('aria-disabled')!=='true')source.click();
+ }});
+}
+floatingToolsMedia.addEventListener('change',mountLeftDrawingMenu);mountLeftDrawingMenu();
+const leftDrawingObserver=new MutationObserver(()=>{
+ if(leftDrawingMomentPointer!==null&&momentPalette.open)leftDrawingMenu?.close();
+ else leftDrawingMenu?.refresh();
+});
+for(const child of leftDrawingGroups.flatMap(g=>g.children))if(child.source)leftDrawingObserver.observe(child.source,{attributes:true,attributeFilter:['class','aria-pressed','aria-expanded','aria-label','title','disabled','aria-disabled','style']});
+for(const id of ['dynamicInput','commandControls'])if($(id))leftDrawingObserver.observe($(id),{attributes:true,attributeFilter:['hidden','style']});
+// Dismissal consumes the complete pointer sequence before canvas/editor listeners.
+// Opening/group navigation never dispatches Escape or touches document state.
+const leftDrawingConsumed=new Set();let leftDrawingSwallowClick=false,leftDrawingMomentPointer=null,leftDrawingForwarding=false;
+function forwardLeftMomentPointer(e,type=e.type){
+ leftDrawingForwarding=true;
+ try{momentButton.dispatchEvent(new PointerEvent(type,{pointerId:e.pointerId,pointerType:e.pointerType,button:e.button,clientX:e.clientX,clientY:e.clientY}))}
+ finally{leftDrawingForwarding=false}
+}
+window.addEventListener('pointerdown',e=>{
+ if(leftDrawingForwarding)return;
+ leftDrawingSwallowClick=false;
+ if(!leftDrawingMenu||leftDrawingMenu.host.hidden||window.semicircleDemo)return;
+ if(leftDrawingMenu.host.contains(e.target)){
+  const control=e.target.closest('[data-demo-id]');
+  if(control?.dataset.demoId==='moment'&&control.getAttribute('aria-disabled')!=='true'){
+   leftDrawingMomentPointer=e.pointerId;forwardLeftMomentPointer(e);
+  }
+  e.preventDefault();e.stopImmediatePropagation();return;
+ }
+ if(!leftDrawingMenu.state.open)return;
+ leftDrawingConsumed.add(e.pointerId);leftDrawingSwallowClick=true;e.preventDefault();e.stopImmediatePropagation();leftDrawingMenu.close();
+},true);
+for(const event of ['pointermove','pointerup','pointercancel'])window.addEventListener(event,e=>{
+ if(leftDrawingForwarding)return;
+ if(leftDrawingMomentPointer===e.pointerId){
+  if(event==='pointermove'&&!e.target.closest?.('.semicircle-left-menu [data-demo-id="moment"]'))forwardLeftMomentPointer(e,'pointerleave');
+  if(event!=='pointermove'){
+   forwardLeftMomentPointer(e);leftDrawingMomentPointer=null;
+   if(momentHoldOpened){momentButton.click();leftDrawingSwallowClick=true;e.preventDefault();e.stopImmediatePropagation();return}
+  }
+ }
+ if(!leftDrawingConsumed.has(e.pointerId))return;
+ e.preventDefault();e.stopImmediatePropagation();if(event!=='pointermove')leftDrawingConsumed.delete(e.pointerId);
+},true);
+window.addEventListener('click',e=>{if(leftDrawingSwallowClick){leftDrawingSwallowClick=false;e.preventDefault();e.stopImmediatePropagation()}},true);
 
 // DevTools: const demo = showSemicircleDemo(); demo.destroy() removes all listeners/UI.
 function showSemicircleDemo(){
