@@ -1200,6 +1200,7 @@ function commitBarCandidate(candidate,anchor){
  let p=candidate;
 if(mode==='bar'&&first&&typeof barNumericSession!=='undefined'&&barNumericSession?.first===first){
  const state=barNumericSession.state;
+ if(typeof barNumericCandidate==='function')p=barNumericCandidate(p);
  if(state.distance.mode==='locked'||state.angle.mode==='locked'){
   p=solveBarEndpoint({startPoint:first,candidatePoint:p,geometryScale,distanceMode:state.distance.mode,
    distanceValue:state.distance.value,angleMode:state.angle.mode,angleValue:state.angle.value});
@@ -1207,10 +1208,11 @@ if(mode==='bar'&&first&&typeof barNumericSession!=='undefined'&&barNumericSessio
  }
 }
  if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||(first.x===p.x&&first.y===p.y))return false;
+ const length=Math.hypot(p.x-first.x,p.y-first.y),liveDirection={x:(p.x-first.x)/length,y:(p.y-first.y)/length};
  checkpoint();items.push(make('bar',first.x,first.y,p.x,p.y));
  if(typeof endBarNumericInput==='function')endBarNumericInput();
  first={...p};hover=null;
- if(typeof beginBarNumericInput==='function')beginBarNumericInput(anchor);
+ if(typeof beginBarNumericInput==='function')beginBarNumericInput(anchor,liveDirection);
  selected=items.at(-1).id;render();msg('Đã thêm đối tượng.');return true;
 }
 // One event can visit capture, numeric confirmation and the canvas handler: consume it once.

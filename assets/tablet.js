@@ -1774,14 +1774,14 @@ $('dynamicInputValue').addEventListener('input',readLoadNumericEdit);
 
 // Each explicit first point or completed segment starts a fresh LIVE/LIVE session.
 var barNumericSession=null;
-function beginBarNumericInput(e){
+function beginBarNumericInput(e,liveDirection=null){
  endBarNumericInput();
  const active=document.activeElement;
  if(mode!=='bar'||!first||active?.matches('input,textarea,select')||active?.isContentEditable||dynamicNumericCapture||dynamicInputUI.isOpen())return;
  armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'m',
   onConfirm:()=>{barNumericSession=null},onCancel:()=>{barNumericSession=null;cancelToSelection()}});
- barNumericSession={first,capture:dynamicNumericCapture};
- barNumericSession.state={activeField:'distance',distance:{mode:'live',value:0},angle:{mode:'live',value:0}};
+ barNumericSession={first,capture:dynamicNumericCapture,liveDirection};
+ barNumericSession.state={activeField:'distance',distance:{mode:'live',value:0},angle:{mode:'live',value:liveDirection?(Math.atan2(-liveDirection.y,liveDirection.x)*180/Math.PI+360)%360:0}};
  const state=barNumericSession.state;
  showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'m',compact:true,onConfirm:dynamicNumericCapture.confirm,onCancel:dynamicNumericCapture.cancel,
   fields:{values:[state.distance,state.angle],suffix:'°',onKeyboardCommit:()=>{
@@ -1796,16 +1796,26 @@ function endBarNumericInput(){
  if(dynamicNumericCapture===barNumericSession.capture)disarmDynamicNumericInput();
  barNumericSession=null;
 }
+function barNumericCandidate(candidate){
+ const session=barNumericSession;
+ if(!session||session.first!==first)return candidate;
+ const dx=candidate?.x-first.x,dy=candidate?.y-first.y,length=Math.hypot(dx,dy);
+ if(Number.isFinite(length)&&length>=1e-9)return candidate;
+ // An inherited direction supplies only direction, never a LIVE distance.
+ if(session.state.distance.mode==='locked'&&session.state.angle.mode==='live'&&session.liveDirection)
+  return {x:first.x+session.liveDirection.x,y:first.y+session.liveDirection.y};
+ return candidate;
+}
 function syncBarNumericInput(){
  if(barNumericSession&&(mode!=='bar'||first!==barNumericSession.first||dynamicNumericCapture!==barNumericSession.capture))endBarNumericInput();
  if(!barNumericSession)return;
  const session=barNumericSession,state=session.state;
- session.endpoint=solveBarEndpoint({startPoint:first,candidatePoint:hover||first,geometryScale,
+ session.endpoint=solveBarEndpoint({startPoint:first,candidatePoint:barNumericCandidate(hover||first),geometryScale,
   distanceMode:state.distance.mode,distanceValue:state.distance.value,angleMode:state.angle.mode,angleValue:state.angle.value});
  if(session.endpoint){
   const dx=session.endpoint.x-first.x,dy=session.endpoint.y-first.y;
   if(state.distance.mode==='live')state.distance.value=Math.hypot(dx,dy)/geometryScale;
-  if(state.angle.mode==='live')state.angle.value=(Math.atan2(-dy,dx)*180/Math.PI+360)%360;
+  if(state.angle.mode==='live'&&Math.hypot(dx,dy)>=1e-9)state.angle.value=(Math.atan2(-dy,dx)*180/Math.PI+360)%360;
  }
  if(dynamicInputUI.owns(session.capture.confirm))updateDynamicInput();
 }
