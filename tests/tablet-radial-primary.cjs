@@ -75,7 +75,25 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    await p.locator('#geometryScale').focus();await settled();await ready(false);
    await p.evaluate(()=>{Object.defineProperty(window,'visualViewport',{configurable:true,value:primaryVV});window.dispatchEvent(new Event('resize'))});await ready(true);
    assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
-   // Genuine layout shrink while still focused must not inherit keyboard retention.
+   // Xiaomi Chrome can shrink BOTH layout and visual viewport heights. A small
+   // width change is tolerated; preserve the last fitted baseline while typing.
+   const fittedBaseline=await p.evaluate(()=>({...radialPrimaryLayout}));
+   const keyboardViewport={width:Math.round(viewport.width*.98),height:240};
+   await p.setViewportSize(keyboardViewport);await settled();
+   assert(await p.evaluate(()=>innerHeight===240&&visualViewport.height===240));
+   assert.equal(await p.locator('body').getAttribute('data-radial-primary'),'true');
+   assert.deepEqual(await p.evaluate(()=>radialPrimaryLayout),fittedBaseline);
+   for(const id of ['commandRibbon','ribbonToggle','toggleTools'])assert(await p.locator('#'+id).isHidden());
+   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
+   await p.locator('#geometryScale').blur();await ready(false);
+   assert(await p.locator('#commandRibbon').isVisible());assert(await p.locator('#toggleTools').isVisible());
+   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
+   await p.locator('#geometryScale').focus();await settled();await ready(false);
+   await p.setViewportSize(viewport);await ready(true);
+   await p.setViewportSize(keyboardViewport);await settled();await ready(true);
+   await p.setViewportSize(viewport);await settled();await ready(true);
+   assert.equal(await p.evaluate(()=>leftDrawingMenu.layout.fits&&rightCommandMenu.layout.fits),true);
+   // A substantial width change/orientation while focused must use normal fallback.
    await p.setViewportSize({width:viewport.height,height:300});await ready(false);
    assert(await p.locator('#toggleTools').isVisible());
    await p.setViewportSize(viewport);await ready(true);

@@ -1871,13 +1871,13 @@ svg.addEventListener('pointerdown',e=>{
 },true);
 
 
-// A touch/pen edit keeps Done as field confirmation even on hybrid computers.
+// Preserve the latest interaction type for the chained session, not Enter semantics.
 $('dynamicInput').addEventListener('pointerdown',e=>{
  if(thinNumericSession&&dynamicInputUI.owns(thinNumericSession.capture.confirm)&&['touch','pen'].includes(e.pointerType))thinNumericSession.pointerType=e.pointerType;
 });
 window.addEventListener('keydown',e=>{
  const session=thinNumericSession;
- if(e.key!=='Enter'||e.isComposing||e.keyCode===229||e.ctrlKey||e.altKey||e.metaKey||mode!=='thin'||!first||!session||session.first!==first||session.pointerType!=='mouse'||inlineEditor||document.querySelector('dialog[open]'))return;
+ if(e.key!=='Enter'||e.isComposing||e.keyCode===229||e.ctrlKey||e.altKey||e.metaKey||mode!=='thin'||!first||!session||session.first!==first||inlineEditor||document.querySelector('dialog[open]'))return;
  const ownInput=dynamicInputUI.owns(session.capture.confirm);
  if(dynamicInputUI.isOpen()&&!ownInput)return;
  if(e.target!==document.body&&e.target!==document.documentElement&&!(ownInput&&$('dynamicInput').contains(e.target)))return;
@@ -2330,14 +2330,16 @@ function queueRadialPrimaryUpdate(){
  radialPrimaryQueued=true;queueMicrotask(()=>{radialPrimaryQueued=false;syncRadialPrimaryPresentation()});
 }
 function radialKeyboardShrink(){
- const el=document.activeElement,vv=window.visualViewport;
+ const el=document.activeElement,vv=window.visualViewport,baseline=radialPrimaryLayout;
  const editable=el&&(el.isContentEditable||el.matches('input:not([readonly]):not([disabled]),textarea:not([readonly]):not([disabled]),select:not([disabled])'));
  // Focus is required; a smaller viewport alone must still trigger normal fallback.
- // Keep the last fitted layout size so an orientation/layout resize is not a keyboard.
- return floatingToolsMedia.matches&&document.body.dataset.radialPrimary==='true'&&editable&&vv&&
-  radialPrimaryLayout?.width===innerWidth&&radialPrimaryLayout.height===innerHeight&&
-  Number.isFinite(vv.height)&&vv.height>0&&vv.height<innerHeight*.75&&
-  vv.width>=innerWidth*.95&&leftDrawingMenu?.host.isConnected&&rightCommandMenu?.host.isConnected;
+ // Android may shrink both heights. Compare with the last fitted layout, while
+ // substantial width changes (orientation/split view) still use normal fallback.
+ return floatingToolsMedia.matches&&document.body.dataset.radialPrimary==='true'&&editable&&vv&&baseline&&
+  [innerWidth,innerHeight,vv.width,vv.height].every(n=>Number.isFinite(n)&&n>0)&&
+  Math.abs(innerWidth-baseline.width)<=baseline.width*.05&&Math.abs(vv.width-baseline.width)<=baseline.width*.05&&
+  Math.min(innerHeight,vv.height)<baseline.height*.75&&
+  leftDrawingMenu?.host.isConnected&&rightCommandMenu?.host.isConnected;
 }
 function syncRadialPrimaryPresentation(){
  const usable=menu=>{
