@@ -1,6 +1,8 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
-const expected={L1:['bar','thin','dashed','curve'],L2:['hinge','linkBar','weld','pin','roller','fixed'],L3:['force','moment','udl'],L4:['dim','text','person','section','rigidRegion','hatch','joint','positive','negative','diagramM','diagramQ','diagramN']};
+const expected={L1:['bar','thin','dashed','curve'],L2:['hinge','linkBar','weld','pin','roller','fixed'],L3:['force','moment','udl'],L4:['dim','text','person','section','rigidRegion','hatch','joint','diagram']};
+const diagramChildren=['diagramM','diagramQ','diagramN','positive','negative'];
+const sourceExpected={...expected,L4:[...expected.L4.slice(0,-1),...diagramChildren]};
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -19,6 +21,7 @@ const expected={L1:['bar','thin','dashed','curve'],L2:['hinge','linkBar','weld',
    const focusTool=async(id,pointer='touch')=>{const centered=await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id);if(!centered){const q=await point(id);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)}};
    const activate=async(id,pointer='touch')=>{
     if(id==='region'||id==='connections'){await focusTool(id==='region'?'text':'fixed',pointer);return}
+    if(diagramChildren.includes(id)){await focusTool('diagram',pointer);const q=await p.evaluate(id=>{const entries=leftContextEntries(leftDrawingMenu.state.focusedEntry);return leftDrawingMenu.layout.contextRing.middle[entries.length][entries.findIndex(e=>e.id===id)].icon},id);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y);return}
     if(id!=='hub')await focusTool(id,pointer);
     const q=await point(id);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y);
    };
@@ -26,14 +29,14 @@ const expected={L1:['bar','thin','dashed','curve'],L2:['hinge','linkBar','weld',
    const reset=()=>p.evaluate(()=>{document.activeElement?.blur();cancelToSelection();selected=null;multiSelection.clear();closeSecondaryTools();closeMomentPalette();leftDrawingMenu.close()});
    const state=()=>p.evaluate(()=>({mode,selected,first,second,rotation:currentMomentRotation,support:$('support').value,secondary:secondaryTools.hidden,options:secondaryTools.textContent,load:loadPlacement,doc:documentText(),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument}));
    // Compare every actual source click with a hit-tested radial touch, including option UI.
-   for(const [group,children]of Object.entries(expected))for(const id of children){
+   for(const [group,children]of Object.entries(sourceExpected))for(const id of children){
     await reset();await p.evaluate(id=>{const c=leftDrawingGroups.flatMap(g=>g.children).find(c=>c.id===id);window.sourceClicks=0;c.source.addEventListener('click',()=>window.sourceClicks++);c.source.click()},id);
-    const original=await state();await reset();await openGroup(group);
+    const original=await state();await reset();await openGroup(group);if(diagramChildren.includes(id))await focusTool('diagram');
     const source=await p.evaluate(id=>{const c=leftDrawingGroups.flatMap(g=>g.children).find(c=>c.id===id);return {label:c.source.getAttribute('aria-label'),title:c.source.title,real:c.source.matches('button[data-mode],button[data-support-type]'),clicks:sourceClicks}},id);
     assert(source.real);assert.equal(await sector(id).getAttribute('aria-label'),source.label);assert.equal(await sector(id).locator('title').textContent(),source.title);
     await activate(id);assert.equal(await p.evaluate(()=>sourceClicks),source.clicks+1,id+' delegates one click');
     assert.deepEqual(await state(),original,id+' same behavior');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
-    await activate('hub');assert.equal(await sector(id).getAttribute('aria-pressed'),'true',id);assert.equal(await sector(id).getAttribute('data-focused'),'true');
+    await activate('hub');assert.equal(await sector(id).getAttribute('aria-pressed'),'true',id);assert.equal(await sector(diagramChildren.includes(id)?'diagram':id).getAttribute('data-focused'),'true');
     if(['pin','roller','fixed'].includes(id))assert.equal(await p.evaluate(()=>$('support').value),id);
    }
    // Moment artwork follows the existing session choice, including CCW.

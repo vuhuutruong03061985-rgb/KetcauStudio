@@ -5,10 +5,10 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
  try{
   const p=await browser.newPage({viewport:{width:1280,height:800},hasTouch:true,isMobile:true}),errors=[];
   p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.resolve('index.html')).href);
-  await p.evaluate(()=>{cancelToSelection();window.leftCalls={};for(const e of leftDrawingRings.flatMap(r=>r.entries))e.source.addEventListener('click',()=>leftCalls[e.id]=(leftCalls[e.id]||0)+1)});
-  const expected={L1:['bar','thin','dashed','curve'],L2:['hinge','linkBar','weld','pin','roller','fixed'],L3:['force','moment','udl'],L4:['dim','text','person','section','rigidRegion','hatch','joint','positive','negative','diagramM','diagramQ','diagramN']};
+  await p.evaluate(()=>{cancelToSelection();window.leftCalls={};for(const e of leftDrawingRings.flatMap(r=>r.entries))e.source?.addEventListener('click',()=>leftCalls[e.id]=(leftCalls[e.id]||0)+1)});
+  const expected={L1:['bar','thin','dashed','curve'],L2:['hinge','linkBar','weld','pin','roller','fixed'],L3:['force','moment','udl'],L4:['dim','text','person','section','rigidRegion','hatch','joint','diagram']};
   assert.deepEqual(await p.evaluate(()=>Object.fromEntries(leftDrawingRings.map(r=>[r.id,r.entries.map(e=>e.id)]))),expected);
-  assert.equal(await p.evaluate(()=>new Set(leftDrawingRings.flatMap(r=>r.entries.map(e=>e.source))).size),25);
+  assert.equal(await p.evaluate(()=>new Set(leftDrawingRings.flatMap(r=>r.entries.map(e=>e.source).filter(Boolean))).size),20);
   const snapshot=()=>p.evaluate(()=>({doc:documentText(),items:JSON.stringify(items),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,dirty:documentText()!==savedDocument,geometryScale,internalForceScale,mode,first,rotation:currentMomentRotation}));
   const rings=()=>p.evaluate(()=>leftDrawingMenu.state.rings.map(r=>({id:r.id,index:r.activeIndex,offset:r.offset,pointer:r.pointerId,dragging:r.dragging,focused:r.entries[r.activeIndex].id})));
   const point=id=>p.evaluate(id=>{const m=leftDrawingMenu;if(id==='hub')return{x:m.layout.cx+13,y:m.layout.cy};const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));return m.layout.rings.find(l=>l.id===r.id).sectors[r.entries.findIndex(e=>e.id===id)].icon},id);

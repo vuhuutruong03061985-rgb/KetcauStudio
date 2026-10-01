@@ -1,7 +1,7 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),{pathToFileURL}=require('node:url');
 const expected=[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['clear','open','save','saveAs','svg','png'],['panView','zoomOut','zoomIn','snapToggle','snapOptions'],['drawingScalesToggle']];
-const leftExpected=[['bar','thin','dashed','curve'],['hinge','linkBar','weld','pin','roller','fixed'],['force','moment','udl'],['dim','text','person','section','rigidRegion','hatch','joint','positive','negative','diagramM','diagramQ','diagramN']];
+const leftExpected=[['bar','thin','dashed','curve'],['hinge','linkBar','weld','pin','roller','fixed'],['force','moment','udl'],['dim','text','person','section','rigidRegion','hatch','joint','diagram']];
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{

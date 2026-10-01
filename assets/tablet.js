@@ -2100,7 +2100,9 @@ const semicircleEngine=(()=>{
    const mid=Math.max(radius+3+thickness/2,(minTarget/2+1.5)/Math.sin(step/2));
    const ring={id:r.id,side,cx:base.cx,r0:mid-thickness/2,r1:mid+thickness/2,step,count:r.count};radius=ring.r1;return ring;
   });
-  const contextR0=radius+3;
+  // Reserve five middle targets structurally, even while context is empty.
+  const contextMid=Math.max(radius+3+(minTarget+4)/2,(minTarget/2+1.5)/Math.sin(Math.PI/30));
+  const contextR0=fixedOuter?contextMid-(minTarget+4)/2:radius+3;
   if(fixedOuter)radius=contextR0+minTarget+4;
   const fits=radius<=bounds.right-bounds.left&&2*radius<=bounds.bottom-bounds.top;
   const cy=fits?Math.max(bounds.top+radius,Math.min(centerY??(bounds.top+bounds.bottom)/2,bounds.bottom-radius)):(bounds.top+bounds.bottom)/2;
@@ -2111,15 +2113,15 @@ const semicircleEngine=(()=>{
     return {...s,icon:sectorIconPosition(s),path:solveRadialSectorPath(s)};
    });
   }
-  // One fixed annulus: two top slots, empty middle, two bottom slots.
+  // One fixed annulus: narrower top/bottom targets free the middle for 0–5.
   // Its envelope never depends on source availability or roller offsets.
   const contextRing=fixedOuter?{r0:contextR0,r1:radius,sectors:[-2,-1,1,2].map((slot,index)=>{
-   const angle=slot*Math.PI/5,half=Math.PI/10-Math.asin(1.5/((contextR0+radius)/2));
+   const angle=slot*Math.PI/5,half=Math.asin((minTarget/2+1.5)/contextMid);
    const s={side,cx:base.cx,cy,r0:contextR0,r1:radius,a0:angle-half,a1:angle+half,index};
    return {...s,icon:sectorIconPosition(s),path:solveRadialSectorPath(s)};
   })}:null;
-  if(contextRing)contextRing.middle=[[],...[1,2].map(count=>Array.from({length:count},(_,index)=>{
-   const step=Math.PI/5/count,angle=(index-(count-1)/2)*step,half=step/2-Math.asin(1.5/((contextR0+radius)/2));
+  if(contextRing)contextRing.middle=[[],...[1,2,3,4,5].map(count=>Array.from({length:count},(_,index)=>{
+   const step=Math.max(Math.PI/5,count*Math.PI/15)/count,angle=(index-(count-1)/2)*step,half=step/2-Math.asin(1.5/contextMid);
    const s={side,cx:base.cx,cy,r0:contextR0,r1:radius,a0:angle-half,a1:angle+half,index};
    return {...s,icon:sectorIconPosition(s),path:solveRadialSectorPath(s)};
   }))];
@@ -2164,7 +2166,9 @@ const semicircleEngine=(()=>{
    e.preventDefault();e.stopImmediatePropagation();
   }
   const fixedClick=e=>{if(host.contains(e.target)&&e.detail>0&&e.pointerId===fixedClickPointer){fixedClickPointer=null;e.preventDefault();e.stopImmediatePropagation()}};
-  const stopFixed=()=>{const id=fixedContact?.pointerId;fixedContact=null;if(id!==undefined&&surface.hasPointerCapture(id))surface.releasePointerCapture(id)};
+  // Blur/resize can release capture before pointer-up. Retain its click token so
+  // the browser's later compatibility click cannot activate the cancelled action.
+  const stopFixed=()=>{const id=fixedContact?.pointerId;fixedContact=null;if(id!==undefined){fixedClickPointer=id;if(surface.hasPointerCapture(id))surface.releasePointerCapture(id)}};
   const roller=rings[0];state.roller=roller; // Task 3B compatibility alias.
   // Odd physical slots keep a full-size middle detent even with six real groups.
   const slotCount=entries.length%2?entries.length:entries.length+1,step=Math.PI/slotCount;
@@ -2181,7 +2185,8 @@ const semicircleEngine=(()=>{
   }
   function invokeRingEntry(index,ring){
    if(!activateCentered||ring.activeIndex!==index||Math.abs(ring.offset-index)>1e-8){selectGroup(index,ring);return}
-   focusEntry(ring,index);onAction(ring.entries[index].id);state.open=false;stopRollers();paint();
+   focusEntry(ring,index);if(ring.entries[index].navigationOnly){paintOuterContext();return}
+   onAction(ring.entries[index].id);state.open=false;stopRollers();paint();
   }
   let forwardingGesture=false;
   function notifyGesture(e,ring){
@@ -2330,7 +2335,7 @@ const semicircleEngine=(()=>{
     if(entry.artwork)g.querySelector('.semicircle-icon').setAttribute('d',entry.artwork);
    };
    outerActions.forEach((entry,index)=>draw(entry,layout.contextRing.sectors[index]));
-   const middle=contextEntries();if(middle.length>2)throw new RangeError('At most two contextual middle actions');
+   const middle=contextEntries();if(middle.length>5)throw new RangeError('At most five contextual middle actions');
    middle.forEach((entry,index)=>draw(entry,layout.contextRing.middle[middle.length][index],true));
    if(focused)([...parent.querySelectorAll('[data-demo-id]')].find(g=>g.dataset.demoId===focused)||host.querySelector('[data-demo-id="hub"]'))?.focus({preventScroll:true});
   }
@@ -2361,7 +2366,7 @@ const semicircleEngine=(()=>{
     rings.forEach((ring,index)=>{
      const parent=node('g',{class:'semicircle-roller-ring','data-ring-id':ring.id,role:'group','aria-label':ringConfigs[index].label||ring.id});
      const config=ringConfigs[index];parent.style.setProperty('--ring-tint',config.tint||'#edf2f6');
-     ring.entries.forEach((entry,i)=>{const sector=layout.rings[index].sectors[i];control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>invokeRingEntry(i,ring),{parent,ring,index:i,source:entry.source,label:activateCentered?entry.proxyLabel:entry.label,oneShot:entry.oneShot,popupOnly:entry.popupOnly,disabled:entry.disabled,navigationOnly:!activateCentered,tint:entry.tint||config.tint})});
+     ring.entries.forEach((entry,i)=>{const sector=layout.rings[index].sectors[i];control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>invokeRingEntry(i,ring),{parent,ring,index:i,source:entry.source,label:activateCentered?entry.proxyLabel:entry.label,oneShot:entry.oneShot,popupOnly:entry.popupOnly,disabled:entry.disabled,navigationOnly:!activateCentered||entry.navigationOnly,hasActiveChild:entry.children?.some(entryActive),tint:entry.tint||config.tint})});
     });
    }
    if(state.open&&!multi){
@@ -2419,16 +2424,20 @@ const leftDrawingGroups=[
  return source?[{id,icon:id,label:source.getAttribute('aria-label')||id,source}]:[];
 })}));
 // Production LEFT functions; the old catalog remains reusable for the legacy API/fallback.
+const leftDiagramModes=['diagramM','diagramQ','diagramN','positive','negative'];
+const leftDiagramChildren=leftDiagramModes.map(id=>leftDrawingGroups.flatMap(g=>g.children).find(entry=>entry.id===id));
+const leftDiagramParent={id:'diagram',label:'Biểu đồ nội lực',icon:'diagramM',navigationOnly:true,children:leftDiagramChildren};
 const leftDrawingRings=[
  {id:'L1',label:'Vẽ / Hình học',tools:['bar','thin','dashed','curve'],defaultTool:'bar',tint:leftDrawingGroups[0].tint},
  {id:'L2',label:'Liên kết',tools:['hinge','linkBar','weld','pin','roller','fixed'],defaultTool:'pin',tint:leftDrawingGroups[1].tint},
  {id:'L3',label:'Tải trọng',tools:['force','moment','udl'],defaultTool:'force',tint:leftDrawingGroups[2].tint},
- {id:'L4',label:'Chú thích / Biểu diễn',tools:['dim','text','person','section','rigidRegion','hatch','joint','positive','negative','diagramM','diagramQ','diagramN'],defaultTool:'dim',tint:leftDrawingGroups[3].tint}
-].map(ring=>({...ring,activeIndex:ring.tools.indexOf(ring.defaultTool),entries:ring.tools.map(id=>leftDrawingGroups.flatMap(g=>g.children).find(entry=>entry.id===id))}));
+ {id:'L4',label:'Chú thích / Biểu diễn',tools:['dim','text','person','section','rigidRegion','hatch','joint','diagram'],defaultTool:'dim',tint:leftDrawingGroups[3].tint}
+].map(ring=>({...ring,activeIndex:ring.tools.indexOf(ring.defaultTool),entries:ring.tools.map(id=>id==='diagram'?leftDiagramParent:leftDrawingGroups.flatMap(g=>g.children).find(entry=>entry.id===id))}));
 let leftDrawingMenu=null,rightCommandMenu=null,radialPrimaryQueued=false,radialPrimaryLayout=null;
 // Context belongs to the last focused function, independently of drawing mode.
-// All four options already have authoritative controls; no alternate activation path.
+// Children retain their authoritative controls; no alternate activation path.
 const leftContextOptions={
+ diagram:leftDiagramChildren.map(entry=>({...entry,isSelected:()=>entry.source.classList.contains('active'),closeOnActivate:true})),
  moment:['cw','ccw'].map(rotation=>({id:'moment-'+rotation,source:momentChoices.querySelector(`input[value="${rotation}"]`),label:rotation.toUpperCase(),imageHref:'data:image/svg+xml,'+encodeURIComponent(momentIcon(rotation)),isSelected:()=>currentMomentRotation===rotation,closeOnActivate:true})),
  ...Object.fromEntries(['pin','roller'].map(parent=>{const id=parent+'-plain';return [parent,[{id,source:document.querySelector(`button[data-support-type="${id}"]`),isSelected:()=>$('support').value===id,closeOnActivate:true}]]}))
 };
@@ -2458,8 +2467,8 @@ function mountLeftDrawingMenu(){
  try{leftDrawingMenu=semicircleEngine.createMenu({side:'left',production:true,rings:leftDrawingRings,outerActions:sharedOuterActions,getContextEntries:leftContextEntries,activateCentered:true,onGesturePointer:leftRingGesturePointer,getBounds:leftDrawingBounds,onOpen:()=>{
   rightCommandMenu?.close();
   // Center only the ring owning the active real source; other session positions survive.
-  const parent=mode==='support'?$('support').value.replace(/-plain$/,''):null;
-  for(const ring of leftDrawingMenu.state.rings){const index=ring.entries.findIndex(entry=>parent?entry.id===parent:entry.source.classList.contains('active'));if(index>=0){ring.offset=ring.activeIndex=index;leftDrawingMenu.state.focusedEntry={ringId:ring.id,id:ring.entries[index].id}}}
+  const parent=leftDiagramModes.includes(mode)?'diagram':mode==='support'?$('support').value.replace(/-plain$/,''):null;
+  for(const ring of leftDrawingMenu.state.rings){const index=ring.entries.findIndex(entry=>parent?entry.id===parent:entry.source?.classList.contains('active'));if(index>=0){ring.offset=ring.activeIndex=index;leftDrawingMenu.state.focusedEntry={ringId:ring.id,id:ring.entries[index].id}}}
  },onAction:id=>{
   const source=leftDrawingRings.flatMap(r=>r.entries).find(c=>c.id===id)?.source;
   if(source&&!source.disabled&&source.getAttribute('aria-disabled')!=='true')source.click();
