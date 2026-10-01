@@ -31,7 +31,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
    await menu(side).locator('[data-demo-id="hub"]').dispatchEvent('click');await p.evaluate(()=>setMode('hatch'));await draw(300,300);await open(side);await tap(side,'undo');assert.equal(await p.evaluate(()=>hatchPoints.length),0);
   }
   await reset('select');await open('right');assert.deepEqual(await p.evaluate(()=>rightCommandRings[0].entries.map(e=>e.id)),['resetView','editSelected','copyObjects','pasteObjects','delete','extend']);assert.equal(await menu('right').locator('[data-roller-ring][data-demo-id="undo"],[data-roller-ring][data-demo-id="redo"]').count(),0);await shot('right-defaults');await shot('right-no-r1-history');
-  const fixedPaths=side=>menu(side).locator('.semicircle-outer-context .semicircle-hit').evaluateAll(es=>es.map(e=>e.getAttribute('d')));
+  const fixedPaths=side=>menu(side).locator('[data-fixed-action]:not([data-context-action]) .semicircle-hit').evaluateAll(es=>es.map(e=>e.getAttribute('d')));
   for(const side of ['left','right']){
    await open(side);const paths=await fixedPaths(side),before=await snapshot();
    // Real mouse contacts move each functional ring, leaving fixed geometry unchanged.

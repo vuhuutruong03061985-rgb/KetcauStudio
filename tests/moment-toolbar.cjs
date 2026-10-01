@@ -4,7 +4,10 @@ const assert=require('node:assert/strict'),path=require('node:path'),{pathToFile
  for(const touch of [false,true]){
   const context=await browser.newContext({viewport:{width:1400,height:1000},hasTouch:touch,isMobile:touch}),p=await context.newPage();
   await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof currentMomentRotation!=='undefined');
-  const activate=async locator=>touch?locator.tap():locator.click();
+  // Exercise the actual legacy touch presentation through its supported fallback.
+  // In radial-primary the original toolbar intentionally remains hidden.
+  if(touch){await p.evaluate(()=>{leftDrawingSafeProbe.style.paddingRight='calc(100vw - 60px)';leftDrawingMenu.refresh()});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false')}
+  const activate=async locator=>{if(touch&&!await locator.isVisible()&&await locator.evaluate(el=>!!el.closest('#toolPanel')))await p.locator('#toggleTools').tap();return touch?locator.tap():locator.click()};
   const tap=async(x,y)=>{const q=await p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return{x:q.x,y:q.y}},{x,y});if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
   await p.evaluate(()=>{setMode('select');items=[];past=[];future=[];selected=null;snapEnabled=false;render();savedDocument=documentText()});
   const parent=p.locator('[data-mode=moment]'),panel=p.locator('#momentDirectionPalette'),options=panel.locator('input');
