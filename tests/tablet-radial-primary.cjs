@@ -56,10 +56,10 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
     await tap('hub',side);
    }
    // Fit failure on either independent side restores both legacy surfaces and preferences.
-   await p.evaluate(()=>saveDraft());const primaryHeight=await canvasHeight(),before=await snapshot();
+   await p.evaluate(()=>saveDraft());const primaryHeight=await canvasHeight(),topBarHeight=await p.locator('#tabletTopBar').evaluate(el=>el.getBoundingClientRect().height),before=await snapshot();
    for(const side of ['left','right']){
     await p.evaluate(side=>{const probe=side==='left'?leftDrawingSafeProbe:rightCommandSafeProbe;probe.style.paddingRight='calc(100vw - 60px)';(side==='left'?leftDrawingMenu:rightCommandMenu).refresh()},side);await ready(false);
-    assert(await p.locator('#commandRibbon').isVisible());assert(await p.locator('#toggleTools').isVisible());assert(Math.abs(primaryHeight-await canvasHeight()-60)<1);
+    assert(await p.locator('#commandRibbon').isVisible());assert(await p.locator('#toggleTools').isVisible());assert(Math.abs(primaryHeight-await canvasHeight()-(60-topBarHeight))<1);
     assert.deepEqual(await snapshot(),before);
     await p.evaluate(side=>{(side==='left'?leftDrawingSafeProbe:rightCommandSafeProbe).style.removeProperty('padding-right');(side==='left'?leftDrawingMenu:rightCommandMenu).refresh()},side);await ready(true);assert.deepEqual(await snapshot(),before);
    }
@@ -172,7 +172,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    if(viewport.width===1280){await tap('hub','left');await tap('connections','left');await p.screenshot({path:'tests/radial-primary-left-1280.png'})}
    else{await tap('hub','right');await tap('snap','right');await p.screenshot({path:'tests/radial-primary-right-800.png'})}
    assert.equal(await p.evaluate(()=>Object.keys(localStorage).some(k=>k.includes('radial-primary'))),false);assert.deepEqual(errors,[]);
-   console.log('PASS radial primary / 60px recovered / safe fallback / source anchors / popups / commands',viewport);await p.close();
+   console.log('PASS radial primary / 48px global row / 12px gain over expanded fallback / safe fallback / source anchors / popups / commands',viewport);await p.close();
   }
   assert(fs.readFileSync('assets/tablet.js','utf8').includes("KETCAU_APP_VERSION='shell-v8'"));
   assert(fs.readFileSync('sw.js','utf8').includes('shell-v8'));

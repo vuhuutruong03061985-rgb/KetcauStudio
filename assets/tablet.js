@@ -2039,6 +2039,33 @@ floatingToolsMedia.addEventListener('change',()=>{for(const panel of ribbonScrol
 window.addEventListener('resize',positionRibbonMenus);
 paintCommandRibbon();
 
+// Persistent radial-primary chrome uses the real file/export groups. Comment
+// anchors preserve their exact order when the fallback/desktop owns them again.
+const tabletTopBar=document.createElement('div');tabletTopBar.id='tabletTopBar';tabletTopBar.hidden=true;
+tabletTopBar.setAttribute('role','toolbar');tabletTopBar.setAttribute('aria-label','Tệp và xuất hình');
+const tabletTopCommands=document.createElement('div');tabletTopCommands.id='tabletTopCommands';tabletTopBar.append(tabletTopCommands);
+document.querySelector('header').after(tabletTopBar);
+const tabletTopHomes=[$('fileToolbar'),$('exportToolbar')].map(group=>{
+ const anchor=document.createComment('tablet top bar: '+group.id);group.before(anchor);return {group,anchor};
+});
+function paintTabletTopBar(active){
+ for(const {group,anchor}of tabletTopHomes){
+  if(active){if(group.parentNode!==tabletTopCommands)tabletTopCommands.append(group)}
+  else if(group.previousSibling!==anchor)anchor.after(group);
+ }
+ tabletTopBar.hidden=!active;
+}
+function tabletChromeBottom(reserveTopBar=false){
+ const headerBottom=document.querySelector('header').getBoundingClientRect().bottom;
+ if(!floatingToolsMedia.matches||(!reserveTopBar&&tabletTopBar.hidden))return headerBottom;
+ // Measure the actual fixed-height row before admission. Restore hidden state
+ // synchronously, so a failed fit never flashes chrome or oscillates with fallback.
+ const hidden=tabletTopBar.hidden;if(hidden)tabletTopBar.hidden=false;
+ const bottom=Math.max(headerBottom,tabletTopBar.getBoundingClientRect().bottom);
+ if(hidden)tabletTopBar.hidden=true;
+ return bottom;
+}
+
 // Shared Task 2B geometry/renderer; demo instances remain opt-in and session-only.
 const semicircleEngine=(()=>{
  const gap=2;let nextMenuId=0;
@@ -2443,9 +2470,9 @@ const leftContextOptions={
 };
 const leftContextEntries=focused=>leftContextOptions[focused?.id]||[];
 const leftDrawingSafeProbe=document.createElement('div');leftDrawingSafeProbe.className='semicircle-left-safe-probe';
-function leftDrawingBounds(){
+function leftDrawingBounds(chromeBottom=tabletChromeBottom()){
  const vv=window.visualViewport,s=getComputedStyle(leftDrawingSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
- const bounds={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),document.querySelector('header').getBoundingClientRect().bottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
+ const bounds={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),chromeBottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
  const reach=leftDrawingMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'left',rings:leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}).radius;
  // Use a free vertical interval when input/contextual controls occupy the left edge.
  // The engine keeps minimum targets and falls back to the old palette if it cannot fit.
@@ -2515,6 +2542,7 @@ function leftRingGesturePointer(e,entry,{centered,dragging}){
 window.addEventListener('pointerdown',e=>{
  if(leftDrawingForwarding)return;
  leftDrawingSwallowClick=false;
+ if(tabletTopBar.contains(e.target)){leftDrawingMenu?.close();rightCommandMenu?.close();return}
  if(!leftDrawingMenu||leftDrawingMenu.host.hidden||window.semicircleDemo)return;
  if(rightCommandMenu?.host.contains(e.target))return;
  if(leftDrawingMenu.host.contains(e.target)){
@@ -2578,9 +2606,9 @@ function refreshRightCommandEntries(){
  }
 }
 const rightCommandSafeProbe=document.createElement('div');rightCommandSafeProbe.className='semicircle-left-safe-probe';
-function rightCommandBounds(){
+function rightCommandBounds(chromeBottom=tabletChromeBottom()){
  const vv=window.visualViewport,s=getComputedStyle(rightCommandSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
- const b={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),document.querySelector('header').getBoundingClientRect().bottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
+ const b={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),chromeBottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
  const reach=rightCommandMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'right',rings:rightCommandRings.map(r=>({id:r.id,count:r.entries.length})),bounds:b,fixedOuter:true}).radius;
  for(const id of ['dynamicInput']){
   const control=$(id);if(!control||control.hidden)continue;
@@ -2632,6 +2660,7 @@ for(const source of [commandControls,...sharedOuterActions.map(a=>a.source)])out
 const rightCommandConsumed=new Set();let rightCommandSwallowClick=false;
 window.addEventListener('pointerdown',e=>{
  rightCommandSwallowClick=false;
+ if(tabletTopBar.contains(e.target))return;
  if(!rightCommandMenu||rightCommandMenu.host.hidden||window.semicircleDemo)return;
  if(rightCommandMenu.host.contains(e.target)){e.preventDefault();e.stopImmediatePropagation();return}
  if(leftDrawingMenu?.host.contains(e.target)||!rightCommandMenu.state.open)return;
@@ -2677,7 +2706,10 @@ function syncRadialPrimaryPresentation(){
   const hub=menu.host.querySelector('[data-demo-id="hub"]'),r=hub?.getBoundingClientRect();
   return !!r&&[r.left,r.top,r.width,r.height].every(Number.isFinite)&&r.width>=24&&r.height>=48;
  };
- const fitted=floatingToolsMedia.matches&&usable(leftDrawingMenu)&&usable(rightCommandMenu);
+ const chromeBottom=tabletChromeBottom(true);
+ const fitsChrome=(menu,bounds)=>!!menu?.layout&&menu.layout.radius<=bounds.right-bounds.left&&2*menu.layout.radius<=bounds.bottom-bounds.top;
+ const fitted=floatingToolsMedia.matches&&usable(leftDrawingMenu)&&usable(rightCommandMenu)&&
+  fitsChrome(leftDrawingMenu,leftDrawingBounds(chromeBottom))&&fitsChrome(rightCommandMenu,rightCommandBounds(chromeBottom));
  const keyboard=radialKeyboardShrink();
  if(fitted&&!keyboard)radialPrimaryLayout={width:innerWidth,height:innerHeight};
  // Unsafe fans remain hidden by the engine; close only their navigation state.
@@ -2687,6 +2719,11 @@ function syncRadialPrimaryPresentation(){
  if(document.body.dataset.radialContext!==context)document.body.dataset.radialContext=context;
  if(document.body.dataset.radialPrimary===value)return;
  document.body.dataset.radialPrimary=value;
+ // Dismiss navigation before restoring legacy controls, so a still-fitting fan
+ // cannot intercept their taps when the added chrome forces fallback.
+ if(value==='false'){leftDrawingMenu?.close();rightCommandMenu?.close()}
+ paintTabletTopBar(value==='true');
+ leftDrawingMenu?.refresh();rightCommandMenu?.refresh();
  // Only positioning is refreshed; no popup state, command or preference is changed.
  positionDrawingScales();positionSnapChoices();positionMomentPalette();positionSecondaryTools();
 }
@@ -2694,6 +2731,8 @@ floatingToolsMedia.addEventListener('change',queueRadialPrimaryUpdate);
 document.addEventListener('focusin',queueRadialPrimaryUpdate);
 document.addEventListener('focusout',queueRadialPrimaryUpdate);
 queueRadialPrimaryUpdate();
+const tabletChromeObserver=new ResizeObserver(()=>{leftDrawingMenu?.refresh();rightCommandMenu?.refresh();queueRadialPrimaryUpdate()});
+tabletChromeObserver.observe(document.querySelector('header'));tabletChromeObserver.observe(tabletTopBar);
 
 // DevTools: const demo = showSemicircleDemo(); demo.destroy() removes all listeners/UI.
 function showSemicircleDemo(){
