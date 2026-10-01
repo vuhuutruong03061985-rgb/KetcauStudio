@@ -203,10 +203,10 @@ main[data-toolbox-mode="auto-hide"] #toolPanel{position:absolute;left:44px;top:v
 
 /* Shared semicircle surfaces. SVG paths, not icon boxes, own hit testing. */
 .semicircle-safe-probe,.semicircle-left-safe-probe{position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
-.semicircle-prototype,.semicircle-left-menu{position:fixed;inset:0;z-index:2300;pointer-events:none}
-.semicircle-prototype>svg,.semicircle-left-menu>svg{display:block;width:100%;height:100%;border:0;overflow:visible;pointer-events:none;touch-action:manipulation}
-.semicircle-left-menu[hidden]{display:none}
-.semicircle-left-menu .semicircle-icon *{pointer-events:none}
+.semicircle-prototype,:is(.semicircle-left-menu,.semicircle-right-menu){position:fixed;inset:0;z-index:2300;pointer-events:none}
+.semicircle-prototype>svg,:is(.semicircle-left-menu,.semicircle-right-menu)>svg{display:block;width:100%;height:100%;border:0;overflow:visible;pointer-events:none;touch-action:manipulation}
+:is(.semicircle-left-menu,.semicircle-right-menu)[hidden]{display:none}
+:is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-icon *{pointer-events:none}
 .semicircle-control{pointer-events:none;color:#28485c;cursor:pointer;outline:none}
 .semicircle-hit{pointer-events:fill;fill:var(--sector-tint);stroke:#b8c9d4;stroke-width:1;filter:drop-shadow(0 2px 1px #183e5526)}
 .semicircle-icon{pointer-events:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
@@ -216,11 +216,11 @@ main[data-toolbox-mode="auto-hide"] #toolPanel{position:absolute;left:44px;top:v
 .semicircle-control:focus-visible .semicircle-hit{stroke:#1a899c;stroke-width:3}
 .semicircle-control[aria-disabled="true"]{opacity:.5;cursor:default}
 /* Production refinement: consistent separators, with state stronger than group tint. */
-.semicircle-left-menu .semicircle-hit{stroke:#9eb5c2;filter:drop-shadow(0 1px 1px #183e551a)}
-.semicircle-left-menu .semicircle-control{transform:none}
-.semicircle-left-menu [data-demo-id="hub"] .semicircle-hit{fill:#e1ebef;stroke:#7897a7}
-.semicircle-left-menu [data-demo-id="hub"][aria-expanded="true"] .semicircle-hit{fill:#cfe0e7}
-.semicircle-left-menu .has-active-child .semicircle-hit{stroke:#779daa;stroke-width:1.5}
-.semicircle-left-menu .semicircle-control.active .semicircle-hit,.semicircle-left-menu .semicircle-control[aria-pressed="true"] .semicircle-hit{fill:#b8dce0;stroke:#397f8b;stroke-width:1.5;filter:var(--sector-inset)}
-@media (any-hover:hover){.semicircle-left-menu .semicircle-control:not([aria-disabled="true"]):not(:focus-visible):hover .semicircle-hit{stroke:#527b8c;stroke-width:2}}
-.semicircle-left-menu .semicircle-control:focus-visible .semicircle-hit{stroke:#235a83;stroke-width:3;stroke-dasharray:3 2}
+:is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-hit{stroke:#9eb5c2;filter:drop-shadow(0 1px 1px #183e551a)}
+:is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-control{transform:none}
+:is(.semicircle-left-menu,.semicircle-right-menu) [data-demo-id="hub"] .semicircle-hit{fill:#e1ebef;stroke:#7897a7}
+:is(.semicircle-left-menu,.semicircle-right-menu) [data-demo-id="hub"][aria-expanded="true"] .semicircle-hit{fill:#cfe0e7}
+:is(.semicircle-left-menu,.semicircle-right-menu) .has-active-child .semicircle-hit{stroke:#779daa;stroke-width:1.5}
+:is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-control.active .semicircle-hit,:is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-control[aria-pressed="true"] .semicircle-hit{fill:#b8dce0;stroke:#397f8b;stroke-width:1.5;filter:var(--sector-inset)}
+@media (any-hover:hover){:is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-control:not([aria-disabled="true"]):not(:focus-visible):hover .semicircle-hit{stroke:#527b8c;stroke-width:2}}
+:is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-control:focus-visible .semicircle-hit{stroke:#235a83;stroke-width:3;stroke-dasharray:3 2}

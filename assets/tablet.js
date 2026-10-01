@@ -2083,24 +2083,28 @@ const semicircleEngine=(()=>{
   const mirror=s=>{const next={...s,side,cx};return {...next,icon:sectorIconPosition(next),path:solveRadialSectorPath(next)}};
   return {...layout,side,cx,inner:layout.inner.map(mirror),outer:layout.outer.map(mirror),bounds:{...layout.bounds}};
  }
- function createMenu({side,items:entries,getBounds,centerY,onAction=()=>{},production=false}){
+ function createMenu({side,items:entries,getBounds,centerY,onAction=()=>{},production=false,onOpen=()=>{}}){
   const insetId='semicircle-inset-'+(++nextMenuId);
-  const host=document.createElement('div');host.className=production?'semicircle-left-menu':'semicircle-prototype';host.dataset.side=side;
-  const surface=document.createElementNS(NS,'svg');surface.setAttribute('aria-label',production?'Công cụ vẽ':`Demo ${side}`);host.append(surface);document.body.append(host);
+  const host=document.createElement('div');host.className=production?`semicircle-${side}-menu`:'semicircle-prototype';host.dataset.side=side;
+  const menuLabel=side==='right'?'Lệnh và thiết lập':'Công cụ vẽ';
+  const surface=document.createElementNS(NS,'svg');surface.setAttribute('aria-label',production?menuLabel:`Demo ${side}`);host.append(surface);document.body.append(host);
   const state={side,open:false,activeGroup:null,hoveredSector:null};
   const pressed=new Map(),active=new Map();let layout,destroyed=false;
+  const entryActive=entry=>!entry.oneShot&&(entry.popupOnly?entry.source?.getAttribute('aria-expanded')==='true':entry.source?.classList.contains('active'));
   const node=(name,attrs,parent=surface)=>{const n=document.createElementNS(NS,name);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,String(v));parent.append(n);return n};
   function control(id,label,path,icon,position,action,options={}){
    const source=options.source;
-   if(source){label=source.getAttribute('aria-label')||source.title;options.disabled=source.disabled||source.getAttribute('aria-disabled')==='true';}
+   if(source){label=options.label||source.getAttribute('aria-label')||source.title;options.disabled=options.disabled||source.disabled||source.getAttribute('aria-disabled')==='true';}
    const g=node('g',{role:'button',tabindex:options.disabled?-1:0,'aria-label':label,'aria-disabled':!!options.disabled,'data-demo-id':id,class:'semicircle-control'});
    if(options.expanded!==undefined)g.setAttribute('aria-expanded',String(options.expanded));
    if(pressed.has(id))g.setAttribute('aria-pressed',String(pressed.get(id)));
    if(source)for(const attr of ['aria-pressed','aria-expanded','aria-controls','aria-haspopup'])if(source.hasAttribute(attr))g.setAttribute(attr,source.getAttribute(attr));
    g.classList.toggle('active',active.get(id)===true);g.style.setProperty('--sector-tint',options.tint||'#edf2f6');g.style.setProperty('--sector-inset',`url(#${insetId})`);
    if(source)g.classList.toggle('active',source.classList.contains('active'));
+   if(options.oneShot||options.popupOnly){g.removeAttribute('aria-pressed');g.classList.toggle('active',!!options.popupOnly&&source?.getAttribute('aria-expanded')==='true')}
+   if(options.oneShot)g.removeAttribute('aria-expanded');
    g.classList.toggle('has-active-child',!!options.hasActiveChild);
-   node('title',{},g).textContent=source?.title||label;
+   node('title',{},g).textContent=options.label||source?.title||label;
    node('path',{d:path,class:'semicircle-hit'},g);
    const iconSize=production&&id!=='hub'?28:24,iconHalf=iconSize/2;
    if(source?.querySelector('svg')){
@@ -2141,12 +2145,12 @@ const semicircleEngine=(()=>{
    node('feComposite',{in:'color',in2:'edge',operator:'in',result:'shadow'},filter);
    const merge=node('feMerge',{},filter);node('feMergeNode',{in:'SourceGraphic'},merge);node('feMergeNode',{in:'shadow'},merge);
    const {cx,cy,hubRadius:r}=layout,sign=side==='left'?1:-1;
-   control('hub',production?'Công cụ vẽ: mở / đóng':`Demo ${side}: mở / đóng`,`M${cx},${cy-r} A${r},${r} 0 0 ${side==='left'?1:0} ${cx},${cy+r} Z`,'toggleTools',{x:cx+sign*r*.5,y:cy},()=>{state.open=!state.open;state.activeGroup=production&&state.open?entries.find(e=>e.children?.some(c=>c.source?.classList.contains('active')))?.id||null:null;paint()},{expanded:state.open});
+   control('hub',production?`${menuLabel}: mở / đóng`:`Demo ${side}: mở / đóng`,`M${cx},${cy-r} A${r},${r} 0 0 ${side==='left'?1:0} ${cx},${cy+r} Z`,'toggleTools',{x:cx+sign*r*.5,y:cy},()=>{state.open=!state.open;if(state.open)onOpen();state.activeGroup=production&&state.open&&side==='left'?entries.find(e=>e.children?.some(entryActive))?.id||null:null;paint()},{expanded:state.open});
    if(state.open){
     const draw=(entry,sector,isGroup)=>control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>{
      if(isGroup&&entry.children?.length){state.activeGroup=state.activeGroup===entry.id?null:entry.id;paint()}
      else{onAction(entry.id);state.open=false;state.activeGroup=null;paint()}
-    },{source:entry.source,disabled:entry.disabled,tint:entry.tint||(production?group?.tint:undefined),hasActiveChild:entry.children?.some(c=>c.source?.classList.contains('active')),...(entry.children?.length?{expanded:state.activeGroup===entry.id}:{})});
+    },{source:entry.source,label:entry.proxyLabel,oneShot:entry.oneShot,popupOnly:entry.popupOnly,disabled:entry.disabled,tint:entry.tint||(production?group?.tint:undefined),hasActiveChild:entry.children?.some(entryActive),...(entry.children?.length?{expanded:state.activeGroup===entry.id}:{})});
     entries.forEach((entry,i)=>draw(entry,layout.inner[i],true));children.forEach((entry,i)=>draw(entry,layout.outer[i],false));
    }
    if(focused){const target=[...host.querySelectorAll('[data-demo-id]')].find(n=>n.dataset.demoId===focused)||host.querySelector('[data-demo-id="hub"]');target?.focus({preventScroll:true})}
@@ -2170,7 +2174,7 @@ const leftDrawingGroups=[
  const source=document.querySelector(['pin','roller','fixed'].includes(id)?`button[data-support-type="${id}"]`:`button[data-mode="${id}"]`);
  return {id,icon:id,label:source?.getAttribute('aria-label')||id,source,disabled:!source};
 })}));
-let leftDrawingMenu=null;
+let leftDrawingMenu=null,rightCommandMenu=null;
 const leftDrawingSafeProbe=document.createElement('div');leftDrawingSafeProbe.className='semicircle-left-safe-probe';
 function leftDrawingBounds(){
  const vv=window.visualViewport,s=getComputedStyle(leftDrawingSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
@@ -2192,7 +2196,7 @@ function mountLeftDrawingMenu(){
  if(!floatingToolsMedia.matches){leftDrawingMenu?.destroy();leftDrawingMenu=null;leftDrawingSafeProbe.remove();return}
  if(leftDrawingMenu)return;
  document.body.append(leftDrawingSafeProbe);
- leftDrawingMenu=semicircleEngine.createMenu({side:'left',production:true,items:leftDrawingGroups,getBounds:leftDrawingBounds,onAction:id=>{
+ leftDrawingMenu=semicircleEngine.createMenu({side:'left',production:true,items:leftDrawingGroups,getBounds:leftDrawingBounds,onOpen:()=>rightCommandMenu?.close(),onAction:id=>{
   const source=leftDrawingGroups.flatMap(g=>g.children).find(c=>c.id===id)?.source;
   if(source&&!source.disabled&&source.getAttribute('aria-disabled')!=='true')source.click();
  }});
@@ -2216,6 +2220,7 @@ window.addEventListener('pointerdown',e=>{
  if(leftDrawingForwarding)return;
  leftDrawingSwallowClick=false;
  if(!leftDrawingMenu||leftDrawingMenu.host.hidden||window.semicircleDemo)return;
+ if(rightCommandMenu?.host.contains(e.target))return;
  if(leftDrawingMenu.host.contains(e.target)){
   const control=e.target.closest('[data-demo-id]');
   if(control?.dataset.demoId==='moment'&&control.getAttribute('aria-disabled')!=='true'){
@@ -2239,6 +2244,71 @@ for(const event of ['pointermove','pointerup','pointercancel'])window.addEventLi
  e.preventDefault();e.stopImmediatePropagation();if(event!=='pointermove')leftDrawingConsumed.delete(e.pointerId);
 },true);
 window.addEventListener('click',e=>{if(leftDrawingSwallowClick){leftDrawingSwallowClick=false;e.preventDefault();e.stopImmediatePropagation()}},true);
+
+// Task 2D: presentation proxies; original controls own every command and setting.
+const rightCommandGroups=[
+ {id:'file',label:'File',icon:'open',ids:['clear','open','save','saveAs','svg','png','insertWord']},
+ {id:'history',label:'History',icon:'undo',ids:['undo','redo']},
+ {id:'edit',label:'Edit',icon:'copyObjects',ids:['copyObjects','pasteObjects','editSelected','delete']},
+ {id:'view',label:'View',icon:'panView',ids:['resetView','panView','zoomOut','zoomIn']},
+ {id:'snap',label:'Snap',icon:'snapToggle',ids:['snapToggle','snapOptions']},
+ {id:'settings',label:'Settings',icon:'drawingScalesToggle',ids:['drawingScalesToggle','openCalculator']}
+].map((group,index)=>({...group,tint:leftDrawingGroups[index].tint,children:[]}));
+const rightOneShot=new Set(['clear','open','save','saveAs','svg','png','insertWord','undo','redo','copyObjects','pasteObjects','zoomOut','zoomIn']);
+function refreshRightCommandEntries(){
+ for(const group of rightCommandGroups)group.children=group.ids.flatMap(id=>{
+  const source=id==='insertWord'?wordButton:id==='snapOptions'?snapButton:$(id);
+  if(!source||(id==='insertWord'&&source.hidden))return [];
+  return [{id,label:source.getAttribute('aria-label')||source.title,source,icon:id==='snapOptions'?'toggleTools':source.dataset.toolbarIcon||id,oneShot:rightOneShot.has(id),popupOnly:id==='snapOptions',proxyLabel:id==='snapOptions'?'Tùy chọn bắt điểm':undefined,disabled:id==='snapOptions'&&snapButton.getAttribute('aria-pressed')!=='true'}];
+ });
+}
+const rightCommandSafeProbe=document.createElement('div');rightCommandSafeProbe.className='semicircle-left-safe-probe';
+function rightCommandBounds(){
+ const vv=window.visualViewport,s=getComputedStyle(rightCommandSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
+ const b={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),document.querySelector('header').getBoundingClientRect().bottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
+ for(const id of ['dynamicInput','commandControls']){
+  const control=$(id);if(!control||control.hidden)continue;
+  const r=control.getBoundingClientRect();
+  if(r.width&&r.right>b.right-170&&r.left<b.right&&r.bottom>b.top&&r.top<b.bottom){
+   if(r.top-b.top>=b.bottom-r.bottom)b.bottom=Math.min(b.bottom,r.top-8);else b.top=Math.max(b.top,r.bottom+8);
+  }
+ }
+ b.bottom=Math.max(b.top+1,b.bottom);b.right=Math.max(b.left+1,b.right);return b;
+}
+function mountRightCommandMenu(){
+ if(!floatingToolsMedia.matches){rightCommandMenu?.destroy();rightCommandMenu=null;rightCommandSafeProbe.remove();return}
+ if(rightCommandMenu)return;
+ refreshRightCommandEntries();document.body.append(rightCommandSafeProbe);
+ rightCommandMenu=semicircleEngine.createMenu({side:'right',production:true,items:rightCommandGroups,getBounds:rightCommandBounds,onOpen:()=>leftDrawingMenu?.close(),onAction:id=>{
+  const entry=rightCommandGroups.flatMap(g=>g.children).find(c=>c.id===id);
+  if(!entry||entry.disabled||entry.source.disabled||entry.source.getAttribute('aria-disabled')==='true')return;
+  // The existing ArrowDown handler opens/focuses the existing checkbox panel.
+  if(id==='snapOptions')entry.source.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown'}));
+  else entry.source.click();
+ }});
+}
+floatingToolsMedia.addEventListener('change',mountRightCommandMenu);mountRightCommandMenu();
+// Focus updates contextual controls even when their attributes do not change.
+// Ignore those no-op writes so repaint/focus restoration cannot feed itself.
+const rightCommandObserver=new MutationObserver(records=>{
+ if(!records.some(r=>r.oldValue!==r.target.getAttribute(r.attributeName)))return;
+ refreshRightCommandEntries();rightCommandMenu?.refresh();
+});
+for(const source of new Set(rightCommandGroups.flatMap(g=>g.ids.map(id=>id==='insertWord'?wordButton:id==='snapOptions'?snapButton:$(id))).filter(Boolean)))rightCommandObserver.observe(source,{attributes:true,attributeOldValue:true,attributeFilter:['class','aria-pressed','aria-expanded','aria-label','title','disabled','aria-disabled','hidden']});
+for(const id of ['dynamicInput','commandControls'])if($(id))rightCommandObserver.observe($(id),{attributes:true,attributeOldValue:true,attributeFilter:['hidden','style']});
+const rightCommandConsumed=new Set();let rightCommandSwallowClick=false;
+window.addEventListener('pointerdown',e=>{
+ rightCommandSwallowClick=false;
+ if(!rightCommandMenu||rightCommandMenu.host.hidden||window.semicircleDemo)return;
+ if(rightCommandMenu.host.contains(e.target)){e.preventDefault();e.stopImmediatePropagation();return}
+ if(leftDrawingMenu?.host.contains(e.target)||!rightCommandMenu.state.open)return;
+ rightCommandConsumed.add(e.pointerId);rightCommandSwallowClick=true;e.preventDefault();e.stopImmediatePropagation();rightCommandMenu.close();
+},true);
+for(const event of ['pointermove','pointerup','pointercancel'])window.addEventListener(event,e=>{
+ if(!rightCommandConsumed.has(e.pointerId))return;
+ e.preventDefault();e.stopImmediatePropagation();if(event!=='pointermove')rightCommandConsumed.delete(e.pointerId);
+},true);
+window.addEventListener('click',e=>{if(rightCommandSwallowClick){rightCommandSwallowClick=false;e.preventDefault();e.stopImmediatePropagation()}},true);
 
 // DevTools: const demo = showSemicircleDemo(); demo.destroy() removes all listeners/UI.
 function showSemicircleDemo(){
