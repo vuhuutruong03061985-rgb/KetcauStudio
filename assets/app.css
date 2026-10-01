@@ -233,3 +233,6 @@ main[data-toolbox-mode="auto-hide"] #toolPanel{position:absolute;left:44px;top:v
 :is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-control.active .semicircle-hit,:is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-control[aria-pressed="true"] .semicircle-hit{fill:#b8dce0;stroke:#397f8b;stroke-width:1.5;filter:var(--sector-inset)}
 @media (any-hover:hover){:is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-control:not([aria-disabled="true"]):not(:focus-visible):hover .semicircle-hit{stroke:#527b8c;stroke-width:2}}
 :is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-control:focus-visible .semicircle-hit{stroke:#235a83;stroke-width:3;stroke-dasharray:3 2}
+
+/* Group navigation is separate from the active source command. */
+:is(.semicircle-left-menu,.semicircle-right-menu) .selected-group .semicircle-hit{fill:#dce5f2;stroke:#6585af;stroke-width:1.5}

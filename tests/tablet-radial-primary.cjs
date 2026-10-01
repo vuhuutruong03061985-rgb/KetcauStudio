@@ -31,6 +31,18 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    }
    assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
    await p.screenshot({path:`tests/radial-primary-closed-${viewport.width}.png`});
+   // Review clean canvas and each navigation level in both orientations.
+   for(const id of ['undo','redo'])assert(await p.locator('#'+id).isHidden());
+   for(const [side,group]of [['left','region'],['right','file']]){
+    await tap('hub',side);
+    await p.screenshot({path:`tests/task3a-${side}-open-${viewport.width}.png`});
+    await tap(group,side);
+    const root=p.locator(`.semicircle-${side}-menu`);
+    assert.equal(await root.locator('.selected-group').count(),1);
+    assert.equal(await root.locator('text,button').count(),0);
+    await p.screenshot({path:`tests/task3a-${side}-expanded-${viewport.width}.png`});
+    await tap('hub',side);
+   }
    // Fit failure on either independent side restores both legacy surfaces and preferences.
    await p.evaluate(()=>saveDraft());const primaryHeight=await canvasHeight(),before=await snapshot();
    for(const side of ['left','right']){

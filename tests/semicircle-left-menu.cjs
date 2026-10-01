@@ -1,6 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
-const expected={geometry:['bar','thin','dashed','curve','extend'],region:['hatch','rigidRegion','joint'],connections:['hinge','linkBar','weld','pin','roller','fixed'],loads:['force','moment','udl'],annotation:['dim','text','person'],diagrams:['positive','negative','diagramM','diagramQ','diagramN']};
+const expected={geometry:['bar','thin','dashed','curve','extend'],connections:['hinge','linkBar','weld','pin','roller','fixed'],loads:['force','moment','udl'],region:['section','rigidRegion','hatch','joint'],dimensions:['dim'],annotation:['text','person'],diagrams:['positive','negative','diagramM','diagramQ','diagramN']};
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -13,6 +13,7 @@ const expected={geometry:['bar','thin','dashed','curve','extend'],region:['hatch
    p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.resolve('index.html')).href);
    const root=p.locator('.semicircle-left-menu'),sector=id=>root.locator(`[data-demo-id="${id}"]`);
    assert.equal(await root.count(),1);assert.equal(await p.locator('.semicircle-prototype').count(),0);
+   assert.equal(await p.evaluate(()=>leftDrawingGroups.map(g=>g.label).join('|')),'Thanh|Liên kết|Tải trọng|Mặt cắt|Kích thước|Ghi chú|Khác');
    assert.deepEqual(await p.evaluate(()=>Object.fromEntries(leftDrawingGroups.map(g=>[g.id,g.children.map(c=>c.id)]))),expected);
    const activate=async(id,pointer='touch')=>{
     const q=await p.evaluate(id=>{const m=leftDrawingMenu;if(id==='hub')return {x:m.layout.cx+12,y:m.layout.cy};const g=leftDrawingGroups.findIndex(g=>g.id===id);return g>=0?m.layout.inner[g].icon:m.layout.outer[leftDrawingGroups.find(g=>g.id===m.state.activeGroup).children.findIndex(c=>c.id===id)].icon},id);
@@ -67,11 +68,11 @@ const expected={geometry:['bar','thin','dashed','curve','extend'],region:['hatch
      for(let a=0;a<Math.PI*2;a+=Math.PI/36)if(!semicircleEngine.hitTestRadialSector(s,s.icon.x+22*Math.cos(a),s.icon.y+22*Math.sin(a)))return false;
      return document.elementFromPoint(s.icon.x,s.icon.y)?.classList.contains('semicircle-hit');
     })}});
-    assert(geometry.fits&&geometry.safe&&geometry.targets);assert(geometry.radius<170);if(group==='loads')assert(geometry.span<Math.PI*.8);
+    assert(geometry.fits&&geometry.safe&&geometry.targets);assert(geometry.radius<185);if(group==='loads')assert(geometry.span<Math.PI*.8);
     spans[expected[group].length]=geometry.span;
     const refinement=await p.evaluate(()=>{
      const m=leftDrawingMenu,l=m.layout,parent=l.inner[leftDrawingGroups.findIndex(g=>g.id===m.state.activeGroup)],outer=l.outer;
-     const center=(outer[0].a0+outer.at(-1).a1)/2,step=(outer[0].a0+outer[0].a1)/2-(outer[1].a0+outer[1].a1)/2;
+     const center=(outer[0].a0+outer.at(-1).a1)/2,step=(outer[0].a0+outer[0].a1)/2-(outer[1]?(outer[1].a0+outer[1].a1)/2:(outer[0].a0+outer[0].a1)/2+outer[0].a1-outer[0].a0);
      const limit=(Math.PI-Math.abs(step)*outer.length)/2,anchor=(parent.a0+parent.a1)/2;
      const gaps=ring=>ring.slice(1).map((s,i)=>2*(s.r0+s.r1)/2*Math.sin((s.a0-ring[i].a1)/2));
      const paths=[...m.host.querySelectorAll('.semicircle-hit')];
@@ -91,14 +92,14 @@ const expected={geometry:['bar','thin','dashed','curve','extend'],region:['hatch
    const styleOf=id=>sector(id).locator('.semicircle-hit').evaluate(el=>{const s=getComputedStyle(el);return {fill:s.fill,stroke:s.stroke,width:s.strokeWidth,dash:s.strokeDasharray}});
    const active=await styleOf('bar'),parent=await styleOf('geometry'),passive=await styleOf('region');
    assert.equal(active.fill,'rgb(184, 220, 224)');assert.notEqual(active.fill,parent.fill);assert.notEqual(active.stroke,parent.stroke);
-   assert.equal(parent.width,'1.5px');assert.equal(passive.width,'1px');
+   assert.equal(await sector('geometry').getAttribute('aria-expanded'),'true');assert((await sector('geometry').getAttribute('class')).includes('selected-group'));assert.notEqual(parent.fill,passive.fill);assert.equal(parent.width,'1.5px');assert.equal(passive.width,'1px');
    await sector('bar').focus();const focused=await styleOf('bar');assert.equal(focused.fill,active.fill);assert.equal(focused.width,'3px');assert.notEqual(focused.dash,'none');
    await p.evaluate(()=>document.activeElement.blur());
    await openGroup('geometry');const point=await p.evaluate(()=>leftDrawingMenu.layout.outer[0].icon);await p.mouse.move(point.x,point.y);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.hoveredSector),'bar');
    await sector('bar').dispatchEvent('pointerenter',{pointerType:'pen'});assert.equal(await p.evaluate(()=>leftDrawingMenu.state.hoveredSector),'bar');assert(await sector('bar').locator('title').textContent());
    // Representative canvas workflows start immediately after radial selection.
    const tap=async(x,y)=>{const q=await p.evaluate(([x,y])=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},[x,y]);await p.touchscreen.tap(q.x,q.y)};
-   for(const [group,id]of [['geometry','bar'],['loads','force'],['loads','moment'],['loads','udl'],['connections','roller'],['annotation','dim'],['diagrams','diagramM']]){
+   for(const [group,id]of [['geometry','bar'],['loads','force'],['loads','moment'],['loads','udl'],['connections','roller'],['dimensions','dim'],['diagrams','diagramM']]){
     await reset();await p.evaluate(()=>{items=[];past=[];future=[];snapEnabled=false;render()});await openGroup(group);await activate(id);await tap(300,300);
     assert.equal(await p.evaluate(()=>mode),id==='roller'?'support':id);
     if(id==='diagramM')assert.equal(await p.evaluate(()=>items.at(-1)?.type),'diagramM');

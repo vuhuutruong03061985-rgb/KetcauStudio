@@ -2104,6 +2104,7 @@ const semicircleEngine=(()=>{
    if(options.oneShot||options.popupOnly){g.removeAttribute('aria-pressed');g.classList.toggle('active',!!options.popupOnly&&source?.getAttribute('aria-expanded')==='true')}
    if(options.oneShot)g.removeAttribute('aria-expanded');
    g.classList.toggle('has-active-child',!!options.hasActiveChild);
+   g.classList.toggle('selected-group',!!options.isGroup&&options.expanded===true);
    node('title',{},g).textContent=options.label||source?.title||label;
    node('path',{d:path,class:'semicircle-hit'},g);
    const iconSize=production&&id!=='hub'?28:24,iconHalf=iconSize/2;
@@ -2111,8 +2112,8 @@ const semicircleEngine=(()=>{
     const artwork=source.querySelector('svg').cloneNode(true);artwork.setAttribute('x',position.x-14);artwork.setAttribute('y',position.y-14);artwork.setAttribute('width',28);artwork.setAttribute('height',28);artwork.classList.add('semicircle-icon');g.append(artwork);
     // Fit existing support artwork uniformly, removing excess source-viewBox whitespace.
     if(production){const b=artwork.getBBox();if(b.width&&b.height)artwork.setAttribute('viewBox',`${b.x-3} ${b.y-3} ${b.width+6} ${b.height+6}`)}
-   }else if(source?.dataset.mode==='moment'){
-    const href=source.style.getPropertyValue('--tool-icon').match(/^url\("(.*)"\)$/)?.[1];
+   }else if(source?.dataset.mode==='moment'||source?.dataset.mode==='section'||(production&&icon==='section')){
+    const href=(source||sectionButton).style.getPropertyValue('--tool-icon').match(/^url\("(.*)"\)$/)?.[1];
     node('image',{href,x:position.x-iconHalf,y:position.y-iconHalf,width:iconSize,height:iconSize,class:'semicircle-icon'},g);
    }else node('path',{d:toolIconPaths[icon]||toolIconPaths.toggleTools,class:'semicircle-icon',transform:`translate(${position.x-iconHalf} ${position.y-iconHalf})${production?` scale(${iconSize/24})`:''}`,fill:icon==='weld'?'currentColor':'none',...(production?{'vector-effect':'non-scaling-stroke'}:{})},g);
    const invoke=()=>{if(!options.disabled)action()};
@@ -2160,7 +2161,7 @@ const semicircleEngine=(()=>{
     const draw=(entry,sector,isGroup)=>control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>{
      if(isGroup&&entry.children?.length){state.activeGroup=state.activeGroup===entry.id?null:entry.id;paint()}
      else{onAction(entry.id);state.open=false;state.activeGroup=null;paint()}
-    },{source:entry.source,label:entry.proxyLabel,oneShot:entry.oneShot,popupOnly:entry.popupOnly,disabled:entry.disabled,tint:entry.tint||(production?group?.tint:undefined),hasActiveChild:entry.children?.some(entryActive),...(entry.children?.length?{expanded:state.activeGroup===entry.id}:{})});
+    },{isGroup,source:entry.source,label:entry.proxyLabel,oneShot:entry.oneShot,popupOnly:entry.popupOnly,disabled:entry.disabled,tint:entry.tint||(production?group?.tint:undefined),hasActiveChild:entry.children?.some(entryActive),...(entry.children?.length?{expanded:state.activeGroup===entry.id}:{})});
     entries.forEach((entry,i)=>draw(entry,layout.inner[i],true));children.forEach((entry,i)=>draw(entry,layout.outer[i],false));
    }
    if(focused){const target=[...host.querySelectorAll('[data-demo-id]')].find(n=>n.dataset.demoId===focused)||host.querySelector('[data-demo-id="hub"]');target?.focus({preventScroll:true})}
@@ -2174,15 +2175,17 @@ const semicircleEngine=(()=>{
 
 // Task 2C: DOM controls remain authoritative for actions, state and artwork.
 const leftDrawingGroups=[
- {id:'geometry',label:'Geometry',icon:'bar',tools:['bar','thin','dashed','curve','extend']},
- {id:'region',label:'Region / Shape editing',icon:'hatch',tools:['hatch','rigidRegion','joint']},
- {id:'connections',label:'Connections',icon:'hinge',tools:['hinge','linkBar','weld','pin','roller','fixed']},
- {id:'loads',label:'Loads',icon:'force',tools:['force','moment','udl']},
- {id:'annotation',label:'Annotation',icon:'dim',tools:['dim','text','person']},
- {id:'diagrams',label:'Diagram / Signs',icon:'diagramM',tools:['positive','negative','diagramM','diagramQ','diagramN']}
-].map((group,index)=>({...group,tint:['#edf2f6','#f3f0e9','#edf3ef','#edf2f4','#f2eef4','#eef0f6'][index],children:group.tools.map(id=>{
+ {id:'geometry',label:'Thanh',icon:'bar',tools:['bar','thin','dashed','curve','extend']},
+ {id:'connections',label:'Liên kết',icon:'hinge',tools:['hinge','linkBar','weld','pin','roller','fixed']},
+ // Add future real load controls here; source handlers remain authoritative.
+ {id:'loads',label:'Tải trọng',icon:'force',tools:['force','moment','udl']},
+ {id:'region',label:'Mặt cắt',icon:'section',tools:['section','rigidRegion','hatch','joint']},
+ {id:'dimensions',label:'Kích thước',icon:'dim',tools:['dim']},
+ {id:'annotation',label:'Ghi chú',icon:'text',tools:['text','person']},
+ {id:'diagrams',label:'Khác',icon:'diagramM',tools:['positive','negative','diagramM','diagramQ','diagramN']}
+].map((group,index)=>({...group,tint:['#edf2f6','#edf3ef','#edf2f4','#f3f0e9','#f2eef4','#eef0f6','#f2f1ec'][index],children:group.tools.flatMap(id=>{
  const source=document.querySelector(['pin','roller','fixed'].includes(id)?`button[data-support-type="${id}"]`:`button[data-mode="${id}"]`);
- return {id,icon:id,label:source?.getAttribute('aria-label')||id,source,disabled:!source};
+ return source?[{id,icon:id,label:source.getAttribute('aria-label')||id,source}]:[];
 })}));
 let leftDrawingMenu=null,rightCommandMenu=null,radialPrimaryQueued=false,radialPrimaryLayout=null;
 const leftDrawingSafeProbe=document.createElement('div');leftDrawingSafeProbe.className='semicircle-left-safe-probe';
@@ -2259,12 +2262,12 @@ window.addEventListener('click',e=>{if(leftDrawingSwallowClick){leftDrawingSwall
 
 // Task 2D: presentation proxies; original controls own every command and setting.
 const rightCommandGroups=[
- {id:'file',label:'File',icon:'open',ids:['clear','open','save','saveAs','svg','png','insertWord']},
- {id:'history',label:'History',icon:'undo',ids:['undo','redo']},
- {id:'edit',label:'Edit',icon:'copyObjects',ids:['copyObjects','pasteObjects','editSelected','delete']},
- {id:'view',label:'View',icon:'panView',ids:['resetView','panView','zoomOut','zoomIn']},
- {id:'snap',label:'Snap',icon:'snapToggle',ids:['snapToggle','snapOptions']},
- {id:'settings',label:'Settings',icon:'drawingScalesToggle',ids:['drawingScalesToggle','openCalculator']}
+ {id:'file',label:'Tệp tin',icon:'open',ids:['clear','open','save','saveAs','svg','png','insertWord']},
+ {id:'history',label:'Lịch sử',icon:'undo',ids:['undo','redo']},
+ {id:'edit',label:'Sao chép',icon:'copyObjects',ids:['copyObjects','pasteObjects','editSelected','delete']},
+ {id:'view',label:'Chế độ xem',icon:'panView',ids:['resetView','panView','zoomOut','zoomIn']},
+ {id:'snap',label:'Hiển thị',icon:'snapToggle',ids:['snapToggle','snapOptions']},
+ {id:'settings',label:'Cài đặt',icon:'drawingScalesToggle',ids:['drawingScalesToggle','openCalculator']}
 ].map((group,index)=>({...group,tint:leftDrawingGroups[index].tint,children:[]}));
 const rightOneShot=new Set(['clear','open','save','saveAs','svg','png','insertWord','undo','redo','copyObjects','pasteObjects','zoomOut','zoomIn']);
 function refreshRightCommandEntries(){

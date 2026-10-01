@@ -19,6 +19,7 @@ const expected={file:['clear','open','save','saveAs','svg','png'],history:['undo
    const snapshot=()=>p.evaluate(()=>({doc:documentText(),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,first,second,selected,multi:[...multiSelection],geometryScale,internalForceScale,camera:JSON.stringify(camera),handle:documentHandle?.name,name:documentName}));
    assert.equal(await root.count(),1);assert.equal(await p.locator('.semicircle-prototype').count(),0);
    assert.deepEqual(await p.evaluate(()=>Object.fromEntries(rightCommandGroups.map(g=>[g.id,g.children.map(c=>c.id)]))),expected);
+   assert.deepEqual(await p.evaluate(()=>rightCommandGroups.map(g=>g.label)),['Tệp tin', 'Lịch sử', 'Sao chép', 'Chế độ xem', 'Hiển thị', 'Cài đặt']);
    // Observe the original handlers without replacing their behavior.
    await p.evaluate(()=>{window.commandClicks={};for(const c of rightCommandGroups.flatMap(g=>g.children).filter(c=>c.id!=='snapOptions'))c.source.addEventListener('click',()=>commandClicks[c.id]=(commandClicks[c.id]||0)+1)});
    await p.evaluate(()=>{setMode('bar');first={x:300,y:300};selected=items[0].id;multiSelection=new Set([selected]);render();saveDraft()});
