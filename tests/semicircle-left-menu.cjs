@@ -76,7 +76,7 @@ const expected={geometry:['bar','thin','dashed','curve','extend'],connections:['
      const limit=(Math.PI-Math.abs(step)*outer.length)/2,anchor=(parent.a0+parent.a1)/2;
      const gaps=ring=>ring.slice(1).map((s,i)=>2*(s.r0+s.r1)/2*Math.sin((s.a0-ring[i].a1)/2));
      const paths=[...m.host.querySelectorAll('.semicircle-hit')];
-     return {gaps:[...gaps(l.inner),...gaps(outer)],radialGap:outer[0].r0-l.inner[0].r1,hub:l.hubRadius,anchorError:Math.abs(center-Math.max(-limit,Math.min(anchor,limit))),
+     return {gaps:[...gaps([...l.inner].sort((a,b)=>a.a0-b.a0)),...gaps(outer)],radialGap:outer[0].r0-l.inner[0].r1,hub:l.hubRadius,anchorError:Math.abs(center-Math.max(-limit,Math.min(anchor,limit))),
       pathHits:paths.every(el=>getComputedStyle(el).pointerEvents==='fill'),
       upright:[...m.host.querySelectorAll('.semicircle-icon')].every(el=>!el.getAttribute('transform')?.includes('rotate')),
       icons:[...m.host.querySelectorAll('.semicircle-control:not([data-demo-id="hub"]) .semicircle-icon')].map(el=>el.tagName==='path'?24*Math.hypot(el.getCTM().a,el.getCTM().b):Number(el.getAttribute('width')))};

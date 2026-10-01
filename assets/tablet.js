@@ -2041,6 +2041,11 @@ paintCommandRibbon();
 // Shared Task 2B geometry/renderer; demo instances remain opt-in and session-only.
 const semicircleEngine=(()=>{
  const gap=2;let nextMenuId=0;
+ const normalizeAngle=a=>((a+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;
+ const shortestAngleDelta=(from,to)=>normalizeAngle(to-from);
+ const snapGroupIndex=(offset,count)=>((Math.round(offset)%count)+count)%count;
+ const classifyTapVsDrag=(distance)=>distance>=9;
+ const rollerDelta=(from,to,side)=>shortestAngleDelta(from,to)*(side==='left'?1:-1);
  function point(cx,cy,r,a,side){return {x:cx+(side==='left'?1:-1)*r*Math.cos(a),y:cy+r*Math.sin(a)}}
  function sectorIconPosition(s){return point(s.cx,s.cy,(s.r0+s.r1)/2,(s.a0+s.a1)/2,s.side)}
  function solveRadialSectorPath(s){
@@ -2089,6 +2094,69 @@ const semicircleEngine=(()=>{
   const menuLabel=side==='right'?'Lệnh và thiết lập':'Công cụ vẽ';
   const surface=document.createElementNS(NS,'svg');surface.setAttribute('aria-label',production?menuLabel:`Demo ${side}`);host.append(surface);document.body.append(host);
   const state={side,open:false,activeGroup:null,hoveredSector:null};
+  const roller={offset:0,pointerId:null,dragging:false};state.roller=roller;
+  let snapFrame=0,suppressClick=false;
+  // Odd physical slots keep a full-size middle detent even with six real groups.
+  const slotCount=entries.length%2?entries.length:entries.length+1,step=Math.PI/slotCount;
+  function selectGroup(index){
+   roller.offset=snapGroupIndex(index,entries.length);state.activeGroup=entries[roller.offset]?.id;paint();
+  }
+  // Move only group paths and upright artwork. Hub/children never rotate.
+  function moveGroups(){
+   if(!production||!state.open)return;
+   const half=entries.length/2;
+   entries.forEach((entry,i)=>{
+    const base=layout.inner[i],g=host.querySelector(`[data-demo-id="${entry.id}"]`);if(!g)return;
+    const relative=((i-roller.offset+half)%entries.length+entries.length)%entries.length-half;
+    const angle=relative*step,width=base.a1-base.a0;
+    const s={...base,a0:angle-width/2,a1:angle+width/2};
+    s.icon=sectorIconPosition(s);s.path=solveRadialSectorPath(s);layout.inner[i]=s;
+    g.querySelector('.semicircle-hit').setAttribute('d',s.path);
+    const artwork=g.querySelector('.semicircle-icon');
+    if(!g._rollerOrigin)g._rollerOrigin={...base.icon};
+    // A wrapper translation preserves artwork transforms and source SVG viewBoxes.
+    let wrapper=g.querySelector('.roller-artwork');
+    if(!wrapper){wrapper=node('g',{class:'roller-artwork'},g);wrapper.append(artwork)}
+    wrapper.setAttribute('transform',`translate(${s.icon.x-g._rollerOrigin.x} ${s.icon.y-g._rollerOrigin.y})`);
+    g.classList.toggle('roller-candidate',snapGroupIndex(roller.offset,entries.length)===i);
+    g.style.opacity=String(1-Math.min(Math.abs(relative),3)*.1);
+   });
+  }
+  function finishRoller(cancel=false){
+   if(roller.pointerId===null)return;
+   const id=roller.pointerId;roller.pointerId=null;
+   if(surface.hasPointerCapture?.(id))surface.releasePointerCapture(id);
+   if(roller.dragging){
+    suppressClick=true;const start=roller.offset,end=cancel?roller.startOffset:Math.round(start);
+    const begin=performance.now(),duration=matchMedia('(prefers-reduced-motion: reduce)').matches?0:160;
+    const animate=now=>{const t=duration?Math.min(1,(now-begin)/duration):1;roller.offset=start+(end-start)*(1-(1-t)**3);moveGroups();
+     if(t<1)snapFrame=requestAnimationFrame(animate);else{snapFrame=0;roller.dragging=false;selectGroup(end)}};
+    snapFrame=requestAnimationFrame(animate);
+   }
+  }
+  function rollerPointer(e){
+   if(!production)return;
+   if(e.type==='pointerdown'){
+    suppressClick=false;
+    const g=e.target.closest?.('[data-demo-id]');
+    if(!state.open||!host.contains(e.target)||!entries.some(entry=>entry.id===g?.dataset.demoId)||e.button!==0||roller.pointerId!==null)return;
+    cancelAnimationFrame(snapFrame);snapFrame=0;suppressClick=false;
+    Object.assign(roller,{pointerId:e.pointerId,dragging:false,tapIndex:entries.findIndex(entry=>entry.id===g.dataset.demoId),startX:e.clientX,startY:e.clientY,startOffset:roller.offset,lastAngle:Math.atan2(e.clientY-layout.cy,e.clientX-layout.cx)});
+    try{surface.setPointerCapture?.(e.pointerId)}catch(error){if(error.name!=='NotFoundError')throw error}
+   }else{
+    if(e.pointerId!==roller.pointerId)return;
+    if(e.type==='pointermove'){
+     const a=Math.atan2(e.clientY-layout.cy,e.clientX-layout.cx);
+     if(classifyTapVsDrag(Math.hypot(e.clientX-roller.startX,e.clientY-roller.startY)))roller.dragging=true;
+     if(roller.dragging){roller.offset=Math.max(roller.startOffset-entries.length+1,Math.min(roller.startOffset+entries.length-1,roller.offset-rollerDelta(roller.lastAngle,a,side)/step));moveGroups()}
+     roller.lastAngle=a;
+    }else{const tap=!roller.dragging&&e.type==='pointerup';finishRoller(e.type!=='pointerup');if(tap){suppressClick=true;selectGroup(roller.tapIndex)}}
+   }
+   e.preventDefault();e.stopImmediatePropagation();
+  }
+  for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])window.addEventListener(type,rollerPointer,true);
+  const rollerClick=e=>{if(production&&host.contains(e.target)&&(roller.dragging||snapFrame||(suppressClick&&e.detail>0))){suppressClick=false;e.preventDefault();e.stopImmediatePropagation()}};
+  window.addEventListener('click',rollerClick,true);
   const pressed=new Map(),active=new Map();let layout,destroyed=false;
   const entryActive=entry=>!entry.oneShot&&(entry.popupOnly?entry.source?.getAttribute('aria-expanded')==='true':entry.source?.classList.contains('active'));
   const node=(name,attrs,parent=surface)=>{const n=document.createElementNS(NS,name);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,String(v));parent.append(n);return n};
@@ -2104,6 +2172,7 @@ const semicircleEngine=(()=>{
    if(options.oneShot||options.popupOnly){g.removeAttribute('aria-pressed');g.classList.toggle('active',!!options.popupOnly&&source?.getAttribute('aria-expanded')==='true')}
    if(options.oneShot)g.removeAttribute('aria-expanded');
    g.classList.toggle('has-active-child',!!options.hasActiveChild);
+   g.classList.toggle('group-selector',!!options.isGroup&&production);
    g.classList.toggle('selected-group',!!options.isGroup&&options.expanded===true);
    node('title',{},g).textContent=options.label||source?.title||label;
    node('path',{d:path,class:'semicircle-hit'},g);
@@ -2129,6 +2198,7 @@ const semicircleEngine=(()=>{
   }
   function paint(){
    if(destroyed)return;
+   if(roller.pointerId!==null||snapFrame)return;
    try{paintLayout()}
    catch(error){
     if(!production)throw error;
@@ -2141,9 +2211,10 @@ const semicircleEngine=(()=>{
    const focused=host.contains(document.activeElement)?document.activeElement.getAttribute('data-demo-id'):null;
    const group=entries.find(entry=>entry.id===state.activeGroup),children=group?.children||[];
    // Reserve the largest group while closed too: opening cannot move the hub.
-   const reserve=solveSemicircleLayout({side,innerCount:entries.length,outerCount:Math.max(0,...entries.map(e=>e.children?.length||0)),bounds:getBounds(),centerY,refined:production});
-   const parent=reserve.inner[entries.indexOf(group)],outerAnchor=parent?(parent.a0+parent.a1)/2:0;
-   layout=solveSemicircleLayout({side,innerCount:entries.length,outerCount:state.open?children.length:0,bounds:getBounds(),centerY:reserve.cy,refined:production,outerAnchor});
+   const reserve=solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:Math.max(0,...entries.map(e=>e.children?.length||0)),bounds:getBounds(),centerY,refined:production});
+   const parent=reserve.inner[entries.indexOf(group)],outerAnchor=production?0:parent?(parent.a0+parent.a1)/2:0;
+   layout=solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:state.open?children.length:0,bounds:getBounds(),centerY:reserve.cy,refined:production,outerAnchor});
+   if(production)layout.inner=layout.inner.slice(0,entries.length);
    surface.replaceChildren();host.hidden=!reserve.fits;
    if(host.dataset.safeFit!==String(reserve.fits))host.dataset.safeFit=String(reserve.fits);
    if(!reserve.fits)return; // Caller must page/regroup when safe targets cannot fit.
@@ -2156,21 +2227,33 @@ const semicircleEngine=(()=>{
    node('feComposite',{in:'color',in2:'edge',operator:'in',result:'shadow'},filter);
    const merge=node('feMerge',{},filter);node('feMergeNode',{in:'SourceGraphic'},merge);node('feMergeNode',{in:'shadow'},merge);
    const {cx,cy,hubRadius:r}=layout,sign=side==='left'?1:-1;
-   control('hub',production?`${menuLabel}: mở / đóng`:`Demo ${side}: mở / đóng`,`M${cx},${cy-r} A${r},${r} 0 0 ${side==='left'?1:0} ${cx},${cy+r} Z`,'toggleTools',{x:cx+sign*r*.5,y:cy},()=>{state.open=!state.open;if(state.open)onOpen();state.activeGroup=production&&state.open&&side==='left'?entries.find(e=>e.children?.some(entryActive))?.id||null:null;paint()},{expanded:state.open});
+   control('hub',production?`${menuLabel}: mở / đóng`:`Demo ${side}: mở / đóng`,`M${cx},${cy-r} A${r},${r} 0 0 ${side==='left'?1:0} ${cx},${cy+r} Z`,'toggleTools',{x:cx+sign*r*.5,y:cy},()=>{state.open=!state.open;if(state.open)onOpen();if(production&&state.open){const current=entries.findIndex(e=>e.children?.some(entryActive));selectGroup(current>=0?current:roller.offset)}else if(!production)state.activeGroup=null;paint()},{expanded:state.open});
    if(state.open){
     const draw=(entry,sector,isGroup)=>control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>{
-     if(isGroup&&entry.children?.length){state.activeGroup=state.activeGroup===entry.id?null:entry.id;paint()}
-     else{onAction(entry.id);state.open=false;state.activeGroup=null;paint()}
-    },{isGroup,source:entry.source,label:entry.proxyLabel,oneShot:entry.oneShot,popupOnly:entry.popupOnly,disabled:entry.disabled,tint:entry.tint||(production?group?.tint:undefined),hasActiveChild:entry.children?.some(entryActive),...(entry.children?.length?{expanded:state.activeGroup===entry.id}:{})});
+     if(isGroup&&entry.children?.length){if(production)selectGroup(entries.indexOf(entry));else{state.activeGroup=state.activeGroup===entry.id?null:entry.id;paint()}}
+     else{onAction(entry.id);state.open=false;if(!production)state.activeGroup=null;paint()}
+    },{isGroup,source:entry.source,label:entry.proxyLabel,oneShot:entry.oneShot,popupOnly:entry.popupOnly,disabled:entry.disabled,tint:entry.tint||(production?'#f3f7fa':undefined),hasActiveChild:entry.children?.some(entryActive),...(entry.children?.length?{expanded:state.activeGroup===entry.id}:{})});
     entries.forEach((entry,i)=>draw(entry,layout.inner[i],true));children.forEach((entry,i)=>draw(entry,layout.outer[i],false));
+    if(production){
+     const clip=node('clipPath',{id:insetId+'-arc'},defs);node('rect',{x:side==='left'?cx:cx-layout.radius,y:cy-layout.radius,width:layout.radius,height:layout.radius*2},clip);
+     for(const entry of entries)host.querySelector(`[data-demo-id="${entry.id}"]`).setAttribute('clip-path',`url(#${insetId}-arc)`);
+     node('path',{d:`M${cx+sign*(layout.inner[0].r0-4)},${cy-8} L${cx+sign*(layout.inner[0].r0+2)},${cy} L${cx+sign*(layout.inner[0].r0-4)},${cy+8}`,class:'roller-slot'});moveGroups()
+    }
    }
    if(focused){const target=[...host.querySelectorAll('[data-demo-id]')].find(n=>n.dataset.demoId===focused)||host.querySelector('[data-demo-id="hub"]');target?.focus({preventScroll:true})}
   }
+  function stopRoller(){
+   const interrupted=roller.pointerId!==null||snapFrame;
+   cancelAnimationFrame(snapFrame);snapFrame=0;
+   const id=roller.pointerId;roller.pointerId=null;roller.dragging=false;
+   if(id!==null&&surface.hasPointerCapture?.(id))surface.releasePointerCapture(id);
+   if(interrupted)roller.offset=snapGroupIndex(roller.startOffset??roller.offset,entries.length);
+  }
   const keydown=e=>{if(host.contains(e.target)&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopImmediatePropagation();if(!e.repeat)e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}))}};
-  const resize=()=>paint();window.addEventListener('keydown',keydown,true);window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);window.visualViewport?.addEventListener('scroll',resize);paint();
-  return {host,state,get layout(){return layout},refresh:paint,close(){state.open=false;state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);if(production)queueRadialPrimaryUpdate()}};
+  const resize=()=>{stopRoller();paint()};window.addEventListener('keydown',keydown,true);window.addEventListener('blur',resize);window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);window.visualViewport?.addEventListener('scroll',resize);paint();
+  return {host,state,get layout(){return layout},refresh:paint,close(){stopRoller();state.open=false;if(!production)state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){stopRoller();for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])window.removeEventListener(type,rollerPointer,true);window.removeEventListener('click',rollerClick,true);destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('blur',resize);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);if(production)queueRadialPrimaryUpdate()}};
  }
- return {solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,createMenu};
+ return {normalizeAngle,shortestAngleDelta,snapGroupIndex,classifyTapVsDrag,rollerDelta,solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,createMenu};
 })();
 
 // Task 2C: DOM controls remain authoritative for actions, state and artwork.

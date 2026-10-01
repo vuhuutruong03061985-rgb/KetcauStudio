@@ -211,6 +211,14 @@ main[data-toolbox-mode="auto-hide"] #toolPanel{position:absolute;left:44px;top:v
 }
 
 /* Shared semicircle surfaces. SVG paths, not icon boxes, own hit testing. */
+.roller-artwork,.roller-slot{pointer-events:none}
+.roller-slot{fill:none;stroke:#087e90;stroke-width:3;stroke-linecap:round}
+:is(.semicircle-left-menu,.semicircle-right-menu) .group-selector .semicircle-hit{filter:saturate(3)}
+:is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-hit{touch-action:none}
+body :is(.semicircle-left-menu,.semicircle-right-menu)>svg{touch-action:none}
+:is(.semicircle-left-menu,.semicircle-right-menu) .roller-candidate .semicircle-hit{stroke:#087e90;stroke-width:2.5}
+:is(.semicircle-left-menu,.semicircle-right-menu) [data-demo-id="hub"]{color:#fff}
+:is(.semicircle-left-menu,.semicircle-right-menu) [data-demo-id="hub"] .semicircle-hit{fill:#087e90!important}
 .semicircle-safe-probe,.semicircle-left-safe-probe{position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .semicircle-prototype,:is(.semicircle-left-menu,.semicircle-right-menu){position:fixed;inset:0;z-index:2300;pointer-events:none}
 .semicircle-prototype>svg,:is(.semicircle-left-menu,.semicircle-right-menu)>svg{display:block;width:100%;height:100%;border:0;overflow:visible;pointer-events:none;touch-action:manipulation}

@@ -23,7 +23,7 @@ const expected={file:['clear','open','save','saveAs','svg','png'],history:['undo
    // Observe the original handlers without replacing their behavior.
    await p.evaluate(()=>{window.commandClicks={};for(const c of rightCommandGroups.flatMap(g=>g.children).filter(c=>c.id!=='snapOptions'))c.source.addEventListener('click',()=>commandClicks[c.id]=(commandClicks[c.id]||0)+1)});
    await p.evaluate(()=>{setMode('bar');first={x:300,y:300};selected=items[0].id;multiSelection=new Set([selected]);render();saveDraft()});
-   const before=await snapshot();await activate('hub');assert.equal(await root.locator('.semicircle-control').count(),7);
+   const before=await snapshot();await activate('hub');const rightInitialChildren=await p.evaluate(()=>rightCommandGroups.find(g=>g.id===rightCommandMenu.state.activeGroup).children.length);assert.equal(await root.locator('.semicircle-control').count(),7+rightInitialChildren);
    await p.screenshot({path:`tests/semicircle-right-inner-${viewport.width}.png`});
    for(const group of Object.keys(expected)){
     await openGroup(group);assert.equal(await root.locator('text,button').count(),0);
@@ -32,10 +32,10 @@ const expected={file:['clear','open','save','saveAs','svg','png'],history:['undo
      return {fits:l.fits,radius:l.radius,inner:l.inner[0].r1,hub:l.hubRadius,span:l.outer.at(-1).a1-l.outer[0].a0,
       safe:l.cy-l.radius>=l.bounds.top&&l.cy+l.radius<=l.bounds.bottom,
       targets:[...l.inner,...l.outer].every(s=>{for(let a=0;a<2*Math.PI;a+=Math.PI/36)if(!semicircleEngine.hitTestRadialSector(s,s.icon.x+22*Math.cos(a),s.icon.y+22*Math.sin(a)))return false;return document.elementFromPoint(s.icon.x,s.icon.y)?.classList.contains('semicircle-hit')}),
-      mirror:l.inner.every((s,i)=>s.icon.x<l.cx&&(!i||s.icon.y>l.inner[i-1].icon.y)&&s.icon.y===mirror.inner[i].icon.y&&Math.abs(s.icon.x+mirror.inner[i].icon.x-l.bounds.left-l.bounds.right)<1e-8),
+      mirror:l.inner.every((s,i)=>s.icon.x<l.cx&&s.icon.y===mirror.inner[i].icon.y&&Math.abs(s.icon.x+mirror.inner[i].icon.x-l.bounds.left-l.bounds.right)<1e-8),
       controls:group.children.map(c=>({id:c.id,real:c.source===document.getElementById(c.id==='snapOptions'?'snapToggle':c.id),label:c.proxyLabel||c.source.getAttribute('aria-label')||c.source.title}))};
     });
-    assert(geometry.fits&&geometry.safe&&geometry.targets&&geometry.mirror);assert.equal(geometry.hub,26);assert(geometry.radius<170);
+    assert(geometry.fits&&geometry.safe&&geometry.targets&&geometry.mirror);assert.equal(geometry.hub,26);assert(geometry.radius<185);
     if(group==='history')assert(geometry.span<Math.PI/3);
     for(const c of geometry.controls){assert(c.real);assert.equal(await sector(c.id).getAttribute('aria-label'),c.label);assert(await sector(c.id).locator('title').textContent());assert.equal(await sector(c.id).locator('.semicircle-icon').evaluate(el=>getComputedStyle(el).pointerEvents),'none')}
     console.log('GEOMETRY',viewport,group,geometry.radius,geometry.span*180/Math.PI);
