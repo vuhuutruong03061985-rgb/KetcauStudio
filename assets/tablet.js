@@ -2184,7 +2184,7 @@ const leftDrawingGroups=[
  const source=document.querySelector(['pin','roller','fixed'].includes(id)?`button[data-support-type="${id}"]`:`button[data-mode="${id}"]`);
  return {id,icon:id,label:source?.getAttribute('aria-label')||id,source,disabled:!source};
 })}));
-let leftDrawingMenu=null,rightCommandMenu=null,radialPrimaryQueued=false;
+let leftDrawingMenu=null,rightCommandMenu=null,radialPrimaryQueued=false,radialPrimaryLayout=null;
 const leftDrawingSafeProbe=document.createElement('div');leftDrawingSafeProbe.className='semicircle-left-safe-probe';
 function leftDrawingBounds(){
  const vv=window.visualViewport,s=getComputedStyle(leftDrawingSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
@@ -2329,19 +2329,36 @@ function queueRadialPrimaryUpdate(){
  if(radialPrimaryQueued)return;
  radialPrimaryQueued=true;queueMicrotask(()=>{radialPrimaryQueued=false;syncRadialPrimaryPresentation()});
 }
+function radialKeyboardShrink(){
+ const el=document.activeElement,vv=window.visualViewport;
+ const editable=el&&(el.isContentEditable||el.matches('input:not([readonly]):not([disabled]),textarea:not([readonly]):not([disabled]),select:not([disabled])'));
+ // Focus is required; a smaller viewport alone must still trigger normal fallback.
+ // Keep the last fitted layout size so an orientation/layout resize is not a keyboard.
+ return floatingToolsMedia.matches&&document.body.dataset.radialPrimary==='true'&&editable&&vv&&
+  radialPrimaryLayout?.width===innerWidth&&radialPrimaryLayout.height===innerHeight&&
+  Number.isFinite(vv.height)&&vv.height>0&&vv.height<innerHeight*.75&&
+  vv.width>=innerWidth*.95&&leftDrawingMenu?.host.isConnected&&rightCommandMenu?.host.isConnected;
+}
 function syncRadialPrimaryPresentation(){
  const usable=menu=>{
   if(!menu?.host.isConnected||menu.host.hidden||menu.host.dataset.safeFit!=='true'||!menu.layout?.fits)return false;
   const hub=menu.host.querySelector('[data-demo-id="hub"]'),r=hub?.getBoundingClientRect();
   return !!r&&[r.left,r.top,r.width,r.height].every(Number.isFinite)&&r.width>=24&&r.height>=48;
  };
- const ready=floatingToolsMedia.matches&&usable(leftDrawingMenu)&&usable(rightCommandMenu),value=String(ready);
+ const fitted=floatingToolsMedia.matches&&usable(leftDrawingMenu)&&usable(rightCommandMenu);
+ const keyboard=radialKeyboardShrink();
+ if(fitted&&!keyboard)radialPrimaryLayout={width:innerWidth,height:innerHeight};
+ // Unsafe fans remain hidden by the engine; close only their navigation state.
+ if(keyboard)for(const menu of [leftDrawingMenu,rightCommandMenu])if(!usable(menu)&&menu.state.open)menu.close();
+ const value=String(!!(fitted||keyboard));
  if(document.body.dataset.radialPrimary===value)return;
  document.body.dataset.radialPrimary=value;
  // Only positioning is refreshed; no popup state, command or preference is changed.
  positionDrawingScales();positionSnapChoices();positionMomentPalette();positionSecondaryTools();
 }
 floatingToolsMedia.addEventListener('change',queueRadialPrimaryUpdate);
+document.addEventListener('focusin',queueRadialPrimaryUpdate);
+document.addEventListener('focusout',queueRadialPrimaryUpdate);
 queueRadialPrimaryUpdate();
 
 // DevTools: const demo = showSemicircleDemo(); demo.destroy() removes all listeners/UI.

@@ -52,6 +52,35 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    await p.setViewportSize({width:viewport.height,height:viewport.width});await ready(true);await p.setViewportSize(viewport);await ready(true);
    await p.evaluate(()=>{window.primaryVV=window.visualViewport;const vv=new EventTarget();Object.assign(vv,{width:innerWidth,height:240,offsetLeft:0,offsetTop:0});Object.defineProperty(window,'visualViewport',{configurable:true,value:vv});window.dispatchEvent(new Event('resize'))});await ready(false);
    await p.evaluate(()=>{Object.defineProperty(window,'visualViewport',{configurable:true,value:primaryVV});window.dispatchEvent(new Event('resize'))});await ready(true);assert.deepEqual(await snapshot(),before);
+   // A focused real scale input identifies a transient keyboard shrink. The same
+   // no-fit viewport without focus must fall back, including after focus is lost.
+   await command('right','settings','drawingScalesToggle');await p.locator('#geometryScale').focus();await settled();
+   await p.evaluate(()=>{setMode('bar');first={x:300,y:300};saveDraft()});
+   const keyboardBefore=await snapshot(),pendingBefore=await p.evaluate(()=>JSON.stringify(first));
+   await p.evaluate(()=>{leftDrawingMenu.state.open=true;leftDrawingMenu.refresh();window.primaryVV=visualViewport;const vv=new EventTarget();Object.assign(vv,{width:innerWidth,height:240,offsetLeft:0,offsetTop:0});Object.defineProperty(window,'visualViewport',{configurable:true,value:vv});window.dispatchEvent(new Event('resize'))});
+   await settled();await ready(true);
+   assert.equal(await p.evaluate(()=>leftDrawingMenu.layout.fits),false);
+   assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
+   for(const id of ['commandRibbon','ribbonToggle','toggleTools'])assert(await p.locator('#'+id).isHidden());
+   assert.equal(await p.locator('#toolPanel button[data-mode=bar]').count(),1);
+   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
+   // Viewport restoration while focus remains also resumes normal safe-fit.
+   await p.evaluate(()=>{visualViewport.height=innerHeight;window.dispatchEvent(new Event('resize'))});await settled();await ready(true);
+   assert.equal(await p.evaluate(()=>leftDrawingMenu.layout.fits&&rightCommandMenu.layout.fits),true);
+   await p.evaluate(()=>{visualViewport.height=240;window.dispatchEvent(new Event('resize'))});await settled();await ready(true);
+   await p.locator('#geometryScale').blur();await ready(false);
+   assert(await p.locator('#commandRibbon').isVisible());assert(await p.locator('#toggleTools').isVisible());
+   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
+   // Focusing after no-fit cannot promote a fallback presentation to radial-primary.
+   await p.locator('#geometryScale').focus();await settled();await ready(false);
+   await p.evaluate(()=>{Object.defineProperty(window,'visualViewport',{configurable:true,value:primaryVV});window.dispatchEvent(new Event('resize'))});await ready(true);
+   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
+   // Genuine layout shrink while still focused must not inherit keyboard retention.
+   await p.setViewportSize({width:viewport.height,height:300});await ready(false);
+   assert(await p.locator('#toggleTools').isVisible());
+   await p.setViewportSize(viewport);await ready(true);
+   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
+   await p.evaluate(()=>{closeDrawingScales();cancelToSelection()});await settled();
    // Hidden sources retain real anchor rectangles; collapsed Ribbon preference is preserved.
    await p.evaluate(()=>ribbonToggle.click());await ready(true);
    const anchors=await p.evaluate(()=>[drawingScalesButton,snapButton,momentButton].map(el=>{const r=el.getBoundingClientRect();return {width:r.width,height:r.height}}));assert(anchors.every(r=>r.width>0&&r.height>0));
