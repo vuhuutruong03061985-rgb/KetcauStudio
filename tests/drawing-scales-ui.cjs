@@ -11,6 +11,11 @@ const assert=require('node:assert/strict');
    page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
    await page.goto(pathToFileURL(path.resolve('index.html')).href);
    await page.waitForFunction(()=>!!document.getElementById('geometryScale'));
+   // Exercise the original source control through the real safe-fit fallback.
+   if(touch){
+    await page.evaluate(()=>{rightCommandSafeProbe.style.paddingRight='calc(100vw - 60px)';rightCommandMenu.refresh()});
+    await page.waitForFunction(()=>document.body.dataset.radialPrimary==='false');
+   }
    const ui=()=>page.evaluate(()=>[$('geometryScale').value,$('internalForceScale').value]);
    const state=()=>page.evaluate(()=>[geometryScale,internalForceScale]);
    assert.deepEqual(await ui(),['100','0.1']);

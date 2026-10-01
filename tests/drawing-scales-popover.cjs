@@ -2,6 +2,11 @@ const {chromium}=require('../.test-tools/node_modules/playwright');const {pathTo
 (async()=>{const b=await chromium.launch({channel:'msedge',headless:true});try{
 for(const touch of [false,true]){
  const c=await b.newContext({hasTouch:touch,viewport:{width:1360,height:950}}),p=await c.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof positionDrawingScales==='function');
+ // Exercise the original source control through the real safe-fit fallback.
+ if(touch){
+  await p.evaluate(()=>{rightCommandSafeProbe.style.paddingRight='calc(100vw - 60px)';rightCommandMenu.refresh()});
+  await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');
+ }
  const button=p.getByRole('button',{name:'Tỷ lệ vẽ',exact:true}),panel=p.locator('#drawingScales');const toggle=async()=>touch?button.tap():button.click();
  assert.equal(await panel.locator('small').count(),0);assert.equal(await panel.locator('label').count(),2);assert(await panel.isHidden());assert.equal(await button.getAttribute('title'),'Tỷ lệ vẽ');assert(await button.evaluate(el=>el.classList.contains('icon-button')));
  await p.evaluate(()=>{saveDraft();savedDocument=documentText()});const before=await p.evaluate(()=>({doc:documentText(),draft:localStorage.getItem(draftKey),history:copy(past)}));

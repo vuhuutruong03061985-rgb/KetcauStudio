@@ -9,18 +9,27 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    const p=await browser.newPage({viewport,hasTouch:true,isMobile:true}),errors=[];p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.resolve('index.html')).href);
    const ready=async value=>p.waitForFunction(value=>document.body.dataset.radialPrimary===String(value),value);
    await ready(true);
+   // Dialog focus and native details toggle events can move contextual controls/hubs.
+   const settled=()=>p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const tap=async(id,side)=>{
+    await settled();
     const q=await p.evaluate(({id,side})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu,groups=side==='left'?leftDrawingGroups:rightCommandGroups;
      if(id==='hub')return{x:m.layout.cx+(side==='left'?13:-13),y:m.layout.cy};const index=groups.findIndex(g=>g.id===id);return index>=0?m.layout.inner[index].icon:m.layout.outer[groups.find(g=>g.id===m.state.activeGroup).children.findIndex(c=>c.id===id)].icon},{id,side});await p.touchscreen.tap(q.x,q.y);
    };
    const command=async(side,group,id)=>{if(!await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.open,side))await tap('hub',side);if(await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.activeGroup,side)!==group)await tap(group,side);await tap(id,side)};
-   const snapshot=()=>p.evaluate(()=>({doc:documentText(),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,selected,multi:[...multiSelection],geometryScale,internalForceScale,snap:JSON.stringify(snapOptions),snapEnabled,name:documentName,handle:documentHandle?.name,storage:JSON.stringify(localStorage)}));
+   const snapshot=()=>p.evaluate(()=>({doc:documentText(),items:JSON.stringify(items),dirty:documentText()!==savedDocument,past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,selected,multi:[...multiSelection],geometryScale,internalForceScale,snap:JSON.stringify(snapOptions),snapEnabled,name:documentName,handle:documentHandle?.name,storage:JSON.stringify(localStorage)}));
    const canvasHeight=()=>p.locator('#drawing').evaluate(el=>el.getBoundingClientRect().height);
    assert(await p.locator('#commandRibbon').isHidden());assert(await p.locator('#toggleTools').isHidden());assert(await p.locator('#toolPanel').isHidden());
    assert.equal(await p.locator('#commandRibbon').evaluate(el=>el.getBoundingClientRect().height),0);
    assert.equal(await p.locator('header').evaluate(el=>el.getBoundingClientRect().height),44);
    for(const id of ['save','open','undo','redo','panView','snapToggle','drawingScalesToggle'])assert.equal(await p.locator('#'+id).count(),1);
    assert.equal(await p.locator('#toolPanel button[data-mode=bar]').count(),1);
+   assert(await p.locator('#ribbonToggle').isHidden());
+   for(const side of ['left','right']){
+    assert(await p.locator(`.semicircle-${side}-menu [data-demo-id=hub]`).isVisible());
+    assert.equal(await p.locator(`.semicircle-${side}-menu .semicircle-control`).count(),1);
+   }
+   assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
    await p.screenshot({path:`tests/radial-primary-closed-${viewport.width}.png`});
    // Fit failure on either independent side restores both legacy surfaces and preferences.
    await p.evaluate(()=>saveDraft());const primaryHeight=await canvasHeight(),before=await snapshot();
@@ -50,10 +59,10 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    await p.evaluate(()=>{window.barClicks=0;document.querySelector('button[data-mode=bar]').addEventListener('click',()=>barClicks++)});await command('left','geometry','bar');assert.equal(await p.evaluate(()=>barClicks),1);assert.equal(await p.evaluate(()=>mode),'bar');
    await p.evaluate(()=>saveDraft());const active=await snapshot();await tap('hub','left');await tap('hub','right');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);await tap('hub','left');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false);await tap('hub','left');assert.deepEqual(await snapshot(),active);
    await command('left','connections','roller');assert.equal(await p.evaluate(()=>mode),'support');assert.equal(await p.evaluate(()=>$('support').value),'roller');
-   await command('right','file','open');assert(await p.locator('#openDrawingDialog').isVisible());await p.locator('#cancelOpenDrawing').click();
+   await command('right','file','open');assert(await p.locator('#openDrawingDialog').isVisible());await p.locator('#cancelOpenDrawing').tap();await settled();
    await command('right','view','resetView');await p.evaluate(()=>{past=[];future=[];checkpoint();items[0].label='primary history';render()});await command('right','history','undo');assert.notEqual(await p.evaluate(()=>items[0].label),'primary history');await command('right','history','redo');assert.equal(await p.evaluate(()=>items[0].label),'primary history');
    await command('right','view','panView');assert.equal(await p.evaluate(()=>panEnabled),true);await tap('hub','right');await tap('view','right');assert.equal(await p.locator('.semicircle-right-menu [data-demo-id=panView]').getAttribute('aria-pressed'),'true');await tap('panView','right');
-   const fits=async selector=>{const r=await p.locator(selector).boundingBox();assert(r&&r.width>0&&r.height>0&&r.x>=0&&r.y>=44&&r.x+r.width<=viewport.width+.1&&r.y+r.height<=viewport.height+.1,selector+JSON.stringify(r))};
+   const fits=async selector=>{await settled();assert(await p.locator(selector).isVisible());const r=await p.locator(selector).boundingBox();assert(r&&r.width>0&&r.height>0&&r.x>=0&&r.y>=44&&r.x+r.width<=viewport.width+.1&&r.y+r.height<=viewport.height+.1,selector+JSON.stringify(r))};
    if(await p.evaluate(()=>snapEnabled))await command('right','snap','snapToggle');await command('right','snap','snapToggle');assert.equal(await p.evaluate(()=>snapEnabled),true);await fits('#snapSettings .snap-choices');
    await p.locator('header strong').tap();await command('right','snap','snapOptions');await fits('#snapSettings .snap-choices');const endpoint=await p.locator('#snap-endpoint').isChecked();await p.locator('#snap-endpoint').click();assert.equal(await p.evaluate(()=>snapOptions.endpoint),!endpoint);
    await command('right','settings','drawingScalesToggle');await fits('#drawingScales');await p.locator('#geometryScale').fill('125');await p.locator('#geometryScale').press('Tab');assert.equal(await p.evaluate(()=>geometryScale),125);await p.locator('header strong').tap();
