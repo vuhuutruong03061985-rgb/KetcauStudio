@@ -20,13 +20,13 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
       const r=aliases[id]?m.state.rings.find(r=>r.id===aliases[id]):m.state.rings.find(r=>r.entries.some(e=>e.id===id));
       const i=aliases[id]?(r.activeIndex+1)%r.entries.length:r.entries.findIndex(e=>e.id===id);return m.layout.rings.find(l=>l.id===r.id).sectors[i].icon;
      }
-     const index=rightCommandGroups.findIndex(g=>g.id===id);return index>=0?m.layout.inner[index].icon:m.layout.outer[rightCommandGroups.find(g=>g.id===m.state.activeGroup).children.findIndex(c=>c.id===id)].icon;
+     const aliases={file:'R2',history:'R1',edit:'R1',view:'R3',snap:'R3',settings:'R4'};const r=aliases[id]?m.state.rings.find(r=>r.id===aliases[id]):m.state.rings.find(r=>r.entries.some(e=>e.id===id));const i=aliases[id]?(r.activeIndex+1)%r.entries.length:r.entries.findIndex(e=>e.id===id);return m.layout.rings.find(l=>l.id===r.id).sectors[i].icon;
     },{id,side});await p.touchscreen.tap(q.x,q.y);
    };
    const command=async(side,group,id)=>{
     if(!await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.open,side))await tap('hub',side);
     if(side==='left'){if(!await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side)}
-    else if(await p.evaluate(()=>rightCommandMenu.state.activeGroup)!==group)await tap(group,side);
+    else if(!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side);
     await tap(id,side);
    };
    const snapshot=()=>p.evaluate(()=>({doc:documentText(),items:JSON.stringify(items),dirty:documentText()!==savedDocument,past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,selected,multi:[...multiSelection],geometryScale,internalForceScale,snap:JSON.stringify(snapOptions),snapEnabled,name:documentName,handle:documentHandle?.name,storage:JSON.stringify(localStorage)}));
@@ -50,7 +50,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
     await p.screenshot({path:`tests/task3a-${side}-open-${viewport.width}.png`});
     await tap(group,side);
     const root=p.locator(`.semicircle-${side}-menu`);
-    assert.equal(await root.locator('.selected-group').count(),side==='left'?4:1);
+    assert.equal(await root.locator('.selected-group').count(),4);
     assert.equal(await root.locator('text,button').count(),0);
     await p.screenshot({path:`tests/task3a-${side}-expanded-${viewport.width}.png`});
     await tap('hub',side);
@@ -158,7 +158,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    await command('left','connections','roller');assert.equal(await p.evaluate(()=>mode),'support');assert.equal(await p.evaluate(()=>$('support').value),'roller');
    await command('right','file','open');assert(await p.locator('#openDrawingDialog').isVisible());await p.locator('#cancelOpenDrawing').tap();await settled();
    await command('right','view','resetView');await p.evaluate(()=>{past=[];future=[];checkpoint();items[0].label='primary history';render()});await command('right','history','undo');assert.notEqual(await p.evaluate(()=>items[0].label),'primary history');await command('right','history','redo');assert.equal(await p.evaluate(()=>items[0].label),'primary history');
-   await command('right','view','panView');assert.equal(await p.evaluate(()=>panEnabled),true);await tap('hub','right');await tap('view','right');assert.equal(await p.locator('.semicircle-right-menu [data-demo-id=panView]').getAttribute('aria-pressed'),'true');await tap('panView','right');
+   await command('right','view','panView');assert.equal(await p.evaluate(()=>panEnabled),true);await tap('hub','right');assert.equal(await p.locator('.semicircle-right-menu [data-demo-id=panView]').getAttribute('aria-pressed'),'true');await tap('panView','right');
    const fits=async selector=>{await settled();assert(await p.locator(selector).isVisible());const r=await p.locator(selector).boundingBox();assert(r&&r.width>0&&r.height>0&&r.x>=0&&r.y>=44&&r.x+r.width<=viewport.width+.1&&r.y+r.height<=viewport.height+.1,selector+JSON.stringify(r))};
    if(await p.evaluate(()=>snapEnabled))await command('right','snap','snapToggle');await command('right','snap','snapToggle');assert.equal(await p.evaluate(()=>snapEnabled),true);await fits('#snapSettings .snap-choices');
    await p.locator('header strong').tap();await command('right','snap','snapOptions');await fits('#snapSettings .snap-choices');const endpoint=await p.locator('#snap-endpoint').isChecked();await p.locator('#snap-endpoint').click();assert.equal(await p.evaluate(()=>snapOptions.endpoint),!endpoint);

@@ -2116,7 +2116,7 @@ const semicircleEngine=(()=>{
   return {id,entries,activeIndex:index,offset:index,pointerId:null,dragging:false,snapFrame:0,suppressClick:false,controls:new Map()};
  }
  // Rings navigate by default; activateCentered opts into focus-then-activate.
- // The items API keeps Task 3B semantics, including the production RIGHT menu.
+ // The items API keeps Task 3B semantics for legacy callers.
  function createMenu({side,items:entries=[],rings:ringConfigs=null,getBounds,centerY,onAction=()=>{},production=false,onOpen=()=>{},activateCentered=false,onGesturePointer=()=>false}){
   const multi=ringConfigs!==null,rotary=production||multi;
   if(multi&&(!Array.isArray(ringConfigs)||!ringConfigs.length||new Set(ringConfigs.map(r=>r.id)).size!==ringConfigs.length))throw new RangeError('Invalid concentric configuration');
@@ -2299,7 +2299,7 @@ const semicircleEngine=(()=>{
     rings.forEach((ring,index)=>{
      const parent=node('g',{class:'semicircle-roller-ring','data-ring-id':ring.id,role:'group','aria-label':ringConfigs[index].label||ring.id});
      const config=ringConfigs[index];parent.style.setProperty('--ring-tint',config.tint||'#edf2f6');
-     ring.entries.forEach((entry,i)=>{const sector=layout.rings[index].sectors[i];control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>invokeRingEntry(i,ring),{parent,ring,index:i,source:entry.source,label:activateCentered?undefined:entry.label,disabled:entry.disabled,navigationOnly:!activateCentered,tint:entry.tint||config.tint})});
+     ring.entries.forEach((entry,i)=>{const sector=layout.rings[index].sectors[i];control(entry.id,entry.label,sector.path,entry.icon,sector.icon,()=>invokeRingEntry(i,ring),{parent,ring,index:i,source:entry.source,label:activateCentered?entry.proxyLabel:entry.label,oneShot:entry.oneShot,popupOnly:entry.popupOnly,disabled:entry.disabled,navigationOnly:!activateCentered,tint:entry.tint||config.tint})});
     });
    }
    if(state.open&&!multi){
@@ -2461,21 +2461,41 @@ const rightCommandGroups=[
  {id:'settings',label:'Cài đặt',icon:'drawingScalesToggle',ids:['drawingScalesToggle','openCalculator']}
 ].map((group,index)=>({...group,tint:leftDrawingGroups[index].tint,children:[]}));
 const rightOneShot=new Set(['clear','open','save','saveAs','svg','png','insertWord','undo','redo','copyObjects','pasteObjects','zoomOut','zoomIn']);
+// Transitional complete command access, using the existing authoritative controls.
+const rightCommandRings=[
+ {id:'R1',label:'Chỉnh sửa / Chọn',ids:['resetView','editSelected','copyObjects','pasteObjects','delete','extend','undo','redo'],defaultTool:'resetView',tint:'#edf2f6'},
+ {id:'R2',label:'Tệp tin',ids:['clear','open','save','saveAs','svg','png','insertWord'],defaultTool:'save',tint:'#edf3ef'},
+ {id:'R3',label:'Chế độ xem / Bắt điểm',ids:['panView','zoomOut','zoomIn','snapToggle','snapOptions'],defaultTool:'panView',tint:'#edf2f4'},
+ {id:'R4',label:'Tiện ích',ids:['drawingScalesToggle','openCalculator'],defaultTool:'drawingScalesToggle',tint:'#f3f0e9'}
+].map(ring=>({...ring,activeIndex:ring.ids.indexOf(ring.defaultTool),entries:[]}));
+function rightCommandSource(id){return id==='extend'?document.querySelector('button[data-mode="extend"]'):id==='insertWord'?wordButton:id==='snapOptions'?snapButton:$(id)}
 function refreshRightCommandEntries(){
  for(const group of rightCommandGroups)group.children=group.ids.flatMap(id=>{
   const source=id==='insertWord'?wordButton:id==='snapOptions'?snapButton:$(id);
   if(!source||(id==='insertWord'&&source.hidden))return [];
   return [{id,label:source.getAttribute('aria-label')||source.title,source,icon:id==='snapOptions'?'toggleTools':source.dataset.toolbarIcon||id,oneShot:rightOneShot.has(id),popupOnly:id==='snapOptions',proxyLabel:id==='snapOptions'?'Tùy chọn bắt điểm':undefined,disabled:id==='snapOptions'&&snapButton.getAttribute('aria-pressed')!=='true'}];
  });
+ for(const config of rightCommandRings){
+  const ring=rightCommandMenu?.state.rings.find(r=>r.id===config.id),remembered=ring?.entries[ring.activeIndex]?.id;
+  const entries=config.ids.flatMap(id=>{
+   const source=rightCommandSource(id);if(!source||((id==='insertWord'||id==='openCalculator')&&source.hidden))return [];
+   return [{id,label:source.getAttribute('aria-label')||source.title,source,icon:id==='snapOptions'?'toggleTools':source.dataset.toolbarIcon||id,oneShot:rightOneShot.has(id),popupOnly:id==='snapOptions',proxyLabel:id==='snapOptions'?'Tùy chọn bắt điểm':undefined,disabled:id==='snapOptions'&&snapButton.getAttribute('aria-pressed')!=='true'}];
+  });
+  // Preserve entry identity/array ownership while optional capabilities change.
+  const changed=config.entries.map(e=>e.id).join()!==entries.map(e=>e.id).join();
+  config.entries.splice(0,config.entries.length,...entries);
+  if(ring&&changed){const index=config.entries.findIndex(e=>e.id===remembered);ring.offset=ring.activeIndex=index>=0?index:config.entries.findIndex(e=>e.id===config.defaultTool)}
+ }
 }
 const rightCommandSafeProbe=document.createElement('div');rightCommandSafeProbe.className='semicircle-left-safe-probe';
 function rightCommandBounds(){
  const vv=window.visualViewport,s=getComputedStyle(rightCommandSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
  const b={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),document.querySelector('header').getBoundingClientRect().bottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
+ const reach=rightCommandMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'right',rings:rightCommandRings.map(r=>({id:r.id,count:r.entries.length})),bounds:b}).radius;
  for(const id of ['dynamicInput','commandControls']){
   const control=$(id);if(!control||control.hidden)continue;
   const r=control.getBoundingClientRect();
-  if(r.width&&r.right>b.right-170&&r.left<b.right&&r.bottom>b.top&&r.top<b.bottom){
+  if(r.width&&r.right>b.right-reach&&r.left<b.right&&r.bottom>b.top&&r.top<b.bottom){
    if(r.top-b.top>=b.bottom-r.bottom)b.bottom=Math.min(b.bottom,r.top-8);else b.top=Math.max(b.top,r.bottom+8);
   }
  }
@@ -2485,8 +2505,19 @@ function mountRightCommandMenu(){
  if(!floatingToolsMedia.matches){rightCommandMenu?.destroy();rightCommandMenu=null;rightCommandSafeProbe.remove();return}
  if(rightCommandMenu)return;
  refreshRightCommandEntries();document.body.append(rightCommandSafeProbe);
- try{rightCommandMenu=semicircleEngine.createMenu({side:'right',production:true,items:rightCommandGroups,getBounds:rightCommandBounds,onOpen:()=>leftDrawingMenu?.close(),onAction:id=>{
-  const entry=rightCommandGroups.flatMap(g=>g.children).find(c=>c.id===id);
+ let firstOpen=true;
+ try{rightCommandMenu=semicircleEngine.createMenu({side:'right',production:true,rings:rightCommandRings,activateCentered:true,getBounds:rightCommandBounds,onOpen:()=>{
+  leftDrawingMenu?.close();
+  if(firstOpen){firstOpen=false;return}
+  // Persistent source states may center only their own ring. Prefer the remembered
+  // toggle when Pan and Snap are both enabled; one-shot commands never synchronize.
+  for(const ring of rightCommandMenu.state.rings){
+   const meaningful=e=>!e.oneShot&&!e.popupOnly&&(e.source.classList.contains('active')||e.source.getAttribute('aria-pressed')==='true'||e.source.getAttribute('aria-expanded')==='true');
+   if(meaningful(ring.entries[ring.activeIndex]))continue;
+   const index=ring.entries.findIndex(meaningful);if(index>=0)ring.offset=ring.activeIndex=index;
+  }
+ },onAction:id=>{
+  const entry=rightCommandRings.flatMap(r=>r.entries).find(c=>c.id===id);
   if(!entry||entry.disabled||entry.source.disabled||entry.source.getAttribute('aria-disabled')==='true')return;
   // The existing ArrowDown handler opens/focuses the existing checkbox panel.
   if(id==='snapOptions')entry.source.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown'}));
@@ -2501,7 +2532,7 @@ const rightCommandObserver=new MutationObserver(records=>{
  if(!records.some(r=>r.oldValue!==r.target.getAttribute(r.attributeName)))return;
  refreshRightCommandEntries();rightCommandMenu?.refresh();
 });
-for(const source of new Set(rightCommandGroups.flatMap(g=>g.ids.map(id=>id==='insertWord'?wordButton:id==='snapOptions'?snapButton:$(id))).filter(Boolean)))rightCommandObserver.observe(source,{attributes:true,attributeOldValue:true,attributeFilter:['class','aria-pressed','aria-expanded','aria-label','title','disabled','aria-disabled','hidden']});
+for(const source of new Set(rightCommandRings.flatMap(r=>r.ids.map(rightCommandSource)).filter(Boolean)))rightCommandObserver.observe(source,{attributes:true,attributeOldValue:true,attributeFilter:['class','aria-pressed','aria-expanded','aria-label','title','disabled','aria-disabled','hidden']});
 for(const id of ['dynamicInput','commandControls'])if($(id))rightCommandObserver.observe($(id),{attributes:true,attributeOldValue:true,attributeFilter:['hidden','style']});
 const rightCommandConsumed=new Set();let rightCommandSwallowClick=false;
 window.addEventListener('pointerdown',e=>{

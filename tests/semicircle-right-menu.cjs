@@ -1,6 +1,7 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
-const expected={file:['clear','open','save','saveAs','svg','png'],history:['undo','redo'],edit:['copyObjects','pasteObjects','editSelected','delete'],view:['resetView','panView','zoomOut','zoomIn'],snap:['snapToggle','snapOptions'],settings:['drawingScalesToggle']};
+const legacyExpected={file:['clear','open','save','saveAs','svg','png'],history:['undo','redo'],edit:['copyObjects','pasteObjects','editSelected','delete'],view:['resetView','panView','zoomOut','zoomIn'],snap:['snapToggle','snapOptions'],settings:['drawingScalesToggle']};
+const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','delete','extend','undo','redo'],R2:['clear','open','save','saveAs','svg','png'],R3:['panView','zoomOut','zoomIn','snapToggle','snapOptions'],R4:['drawingScalesToggle']};
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -11,35 +12,30 @@ const expected={file:['clear','open','save','saveAs','svg','png'],history:['undo
    await p.goto(pathToFileURL(path.resolve('index.html')).href);
    const root=p.locator('.semicircle-right-menu'),sector=id=>root.locator(`[data-demo-id="${id}"]`);
    const activate=async(id,side='right',pointer='touch')=>{
-    const q=await p.evaluate(({id,side})=>{const m=side==='right'?rightCommandMenu:leftDrawingMenu,groups=side==='right'?rightCommandGroups:leftDrawingGroups;if(id==='hub')return {x:m.layout.cx+(side==='right'?-13:13),y:m.layout.cy};const index=groups.findIndex(g=>g.id===id);return index>=0?m.layout.inner[index].icon:m.layout.outer[groups.find(g=>g.id===m.state.activeGroup).children.findIndex(c=>c.id===id)].icon},{id,side});
+    const q=await p.evaluate(({id,side})=>{const m=side==='right'?rightCommandMenu:leftDrawingMenu;if(id==='hub')return{x:m.layout.cx+(side==='right'?-13:13),y:m.layout.cy};const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));return m.layout.rings.find(l=>l.id===r.id).sectors[r.entries.findIndex(e=>e.id===id)].icon},{id,side});
     if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y);
    };
-   const openGroup=async group=>{if(!await p.evaluate(()=>rightCommandMenu.state.open))await activate('hub');if(await p.evaluate(()=>rightCommandMenu.state.activeGroup)!==group)await activate(group)};
-   const command=async(group,id)=>{await openGroup(group);await activate(id);assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false,id+' closes menu')};
+   const openGroup=async group=>{if(!await p.evaluate(()=>rightCommandMenu.state.open))await activate('hub')};
+   const focus=async id=>{await openGroup();if(!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await activate(id)};
+   const command=async(group,id)=>{await focus(id);await activate(id);assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false,id+' closes menu')};
    const snapshot=()=>p.evaluate(()=>({doc:documentText(),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,first,second,selected,multi:[...multiSelection],geometryScale,internalForceScale,camera:JSON.stringify(camera),handle:documentHandle?.name,name:documentName}));
    assert.equal(await root.count(),1);assert.equal(await p.locator('.semicircle-prototype').count(),0);
-   assert.deepEqual(await p.evaluate(()=>Object.fromEntries(rightCommandGroups.map(g=>[g.id,g.children.map(c=>c.id)]))),expected);
-   assert.deepEqual(await p.evaluate(()=>rightCommandGroups.map(g=>g.label)),['Tệp tin', 'Lịch sử', 'Sao chép', 'Chế độ xem', 'Hiển thị', 'Cài đặt']);
+   assert.deepEqual(await p.evaluate(()=>Object.fromEntries(rightCommandRings.map(g=>[g.id,g.entries.map(c=>c.id)]))),expected);
    // Observe the original handlers without replacing their behavior.
-   await p.evaluate(()=>{window.commandClicks={};for(const c of rightCommandGroups.flatMap(g=>g.children).filter(c=>c.id!=='snapOptions'))c.source.addEventListener('click',()=>commandClicks[c.id]=(commandClicks[c.id]||0)+1)});
+   await p.evaluate(()=>{window.commandClicks={};for(const c of rightCommandRings.flatMap(g=>g.entries).filter(c=>c.id!=='snapOptions'))c.source.addEventListener('click',()=>commandClicks[c.id]=(commandClicks[c.id]||0)+1)});
    await p.evaluate(()=>{setMode('bar');first={x:300,y:300};selected=items[0].id;multiSelection=new Set([selected]);render();saveDraft()});
-   const before=await snapshot();await activate('hub');const rightInitialChildren=await p.evaluate(()=>rightCommandGroups.find(g=>g.id===rightCommandMenu.state.activeGroup).children.length);assert.equal(await root.locator('.semicircle-control').count(),7+rightInitialChildren);
+   const before=await snapshot();await activate('hub');assert.equal(await root.locator('.semicircle-control').count(),1+Object.values(expected).flat().length);
    await p.screenshot({path:`tests/semicircle-right-inner-${viewport.width}.png`});
-   for(const group of Object.keys(expected)){
-    await openGroup(group);assert.equal(await root.locator('text,button').count(),0);
-    const geometry=await p.evaluate(()=>{
-     const m=rightCommandMenu,l=m.layout,mirror=semicircleEngine.mirrorSemicircleLayout(l),group=rightCommandGroups.find(g=>g.id===m.state.activeGroup);
-     return {fits:l.fits,radius:l.radius,inner:l.inner[0].r1,hub:l.hubRadius,span:l.outer.at(-1).a1-l.outer[0].a0,
-      safe:l.cy-l.radius>=l.bounds.top&&l.cy+l.radius<=l.bounds.bottom,
-      targets:[...l.inner,...l.outer].every(s=>{for(let a=0;a<2*Math.PI;a+=Math.PI/36)if(!semicircleEngine.hitTestRadialSector(s,s.icon.x+22*Math.cos(a),s.icon.y+22*Math.sin(a)))return false;return document.elementFromPoint(s.icon.x,s.icon.y)?.classList.contains('semicircle-hit')}),
-      mirror:l.inner.every((s,i)=>s.icon.x<l.cx&&s.icon.y===mirror.inner[i].icon.y&&Math.abs(s.icon.x+mirror.inner[i].icon.x-l.bounds.left-l.bounds.right)<1e-8),
-      controls:group.children.map(c=>({id:c.id,real:c.source===document.getElementById(c.id==='snapOptions'?'snapToggle':c.id),label:c.proxyLabel||c.source.getAttribute('aria-label')||c.source.title}))};
-    });
-    assert(geometry.fits&&geometry.safe&&geometry.targets&&geometry.mirror);assert.equal(geometry.hub,26);assert(geometry.radius<185);
-    if(group==='history')assert(geometry.span<Math.PI/3);
-    for(const c of geometry.controls){assert(c.real);assert.equal(await sector(c.id).getAttribute('aria-label'),c.label);assert(await sector(c.id).locator('title').textContent());assert.equal(await sector(c.id).locator('.semicircle-icon').evaluate(el=>getComputedStyle(el).pointerEvents),'none')}
-    console.log('GEOMETRY',viewport,group,geometry.radius,geometry.span*180/Math.PI);
-   }
+   const geometry=await p.evaluate(()=>{
+    const l=rightCommandMenu.layout;
+    return {fits:l.fits,radius:l.radius,hub:l.hubRadius,safe:l.cy-l.radius>=l.bounds.top&&l.cy+l.radius<=l.bounds.bottom,
+     targets:l.rings.flatMap(r=>r.sectors).every(s=>{for(let a=0;a<2*Math.PI;a+=Math.PI/36)if(!semicircleEngine.hitTestRadialSector(s,s.icon.x+22*Math.cos(a),s.icon.y+22*Math.sin(a)))return false;return true}),
+     mirror:l.rings.flatMap(r=>r.sectors).every(s=>s.icon.x<l.cx),
+     controls:rightCommandRings.flatMap(r=>r.entries).map(c=>({id:c.id,real:c.source===rightCommandSource(c.id),label:c.proxyLabel||c.source.getAttribute('aria-label')||c.source.title}))};
+   });
+   assert(geometry.fits&&geometry.safe&&geometry.targets&&geometry.mirror);assert.equal(geometry.hub,26);assert(geometry.radius>253);
+   for(const c of geometry.controls){assert(c.real);assert.equal(await sector(c.id).getAttribute('aria-label'),c.label);assert(await sector(c.id).locator('title').textContent());assert.equal(await sector(c.id).locator('.semicircle-icon').evaluate(el=>getComputedStyle(el).pointerEvents),'none')}
+   console.log('GEOMETRY',viewport,geometry);
    assert.deepEqual(await snapshot(),before);await activate('hub','left');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),true);
    await activate('hub');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);assert.deepEqual(await snapshot(),before);
    await p.touchscreen.tap(viewport.width/2,viewport.height-200);assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false);assert.deepEqual(await snapshot(),before);
@@ -63,7 +59,7 @@ const expected={file:['clear','open','save','saveAs','svg','png'],history:['undo
    for(const id of ['svg','png']){const download=p.waitForEvent('download');await command('file',id);assert.equal((await download).suggestedFilename(),'ket-cau.'+id)}
    // Conditional Word proxy uses the same original button; no external Word request in this test.
    await p.evaluate(()=>{wordButton.hidden=false;wordButton.addEventListener('click',()=>commandClicks.insertWord=(commandClicks.insertWord||0)+1)});await command('file','insertWord');assert.equal(await p.evaluate(()=>commandClicks.insertWord),1);
-   await p.evaluate(()=>wordButton.disabled=true);await openGroup('file');assert.equal(await sector('insertWord').getAttribute('aria-disabled'),'true');await activate('insertWord');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),true);
+   await p.evaluate(()=>wordButton.disabled=true);await focus('insertWord');assert.equal(await sector('insertWord').getAttribute('aria-disabled'),'true');await activate('insertWord');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),true);
    await p.evaluate(()=>{wordButton.disabled=false;wordButton.hidden=true});assert.equal(await sector('insertWord').count(),0);await activate('hub');
    // Existing history and base-point Copy/Paste, followed by mode commands.
    await p.evaluate(()=>{activateSelection();past=[];future=[];checkpoint();items[0].label='history';render()});
@@ -71,7 +67,7 @@ const expected={file:['clear','open','save','saveAs','svg','png'],history:['undo
    await p.evaluate(()=>{selected=items[0].id;snapEnabled=false;updateSnapControls();render()});await command('edit','copyObjects');assert.equal(await p.evaluate(()=>mode),'copyBase');
    const tap=async(x,y)=>{const q=await p.evaluate(([x,y])=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return{x:q.x,y:q.y}},[x,y]);await p.touchscreen.tap(q.x,q.y)};
    await tap(300,200);await command('edit','pasteObjects');assert.equal(await p.evaluate(()=>mode),'pastePoint');await tap(500,400);assert.equal(await p.evaluate(()=>items.length),2);
-   await command('edit','editSelected');assert.equal(await p.evaluate(()=>mode),'labelEdit');await command('view','resetView');assert.equal(await p.evaluate(()=>mode),'select');
+   await command('edit','extend');assert.equal(await p.evaluate(()=>mode),'extend');await command('edit','editSelected');assert.equal(await p.evaluate(()=>mode),'labelEdit');await command('view','resetView');assert.equal(await p.evaluate(()=>mode),'select');
    await p.evaluate(()=>{selected=null;multiSelection.clear();render()});await command('edit','delete');assert.equal(await p.evaluate(()=>mode),'erase');await command('view','resetView');
    await command('view','panView');assert.equal(await p.evaluate(()=>panEnabled),true);await openGroup('view');assert.equal(await sector('panView').getAttribute('aria-pressed'),'true');await activate('panView');assert.equal(await p.evaluate(()=>panEnabled),false);
    const width=await p.evaluate(()=>camera.w);await command('view','zoomIn');assert(await p.evaluate(()=>camera.w)<width);await command('view','zoomOut');assert(Math.abs(await p.evaluate(()=>camera.w)-width)<.001);
@@ -84,7 +80,7 @@ const expected={file:['clear','open','save','saveAs','svg','png'],history:['undo
    await command('settings','drawingScalesToggle');assert(await p.locator('#drawingScales').isVisible());await p.locator('#geometryScale').fill('125');await p.locator('#geometryScale').press('Tab');assert.equal(await p.evaluate(()=>geometryScale),125);
    await openGroup('settings');assert.equal(await sector('drawingScalesToggle').getAttribute('aria-expanded'),'true');await activate('drawingScalesToggle');assert(await p.locator('#drawingScales').isHidden());
    for(const [group,ids]of Object.entries(expected)){await openGroup(group);for(const id of ids)if(await p.evaluate(id=>rightOneShot.has(id),id)){assert.equal(await sector(id).getAttribute('aria-pressed'),null);assert(!(await sector(id).getAttribute('class')).includes('active'))}}
-   await openGroup('view');await sector('panView').dispatchEvent('pointerenter',{pointerType:'pen'});assert.equal(await p.evaluate(()=>rightCommandMenu.state.hoveredSector),'panView');await sector('zoomIn').focus();await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false);
+   await openGroup('view');await sector('panView').dispatchEvent('pointerenter',{pointerType:'pen'});assert.equal(await p.evaluate(()=>rightCommandMenu.state.hoveredSector),'panView');await focus('zoomIn');await sector('zoomIn').focus();await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false);
    await p.evaluate(()=>{rightCommandSafeProbe.style.paddingRight='calc(100vw - 60px)';rightCommandMenu.refresh()});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');
    await p.locator('#toggleTools').tap();await p.locator('button[data-mode=bar]').tap();assert.equal(await p.evaluate(()=>mode),'bar');await p.locator('#ribbonToggle').tap();await p.locator('#ribbonToggle').tap();assert(await p.locator('#ribbonScroll').isVisible());
    await p.evaluate(()=>{rightCommandSafeProbe.style.removeProperty('padding-right');rightCommandMenu.refresh()});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='true');

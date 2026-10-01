@@ -26,12 +26,12 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
   await p.evaluate(()=>{selected=null;multiSelection.clear();render();window.rollerClicks=0;for(const c of [...leftDrawingGroups,...rightCommandGroups].flatMap(g=>g.children))c.source.addEventListener('click',()=>rollerClicks++);});
   const before=await snapshot();
   const open=side=>p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;if(!m.state.open)m.host.querySelector('[data-demo-id="hub"]').dispatchEvent(new MouseEvent('click',{bubbles:true}))},side);
-  const group=(side,id)=>p.evaluate(({side,id})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;if(side==='left'){id=({geometry:'bar',loads:'moment',annotation:'text',connections:'fixed'})[id]||id;const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));if(r.entries[r.activeIndex].id===id)return}m.host.querySelector(`[data-demo-id="${id}"]`).dispatchEvent(new MouseEvent('click',{bubbles:true}))},{side,id});
+  const group=(side,id)=>p.evaluate(({side,id})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;{id=(side==='left'?{geometry:'bar',loads:'moment',annotation:'text',connections:'fixed'}:{edit:'delete',file:'open',view:'panView',snap:'snapToggle'})[id]||id;const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));if(r.entries[r.activeIndex].id===id)return}m.host.querySelector(`[data-demo-id="${id}"]`).dispatchEvent(new MouseEvent('click',{bubbles:true}))},{side,id});
   const drag=async(side,type,cancel=false)=>{
    const start=await p.evaluate(({side,type})=>{
-    const m=side==='left'?leftDrawingMenu:rightCommandMenu,s=(side==='left'?m.layout.rings[0].sectors:m.layout.inner).find(s=>Math.abs((s.a0+s.a1)/2)<1e-8),id=61;
+    const m=side==='left'?leftDrawingMenu:rightCommandMenu,s=m.layout.rings[0].sectors.find(s=>Math.abs((s.a0+s.a1)/2)<1e-8),id=61;
     const g=document.elementFromPoint(s.icon.x,s.icon.y),angle=Math.atan2(s.icon.y-m.layout.cy,s.icon.x-m.layout.cx),r=(s.r0+s.r1)/2;
-    window.rollerTest={m,g,id,angle,r,step:side==='left'?m.layout.rings[0].step:Math.PI/7};g.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:id,pointerType:type,button:0,clientX:s.icon.x,clientY:s.icon.y}));
+    window.rollerTest={m,g,id,angle,r,step:m.layout.rings[0].step};g.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:id,pointerType:type,button:0,clientX:s.icon.x,clientY:s.icon.y}));
     return {offset:m.state.roller.offset,hub:JSON.stringify(m.host.querySelector('[data-demo-id="hub"] .semicircle-hit').getAttribute('d'))};
    },{side,type});
    await p.evaluate(({side,type,cancel})=>{
@@ -41,7 +41,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
    },{side,type,cancel});
    await p.waitForTimeout(210);
    const end=await p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;return {offset:m.state.roller.offset,pointer:m.state.roller.pointerId,dragging:m.state.roller.dragging,hub:JSON.stringify(m.host.querySelector('[data-demo-id="hub"] .semicircle-hit').getAttribute('d')),clicks:rollerClicks}},side);
-   assert.equal(end.offset,cancel?start.offset:(start.offset+1)%(side==='left'?4:6));assert.equal(end.hub,start.hub);assert.equal(end.pointer,null);assert.equal(end.dragging,false);assert.equal(end.clicks,0);
+   assert.equal(end.offset,cancel?start.offset:(start.offset+1)%(side==='left'?4:8));assert.equal(end.hub,start.hub);assert.equal(end.pointer,null);assert.equal(end.dragging,false);assert.equal(end.clicks,0);
   };
   await open('left');
   await p.evaluate(()=>{window.hoverBefore=JSON.stringify(leftDrawingMenu.state.roller);for(let i=0;i<30;i++)leftDrawingMenu.host.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:77,pointerType:'pen',clientX:i*20,clientY:i*10}));});
