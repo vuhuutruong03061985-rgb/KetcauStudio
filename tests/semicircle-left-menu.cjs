@@ -112,8 +112,10 @@ const expected={geometry:['bar','thin','dashed','curve','extend'],region:['hatch
    await reset();await p.evaluate(()=>{items=[];past=[];future=[];render()});await openGroup('region');await activate('hatch');await p.evaluate(()=>{$('hatchMethod').value='points'});await tap(300,300);await tap(500,300);await tap(450,450);
    await p.locator('#commandControls button').last().tap();assert.equal(await p.evaluate(()=>items.length),1);
    await openGroup('region');await activate('hatch');await tap(300,300);await p.locator('#commandControls button').first().tap();assert.equal(await p.evaluate(()=>items.length),1);
+   await p.evaluate(()=>{rightCommandSafeProbe.style.paddingRight='calc(100vw - 60px)';rightCommandMenu.refresh()});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');
    await p.locator('#toggleTools').tap();await p.locator('button[data-mode=bar]').tap();assert.equal(await p.evaluate(()=>mode),'bar');assert(await p.locator('#toolPanel').isHidden());
    await p.locator('#ribbonToggle').tap();await p.locator('#ribbonToggle').tap();assert(await p.locator('#ribbonScroll').isVisible());
+   await p.evaluate(()=>{rightCommandSafeProbe.style.removeProperty('padding-right');rightCommandMenu.refresh()});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='true');
    await reset();await openGroup('connections');await activate('roller');await openGroup('connections');await p.mouse.move(viewport.width-100,100);await p.screenshot({path:`tests/semicircle-left-${viewport.width}.png`});
    assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);
    await p.evaluate(()=>showDynamicInput({clientX:0,clientY:leftDrawingMenu.layout.cy,value:'30',focus:true}));
