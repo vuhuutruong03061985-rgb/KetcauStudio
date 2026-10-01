@@ -2128,6 +2128,15 @@ const semicircleEngine=(()=>{
   }
   function paint(){
    if(destroyed)return;
+   try{paintLayout()}
+   catch(error){
+    if(!production)throw error;
+    surface.replaceChildren();host.hidden=true;host.dataset.safeFit='false';
+    console.warn('Radial layout unavailable:',side,error);
+   }finally{if(production)queueRadialPrimaryUpdate()}
+  }
+  function paintLayout(){
+   if(destroyed)return;
    const focused=host.contains(document.activeElement)?document.activeElement.getAttribute('data-demo-id'):null;
    const group=entries.find(entry=>entry.id===state.activeGroup),children=group?.children||[];
    // Reserve the largest group while closed too: opening cannot move the hub.
@@ -2135,6 +2144,7 @@ const semicircleEngine=(()=>{
    const parent=reserve.inner[entries.indexOf(group)],outerAnchor=parent?(parent.a0+parent.a1)/2:0;
    layout=solveSemicircleLayout({side,innerCount:entries.length,outerCount:state.open?children.length:0,bounds:getBounds(),centerY:reserve.cy,refined:production,outerAnchor});
    surface.replaceChildren();host.hidden=!reserve.fits;
+   if(host.dataset.safeFit!==String(reserve.fits))host.dataset.safeFit=String(reserve.fits);
    if(!reserve.fits)return; // Caller must page/regroup when safe targets cannot fit.
    // SVG equivalent of the existing selected button's inset shadow.
    const defs=node('defs',{}),filter=node('filter',{id:insetId,x:'-10%',y:'-10%',width:'120%',height:'120%'},defs);
@@ -2157,7 +2167,7 @@ const semicircleEngine=(()=>{
   }
   const keydown=e=>{if(host.contains(e.target)&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopImmediatePropagation();if(!e.repeat)e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}))}};
   const resize=()=>paint();window.addEventListener('keydown',keydown,true);window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);window.visualViewport?.addEventListener('scroll',resize);paint();
-  return {host,state,get layout(){return layout},refresh:paint,close(){state.open=false;state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize)}};
+  return {host,state,get layout(){return layout},refresh:paint,close(){state.open=false;state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);if(production)queueRadialPrimaryUpdate()}};
  }
  return {solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,createMenu};
 })();
@@ -2174,7 +2184,7 @@ const leftDrawingGroups=[
  const source=document.querySelector(['pin','roller','fixed'].includes(id)?`button[data-support-type="${id}"]`:`button[data-mode="${id}"]`);
  return {id,icon:id,label:source?.getAttribute('aria-label')||id,source,disabled:!source};
 })}));
-let leftDrawingMenu=null,rightCommandMenu=null;
+let leftDrawingMenu=null,rightCommandMenu=null,radialPrimaryQueued=false;
 const leftDrawingSafeProbe=document.createElement('div');leftDrawingSafeProbe.className='semicircle-left-safe-probe';
 function leftDrawingBounds(){
  const vv=window.visualViewport,s=getComputedStyle(leftDrawingSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
@@ -2196,18 +2206,20 @@ function mountLeftDrawingMenu(){
  if(!floatingToolsMedia.matches){leftDrawingMenu?.destroy();leftDrawingMenu=null;leftDrawingSafeProbe.remove();return}
  if(leftDrawingMenu)return;
  document.body.append(leftDrawingSafeProbe);
- leftDrawingMenu=semicircleEngine.createMenu({side:'left',production:true,items:leftDrawingGroups,getBounds:leftDrawingBounds,onOpen:()=>rightCommandMenu?.close(),onAction:id=>{
+ try{leftDrawingMenu=semicircleEngine.createMenu({side:'left',production:true,items:leftDrawingGroups,getBounds:leftDrawingBounds,onOpen:()=>rightCommandMenu?.close(),onAction:id=>{
   const source=leftDrawingGroups.flatMap(g=>g.children).find(c=>c.id===id)?.source;
   if(source&&!source.disabled&&source.getAttribute('aria-disabled')!=='true')source.click();
- }});
+ }})}catch(error){document.querySelector('.semicircle-left-menu')?.remove();leftDrawingMenu=null;console.warn('Left radial unavailable:',error)}
+ queueRadialPrimaryUpdate();
 }
 floatingToolsMedia.addEventListener('change',mountLeftDrawingMenu);mountLeftDrawingMenu();
-const leftDrawingObserver=new MutationObserver(()=>{
+const leftDrawingObserver=new MutationObserver(records=>{
+ if(!records.some(r=>r.oldValue!==r.target.getAttribute(r.attributeName)))return;
  if(leftDrawingMomentPointer!==null&&momentPalette.open)leftDrawingMenu?.close();
  else leftDrawingMenu?.refresh();
 });
-for(const child of leftDrawingGroups.flatMap(g=>g.children))if(child.source)leftDrawingObserver.observe(child.source,{attributes:true,attributeFilter:['class','aria-pressed','aria-expanded','aria-label','title','disabled','aria-disabled','style']});
-for(const id of ['dynamicInput','commandControls'])if($(id))leftDrawingObserver.observe($(id),{attributes:true,attributeFilter:['hidden','style']});
+for(const child of leftDrawingGroups.flatMap(g=>g.children))if(child.source)leftDrawingObserver.observe(child.source,{attributes:true,attributeOldValue:true,attributeFilter:['class','aria-pressed','aria-expanded','aria-label','title','disabled','aria-disabled','style']});
+for(const id of ['dynamicInput','commandControls'])if($(id))leftDrawingObserver.observe($(id),{attributes:true,attributeOldValue:true,attributeFilter:['hidden','style']});
 // Dismissal consumes the complete pointer sequence before canvas/editor listeners.
 // Opening/group navigation never dispatches Escape or touches document state.
 const leftDrawingConsumed=new Set();let leftDrawingSwallowClick=false,leftDrawingMomentPointer=null,leftDrawingForwarding=false;
@@ -2279,13 +2291,14 @@ function mountRightCommandMenu(){
  if(!floatingToolsMedia.matches){rightCommandMenu?.destroy();rightCommandMenu=null;rightCommandSafeProbe.remove();return}
  if(rightCommandMenu)return;
  refreshRightCommandEntries();document.body.append(rightCommandSafeProbe);
- rightCommandMenu=semicircleEngine.createMenu({side:'right',production:true,items:rightCommandGroups,getBounds:rightCommandBounds,onOpen:()=>leftDrawingMenu?.close(),onAction:id=>{
+ try{rightCommandMenu=semicircleEngine.createMenu({side:'right',production:true,items:rightCommandGroups,getBounds:rightCommandBounds,onOpen:()=>leftDrawingMenu?.close(),onAction:id=>{
   const entry=rightCommandGroups.flatMap(g=>g.children).find(c=>c.id===id);
   if(!entry||entry.disabled||entry.source.disabled||entry.source.getAttribute('aria-disabled')==='true')return;
   // The existing ArrowDown handler opens/focuses the existing checkbox panel.
   if(id==='snapOptions')entry.source.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown'}));
   else entry.source.click();
- }});
+ }})}catch(error){document.querySelector('.semicircle-right-menu')?.remove();rightCommandMenu=null;console.warn('Right radial unavailable:',error)}
+ queueRadialPrimaryUpdate();
 }
 floatingToolsMedia.addEventListener('change',mountRightCommandMenu);mountRightCommandMenu();
 // Focus updates contextual controls even when their attributes do not change.
@@ -2309,6 +2322,27 @@ for(const event of ['pointermove','pointerup','pointercancel'])window.addEventLi
  e.preventDefault();e.stopImmediatePropagation();if(event!=='pointermove')rightCommandConsumed.delete(e.pointerId);
 },true);
 window.addEventListener('click',e=>{if(rightCommandSwallowClick){rightCommandSwallowClick=false;e.preventDefault();e.stopImmediatePropagation()}},true);
+
+// Runtime presentation only: both independently safe production hubs are required.
+// Source controls stay laid out (CSS), so existing popup positioning keeps its anchors.
+function queueRadialPrimaryUpdate(){
+ if(radialPrimaryQueued)return;
+ radialPrimaryQueued=true;queueMicrotask(()=>{radialPrimaryQueued=false;syncRadialPrimaryPresentation()});
+}
+function syncRadialPrimaryPresentation(){
+ const usable=menu=>{
+  if(!menu?.host.isConnected||menu.host.hidden||menu.host.dataset.safeFit!=='true'||!menu.layout?.fits)return false;
+  const hub=menu.host.querySelector('[data-demo-id="hub"]'),r=hub?.getBoundingClientRect();
+  return !!r&&[r.left,r.top,r.width,r.height].every(Number.isFinite)&&r.width>=24&&r.height>=48;
+ };
+ const ready=floatingToolsMedia.matches&&usable(leftDrawingMenu)&&usable(rightCommandMenu),value=String(ready);
+ if(document.body.dataset.radialPrimary===value)return;
+ document.body.dataset.radialPrimary=value;
+ // Only positioning is refreshed; no popup state, command or preference is changed.
+ positionDrawingScales();positionSnapChoices();positionMomentPalette();positionSecondaryTools();
+}
+floatingToolsMedia.addEventListener('change',queueRadialPrimaryUpdate);
+queueRadialPrimaryUpdate();
 
 // DevTools: const demo = showSemicircleDemo(); demo.destroy() removes all listeners/UI.
 function showSemicircleDemo(){

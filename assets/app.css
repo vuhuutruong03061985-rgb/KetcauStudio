@@ -201,6 +201,15 @@ main[data-toolbox-mode="auto-hide"] #toolPanel{position:absolute;left:44px;top:v
  #commandRibbon[data-collapsed="true"] #ribbonToggle{position:absolute;right:max(12px,env(safe-area-inset-right));top:12px;opacity:.92}
 }
 
+/* Retain source boxes for existing popup anchors without consuming canvas space.
+   Visibility also removes the legacy presentation from pointer/keyboard access. */
+@media(any-pointer:coarse){
+ body[data-radial-primary="true"] #commandRibbon{position:fixed;left:8px;right:8px;top:calc(52px + env(safe-area-inset-top));height:0;margin:0;visibility:hidden;pointer-events:none}
+ body[data-radial-primary="true"] #ribbonScroll{display:flex!important}
+ body[data-radial-primary="true"] #toggleTools{visibility:hidden;pointer-events:none}
+ body[data-radial-primary="true"] main[data-floating-tools] #toolPanel{display:block!important;visibility:hidden;pointer-events:none;left:8px!important;top:calc(52px + env(safe-area-inset-top))!important}
+}
+
 /* Shared semicircle surfaces. SVG paths, not icon boxes, own hit testing. */
 .semicircle-safe-probe,.semicircle-left-safe-probe{position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .semicircle-prototype,:is(.semicircle-left-menu,.semicircle-right-menu){position:fixed;inset:0;z-index:2300;pointer-events:none}

@@ -84,7 +84,9 @@ const expected={file:['clear','open','save','saveAs','svg','png'],history:['undo
    await openGroup('settings');assert.equal(await sector('drawingScalesToggle').getAttribute('aria-expanded'),'true');await activate('drawingScalesToggle');assert(await p.locator('#drawingScales').isHidden());
    for(const [group,ids]of Object.entries(expected)){await openGroup(group);for(const id of ids)if(await p.evaluate(id=>rightOneShot.has(id),id)){assert.equal(await sector(id).getAttribute('aria-pressed'),null);assert(!(await sector(id).getAttribute('class')).includes('active'))}}
    await openGroup('view');await sector('panView').dispatchEvent('pointerenter',{pointerType:'pen'});assert.equal(await p.evaluate(()=>rightCommandMenu.state.hoveredSector),'panView');await sector('zoomIn').focus();await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false);
+   await p.evaluate(()=>{rightCommandSafeProbe.style.paddingRight='calc(100vw - 60px)';rightCommandMenu.refresh()});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');
    await p.locator('#toggleTools').tap();await p.locator('button[data-mode=bar]').tap();assert.equal(await p.evaluate(()=>mode),'bar');await p.locator('#ribbonToggle').tap();await p.locator('#ribbonToggle').tap();assert(await p.locator('#ribbonScroll').isVisible());
+   await p.evaluate(()=>{rightCommandSafeProbe.style.removeProperty('padding-right');rightCommandMenu.refresh()});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='true');
    // Every real required command above went through its original control.
    const clicks=await p.evaluate(()=>commandClicks);for(const id of Object.values(expected).flat().filter(id=>id!=='snapOptions'))assert(clicks[id]>0,id+' original handler invoked');
    await command('snap','snapToggle');await p.locator('header strong').tap();await openGroup('snap');await p.screenshot({path:`tests/semicircle-right-${viewport.width}.png`});
