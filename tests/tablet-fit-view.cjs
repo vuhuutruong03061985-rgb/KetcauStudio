@@ -48,7 +48,7 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
   assert.equal(await p.locator('#zoomLevel').evaluate(e=>e.tagName),'OUTPUT');assert.equal(await p.locator('#zoomLevel').evaluate(e=>e.onclick),null);
   const geometry=async()=>{
    await settled();const g=await p.evaluate(()=>{const b=tabletBottomLeftBar.getBoundingClientRect();return {width:b.width,height:b.height,top:b.top,fit:{w:fitButton.getBoundingClientRect().width,h:fitButton.getBoundingClientRect().height},left:leftDrawingMenu.layout.bounds,right:rightCommandMenu.layout.bounds,radii:[leftDrawingMenu.layout.radius,rightCommandMenu.layout.radius]}});
-   assert.equal(g.width,200);assert.equal(g.height,48);assert.deepEqual(g.fit,{w:44,h:44});assert.equal(g.left.bottom,g.top-8);assert.equal(g.right.bottom,await p.evaluate(()=>innerHeight-16));assert.equal(g.left.top,100);assert.equal(g.right.top,100);
+   assert.equal(g.width,200);assert.equal(g.height,48);assert.deepEqual(g.fit,{w:44,h:44});assert.equal(g.left.bottom,g.top-8);assert.equal(g.right.bottom,await p.evaluate(()=>tabletBottomRightBar.getBoundingClientRect().top-8));assert.equal(g.left.top,100);assert.equal(g.right.top,100);
    assert.deepEqual(g.radii,[304.04759747124507,248.81914748738225]);return g;
   };
   await p.evaluate(()=>{items=copy(fitInitialItems);render();camera={x:0,y:0,w:1100,h:720};applyCamera()});console.log('STRIP / SAFE BOUNDS',JSON.stringify(await geometry()));await shot('final-strip');await shot('fit-icon-100');

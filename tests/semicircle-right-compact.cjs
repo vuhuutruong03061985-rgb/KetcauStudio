@@ -22,7 +22,7 @@ const removed=['clear','open','save','saveAs','svg','png','insertWord','zoomOut'
   assert.deepEqual(await p.evaluate(()=>sharedOuterActions.map(e=>e.id)),['commandCancel','commandFinish','undo','redo']);
   assert.deepEqual(await p.locator('#tabletTopBar button').evaluateAll(es=>es.map(e=>e.id||e.dataset.toolbarIcon)),['clear','open','save','saveAs','svg','png','insertWord']);
   assert.deepEqual(await p.locator('#tabletBottomZoom').evaluate(e=>[...e.children].map(c=>c.id)),['zoomOut','zoomLevel','zoomIn','fitView']);
-  assert.equal(await p.locator('#tabletBottomRightBar').count(),0);
+  assert.deepEqual(await p.locator('#tabletBottomView').evaluate(e=>[...e.children].map(c=>c.id)),['snapToggle','drawingScalesToggle']);
   const left=await p.evaluate(()=>leftDrawingRings.map(r=>r.entries.map(e=>e.id||e.dataset.toolbarIcon)));
   assert.deepEqual(left,[['bar','thin','dashed','curve'],['hinge','linkBar','weld','pin','roller','fixed'],['force','moment','udl'],['dim','text','person','section','rigidRegion','hatch','joint','diagram']]);
   assert.deepEqual(await p.evaluate(()=>[leftDrawingMenu.layout.radius,rightCommandMenu.layout.radius]),[304.04759747124507,248.81914748738225]);
@@ -56,9 +56,9 @@ const removed=['clear','open','save','saveAs','svg','png','insertWord','zoomOut'
   await focus('openCalculator');await shot('09-calculator-available-fixture');await sector('openCalculator').dispatchEvent('click');assert.equal(await p.evaluate(()=>calculatorFixtureCalls),1);
   await p.evaluate(()=>{$('openCalculator').hidden=true;refreshRightCommandEntries();rightCommandMenu.refresh()});assert.deepEqual((await mapping()).entries,[expected[0],expected[1].slice(0,4)]);assert.equal(await sector('openCalculator').count(),0);await open();await shot('10b-calculator-hidden-fixture');
   await p.evaluate(()=>{$('openCalculator').remove();refreshRightCommandEntries();rightCommandMenu.refresh()});
-  const projected=()=>p.evaluate(()=>{const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top)];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>({radius:m.layout.radius,bounds:bounds[i],fits:semicircleEngine.solveConcentricRingLayout({side:m.state.side,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits}))});
+  const projected=()=>p.evaluate(()=>{const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top,tabletRightChromeTop(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>({radius:m.layout.radius,bounds:bounds[i],fits:semicircleEngine.solveConcentricRingLayout({side:m.state.side,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits}))});
   const evidence=[];
-  for(const viewport of [{width:1280,height:800},{width:800,height:1280},{width:800,height:784},{width:800,height:783},{width:800,height:777},{width:800,height:776},{width:800,height:614},{width:800,height:613}]){
+  for(const viewport of [{width:1280,height:800},{width:800,height:1280},{width:800,height:784},{width:800,height:783},{width:800,height:777},{width:800,height:776},{width:800,height:666},{width:800,height:665}]){
    await p.setViewportSize(viewport);await settled();const sides=await projected();await p.waitForFunction(value=>document.body.dataset.radialPrimary===String(value),sides.every(s=>s.fits));evidence.push({viewport,left:sides[0].fits,right:sides[1].fits,joint:sides.every(s=>s.fits)});
    if(viewport.height>=777){await open();assert(await targets())}
    if(viewport.height===1280)await shot('02-right-portrait');
@@ -66,10 +66,10 @@ const removed=['clear','open','save','saveAs','svg','png','insertWord','zoomOut'
   assert.deepEqual(evidence.map(e=>[e.left,e.right,e.joint]),[[true,true,true],[true,true,true],[true,true,true],[true,true,true],[true,true,true],[false,true,false],[false,true,false],[false,false,false]]);
   // Search every possible height against unchanged hypothetical chrome bounds,
   // independently of fallback hiding those chrome nodes.
-  const minima=await p.evaluate(()=>{const b=[leftDrawingBounds(tabletChromeBottom(true),tabletLeftChromeTop(true)),rightCommandBounds(tabletChromeBottom(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>{for(let h=1;h<=900;h++){const bounds={...b[i],bottom:b[i].bottom+h-innerHeight};if(bounds.bottom>bounds.top&&semicircleEngine.solveConcentricRingLayout({side:m.state.side,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}).fits)return h}return null})});
-  assert.deepEqual(minima,[777,614]);
+  const minima=await p.evaluate(()=>{const b=[leftDrawingBounds(tabletChromeBottom(true),tabletLeftChromeTop(true)),rightCommandBounds(tabletChromeBottom(true),tabletRightChromeTop(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>{for(let h=1;h<=900;h++){const bounds={...b[i],bottom:b[i].bottom+h-innerHeight};if(bounds.bottom>bounds.top&&semicircleEngine.solveConcentricRingLayout({side:m.state.side,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}).fits)return h}return null})});
+  assert.deepEqual(minima,[777,666]);
   await p.setViewportSize({width:1280,height:800});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='true');await p.locator('.semicircle-left-menu [data-demo-id="hub"]').dispatchEvent('click');await shot('12-left-regression');
   assert.deepEqual(await p.evaluate(()=>leftDrawingRings.map(r=>r.entries.map(e=>e.id||e.dataset.toolbarIcon))),left);assert.deepEqual(errors,[]);
-  const report={before:333.608041374721,after:248.81914748738225,leftRadius:304.04759747124507,minima:{left:777,right:614,joint:777},evidence,calculator:'native source absent; conditional available/hidden adapter tested with explicit fixture',screenshots:fs.readdirSync(out).filter(n=>n.endsWith('.png'))};fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify(report,null,2));console.log('PASS compact RIGHT sources/mapping/memory/keyboard/44px targets/chrome/fit thresholds',JSON.stringify(report));
+  const report={before:333.608041374721,after:248.81914748738225,leftRadius:304.04759747124507,minima:{left:777,right:666,joint:777},evidence,calculator:'native source absent; conditional available/hidden adapter tested with explicit fixture',screenshots:fs.readdirSync(out).filter(n=>n.endsWith('.png'))};fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify(report,null,2));console.log('PASS compact RIGHT sources/mapping/memory/keyboard/44px targets/chrome/fit thresholds',JSON.stringify(report));
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

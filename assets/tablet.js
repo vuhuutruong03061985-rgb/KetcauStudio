@@ -780,7 +780,10 @@ function positionSnapChoices(){
  if(!snapPanel.open)return;
  const box=snapButton.getBoundingClientRect();
  snapChoices.style.left=Math.max(8,Math.min(box.left,innerWidth-snapChoices.offsetWidth-8))+'px';
- snapChoices.style.top=Math.max(8,Math.min(box.bottom+6,innerHeight-snapChoices.offsetHeight-8))+'px';
+ // A bottom-row source needs the existing flyout above it, clear of both buttons.
+ const bottomRow=snapButton.parentElement?.id==='tabletBottomView';
+ const y=bottomRow&&box.bottom+6+snapChoices.offsetHeight>innerHeight-8?box.top-snapChoices.offsetHeight-6:box.bottom+6;
+ snapChoices.style.top=Math.max(8,Math.min(y,innerHeight-snapChoices.offsetHeight-8))+'px';
 }
 snapPanel.addEventListener('toggle',()=>{snapButton.setAttribute('aria-expanded',String(snapPanel.open));if(snapPanel.open){closeSecondaryTools();positionSnapChoices()}});
 autoHideSecondary(snapPanel,()=>[snapButton],()=>snapPanel.open,()=>{snapPanel.open=false});
@@ -2133,6 +2136,30 @@ function tabletLeftChromeTop(reserveBottomBar=false){
  return top;
 }
 
+// View controls retain their real state/handlers and exact fallback homes.
+const tabletBottomRightBar=document.createElement('div');tabletBottomRightBar.id='tabletBottomRightBar';tabletBottomRightBar.hidden=true;
+tabletBottomRightBar.setAttribute('role','toolbar');tabletBottomRightBar.setAttribute('aria-label','Bắt điểm và tỷ lệ');
+const tabletBottomView=document.createElement('div');tabletBottomView.id='tabletBottomView';tabletBottomRightBar.append(tabletBottomView);
+document.body.append(tabletBottomRightBar);
+const tabletViewHomes=['snapToggle','drawingScalesToggle'].map(id=>{
+ const control=$(id),anchor=document.createComment('tablet bottom view: '+id);control.before(anchor);return {control,anchor};
+});
+function paintTabletBottomView(active){
+ for(const {control,anchor}of tabletViewHomes){
+  if(active){if(control.parentNode!==tabletBottomView)tabletBottomView.append(control)}
+  else if(control.previousSibling!==anchor)anchor.after(control);
+ }
+ tabletBottomRightBar.hidden=!active;
+}
+function tabletRightChromeTop(reserveBottomBar=false){
+ if(!floatingToolsMedia.matches||(!reserveBottomBar&&tabletBottomRightBar.hidden))return Infinity;
+ // Match LEFT admission: measure the row before showing it, without flashing.
+ const hidden=tabletBottomRightBar.hidden;if(hidden)tabletBottomRightBar.hidden=false;
+ const top=tabletBottomRightBar.getBoundingClientRect().top;
+ if(hidden)tabletBottomRightBar.hidden=true;
+ return top;
+}
+
 // Shared Task 2B geometry/renderer; demo instances remain opt-in and session-only.
 const semicircleEngine=(()=>{
  const gap=2;let nextMenuId=0;
@@ -2610,7 +2637,7 @@ function leftRingGesturePointer(e,entry,{centered,dragging}){
 window.addEventListener('pointerdown',e=>{
  if(leftDrawingForwarding)return;
  leftDrawingSwallowClick=false;
- if(tabletTopBar.contains(e.target)||tabletBottomLeftBar.contains(e.target)){leftDrawingMenu?.close();rightCommandMenu?.close();return}
+ if(tabletTopBar.contains(e.target)||tabletBottomLeftBar.contains(e.target)||tabletBottomRightBar.contains(e.target)){leftDrawingMenu?.close();rightCommandMenu?.close();return}
  if(!leftDrawingMenu||leftDrawingMenu.host.hidden||window.semicircleDemo)return;
  if(rightCommandMenu?.host.contains(e.target))return;
  if(leftDrawingMenu.host.contains(e.target)){
@@ -2672,9 +2699,10 @@ function refreshRightCommandEntries(){
  }
 }
 const rightCommandSafeProbe=document.createElement('div');rightCommandSafeProbe.className='semicircle-left-safe-probe';
-function rightCommandBounds(chromeBottom=tabletChromeBottom()){
+function rightCommandBounds(chromeBottom=tabletChromeBottom(),rightChromeTop=tabletRightChromeTop()){
  const vv=window.visualViewport,s=getComputedStyle(rightCommandSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
  const b={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),chromeBottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
+ if(Number.isFinite(rightChromeTop))b.bottom=Math.min(b.bottom,rightChromeTop-8);
  const reach=rightCommandMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'right',rings:rightCommandRings.map(r=>({id:r.id,count:r.entries.length})),bounds:b,fixedOuter:true}).radius;
  for(const id of ['dynamicInput']){
   const control=$(id);if(!control||control.hidden)continue;
@@ -2726,7 +2754,7 @@ for(const source of [commandControls,...sharedOuterActions.map(a=>a.source)])out
 const rightCommandConsumed=new Set();let rightCommandSwallowClick=false;
 window.addEventListener('pointerdown',e=>{
  rightCommandSwallowClick=false;
- if(tabletTopBar.contains(e.target)||tabletBottomLeftBar.contains(e.target))return;
+ if(tabletTopBar.contains(e.target)||tabletBottomLeftBar.contains(e.target)||tabletBottomRightBar.contains(e.target))return;
  if(!rightCommandMenu||rightCommandMenu.host.hidden||window.semicircleDemo)return;
  if(rightCommandMenu.host.contains(e.target)){e.preventDefault();e.stopImmediatePropagation();return}
  if(leftDrawingMenu?.host.contains(e.target)||!rightCommandMenu.state.open)return;
@@ -2775,7 +2803,7 @@ function syncRadialPrimaryPresentation(){
  const chromeBottom=tabletChromeBottom(true);
  const fitsChrome=(menu,bounds)=>!!menu?.layout&&menu.layout.radius<=bounds.right-bounds.left&&2*menu.layout.radius<=bounds.bottom-bounds.top;
  const fitted=floatingToolsMedia.matches&&usable(leftDrawingMenu)&&usable(rightCommandMenu)&&
-  fitsChrome(leftDrawingMenu,leftDrawingBounds(chromeBottom,tabletLeftChromeTop(true)))&&fitsChrome(rightCommandMenu,rightCommandBounds(chromeBottom));
+  fitsChrome(leftDrawingMenu,leftDrawingBounds(chromeBottom,tabletLeftChromeTop(true)))&&fitsChrome(rightCommandMenu,rightCommandBounds(chromeBottom,tabletRightChromeTop(true)));
  const keyboard=radialKeyboardShrink();
  if(fitted&&!keyboard)radialPrimaryLayout={width:innerWidth,height:innerHeight};
  // Unsafe fans remain hidden by the engine; close only their navigation state.
@@ -2790,6 +2818,7 @@ function syncRadialPrimaryPresentation(){
  if(value==='false'){leftDrawingMenu?.close();rightCommandMenu?.close()}
  paintTabletTopBar(value==='true');
  paintTabletBottomZoom(value==='true');
+ paintTabletBottomView(value==='true');
  leftDrawingMenu?.refresh();rightCommandMenu?.refresh();
  // Only positioning is refreshed; no popup state, command or preference is changed.
  positionDrawingScales();positionSnapChoices();positionMomentPalette();positionSecondaryTools();
@@ -2801,6 +2830,7 @@ queueRadialPrimaryUpdate();
 const tabletChromeObserver=new ResizeObserver(()=>{leftDrawingMenu?.refresh();rightCommandMenu?.refresh();queueRadialPrimaryUpdate()});
 tabletChromeObserver.observe(document.querySelector('header'));tabletChromeObserver.observe(tabletTopBar);
 tabletChromeObserver.observe(tabletBottomLeftBar);
+tabletChromeObserver.observe(tabletBottomRightBar);
 
 // DevTools: const demo = showSemicircleDemo(); demo.destroy() removes all listeners/UI.
 function showSemicircleDemo(){
