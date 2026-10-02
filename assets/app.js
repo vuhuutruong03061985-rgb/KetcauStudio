@@ -201,6 +201,9 @@ function updateSelection(ids,primary=null){
  if(selected){const o=items.find(o=>o.id===selected);for(const k of Object.keys(props()))$(k).value=o[k]??''}
 }
 let items=[],past=[],future=[],selected=null,mode='select',first=null,second=null,hover=null,drag=null;
+// Editor-only model-space grid; independent of snapping and document metadata.
+const defaultGridSize=50;
+let gridVisible=false,gridSize=defaultGridSize;
 // Per-drawing metadata: drawing units per metre, and internal-force units per pixel.
 const defaultGeometryScale=100,defaultInternalForceScale=10;
 let geometryScale=defaultGeometryScale,internalForceScale=defaultInternalForceScale;
@@ -869,6 +872,12 @@ function render(clean=false){
  if($('editSelected')){$('editSelected').classList.toggle('active',mode==='labelEdit');$('editSelected').setAttribute('aria-pressed',String(mode==='labelEdit'))}
  if(autosaveReady&&!clean){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(saveDraft,200)}
 svg.replaceChildren();const defs=el('defs'),marker=el('marker',{id:'arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto'},defs);el('path',{d:'M0 0L10 5L0 10Z',fill:'black'},marker);const momentMarker=el('marker',{id:'momentArrow',viewBox:'0 0 10 10',refX:0,refY:5,markerWidth:7,markerHeight:7,orient:'auto',overflow:'visible'},defs);el('path',{d:'M0 0L10 5L0 10Z',fill:'black'},momentMarker);el('rect',{width:1100,height:720,fill:'white'});
+if(gridVisible&&!clean){
+ const pattern=el('pattern',{id:'drawingGridPattern',x:0,y:0,width:gridSize,height:gridSize,patternUnits:'userSpaceOnUse',patternContentUnits:'userSpaceOnUse'},defs);
+ el('path',{d:`M${gridSize} 0H0V${gridSize}`,fill:'none',stroke:'#d7e0e6','stroke-width':0.7,'vector-effect':'non-scaling-stroke'},pattern);
+ // Match the validated model-coordinate range, including negative/off-page work.
+ el('rect',{x:-10000,y:-10000,width:20000,height:20000,fill:'url(#drawingGridPattern)','data-grid-layer':'true','pointer-events':'none','aria-hidden':'true'});
+}
 if(items.some(o=>o.type==='person'))definePersonSymbol(defs);
 for(const o of [...items].sort((a,b)=>Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(a.type))-Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(b.type)))){if(o.type==='person'){try{validatePerson(o)}catch{continue}}if(hiddenSectionAction(o))continue;const {x,y,x2,y2}=o,g=el('g',{'data-id':o.id,...(validObjectColor(o.strokeColor)?{'data-object-color':o.strokeColor}:{}),stroke:objectColor(o),'stroke-width':1.8,fill:'none'});
 if(o.type==='person'){

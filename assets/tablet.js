@@ -751,6 +751,12 @@ for(const [id,getValue,setValue]of [
  input.addEventListener('blur',()=>{input.value=getValue()});
 }
 syncDrawingScaleControls();
+const gridButton=document.createElement('button');gridButton.id='gridToggle';gridButton.type='button';
+function updateGridControls(){
+ gridButton.textContent=gridVisible?'Lưới: Bật':'Lưới: Tắt';gridButton.title=gridButton.textContent;gridButton.setAttribute('aria-label',gridButton.textContent);gridButton.classList.toggle('active',gridVisible);gridButton.setAttribute('aria-pressed',String(gridVisible));
+}
+gridButton.onclick=()=>{gridVisible=!gridVisible;updateGridControls();render()};
+$('viewTools').append(gridButton);updateGridControls();
 const snapButton=document.createElement('button');snapButton.id='snapToggle';
 const snapPanel=document.createElement('details');snapPanel.id='snapSettings';
 const snapSummary=document.createElement('summary');snapSummary.textContent='Kiểu bắt điểm';snapPanel.append(snapSummary);
@@ -932,6 +938,7 @@ const toolIconPaths={
  saveAs:'M3 3H18L21 6V12M3 3V21H10M7 3V9H17V3M13 21L14 17L20 11L23 14L17 20Z',
  svg:'M3 4H21V20H3ZM3 17L9 10L14 15L17 12L21 17',
  png:'M3 4H21V20H3ZM3 17L9 10L14 15L17 12L21 17M16 8H17',
+ gridToggle:'M3 3H21V21H3ZM9 3V21M15 3V21M3 9H21M3 15H21',
  openCalculator:'M5 2H19V22H5ZM8 5H16V9H8ZM8 13H10M14 13H16M8 17H10M14 17H16',
  toggleTools:'M4 5H20M4 12H20M4 19H20M8 2V8M16 9V15M8 16V22'
 };
@@ -2138,10 +2145,10 @@ function tabletLeftChromeTop(reserveBottomBar=false){
 
 // View controls retain their real state/handlers and exact fallback homes.
 const tabletBottomRightBar=document.createElement('div');tabletBottomRightBar.id='tabletBottomRightBar';tabletBottomRightBar.hidden=true;
-tabletBottomRightBar.setAttribute('role','toolbar');tabletBottomRightBar.setAttribute('aria-label','Bắt điểm và tỷ lệ');
+tabletBottomRightBar.setAttribute('role','toolbar');tabletBottomRightBar.setAttribute('aria-label','Lưới, bắt điểm và tỷ lệ');
 const tabletBottomView=document.createElement('div');tabletBottomView.id='tabletBottomView';tabletBottomRightBar.append(tabletBottomView);
 document.body.append(tabletBottomRightBar);
-const tabletViewHomes=['snapToggle','drawingScalesToggle'].map(id=>{
+const tabletViewHomes=['gridToggle','snapToggle','drawingScalesToggle'].map(id=>{
  const control=$(id),anchor=document.createComment('tablet bottom view: '+id);control.before(anchor);return {control,anchor};
 });
 function paintTabletBottomView(active){

@@ -22,7 +22,7 @@ const removed=['snapToggle','drawingScalesToggle','clear','open','save','saveAs'
   assert.deepEqual(await p.evaluate(()=>sharedOuterActions.map(e=>e.id)),['commandCancel','commandFinish','undo','redo']);
   assert.deepEqual(await p.locator('#tabletTopBar button').evaluateAll(es=>es.map(e=>e.id||e.dataset.toolbarIcon)),['clear','open','save','saveAs','svg','png','insertWord']);
   assert.deepEqual(await p.locator('#tabletBottomZoom').evaluate(e=>[...e.children].map(c=>c.id)),['zoomOut','zoomLevel','zoomIn','fitView']);
-  assert.deepEqual(await p.locator('#tabletBottomView').evaluate(e=>[...e.children].map(c=>c.id)),['snapToggle','drawingScalesToggle']);
+  assert.deepEqual(await p.locator('#tabletBottomView').evaluate(e=>[...e.children].map(c=>c.id)),['gridToggle','snapToggle','drawingScalesToggle']);
   const left=await p.evaluate(()=>leftDrawingRings.map(r=>r.entries.map(e=>e.id||e.dataset.toolbarIcon)));
   assert.deepEqual(left,[['bar','thin','dashed','curve'],['hinge','linkBar','weld','pin','roller','fixed'],['force','moment','udl'],['dim','text','person','section','rigidRegion','hatch','joint','diagram']]);
   assert.deepEqual(await p.evaluate(()=>[leftDrawingMenu.layout.radius,rightCommandMenu.layout.radius]),[304.04759747124507,248.81914748738225]);
