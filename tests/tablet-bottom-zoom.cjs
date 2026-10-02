@@ -91,7 +91,7 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
   assert.equal(await bar.evaluate(e=>e.getBoundingClientRect().left),24);assert.equal(await p.evaluate(()=>leftDrawingBounds().bottom),await bar.evaluate(e=>e.getBoundingClientRect().top-8));assert.equal(await p.evaluate(()=>rightCommandBounds().bottom),732);
   await p.evaluate(()=>{tabletBottomLeftBar.style.removeProperty('left');tabletBottomLeftBar.style.removeProperty('bottom');leftDrawingMenu.refresh()});await ready(true);await checkGeometry();
   for(const side of ['left','right']){await p.locator(`.semicircle-${side}-menu [data-demo-id="hub"]`).dispatchEvent('click');assert(await bar.isVisible());await checkGeometry();await shot(side+'-open')}
-  assert.deepEqual(await p.evaluate(()=>rightCommandRings[1].entries.map(e=>e.id)),['panView','snapToggle','snapOptions','drawingScalesToggle']);
+  assert.deepEqual(await p.evaluate(()=>rightCommandRings[1].entries.map(e=>e.id)),['panView','snapOptions']);
   await p.evaluate(()=>{leftDrawingMenu.close();rightCommandMenu.close();ribbonCollapsed=true;localStorage.setItem('ket-cau-ribbon-collapsed','true');paintCommandRibbon()});assert(await bar.isVisible());
   await p.setViewportSize({width:800,height:1280});await ready(true);console.log('PORTRAIT',JSON.stringify(await checkGeometry()));await shot('portrait');
   // Separate projected fan thresholds from joint admission. In fallback both

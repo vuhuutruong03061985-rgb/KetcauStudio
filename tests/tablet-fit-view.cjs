@@ -112,7 +112,7 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
   await p.setViewportSize({width:1280,height:800});await ready(true);await identity(false);await geometry();
   // MQL injection checks runtime restore; initial desktop used actual fine CSS.
   for(const matches of [false,true,false,true]){await p.evaluate(matches=>{Object.defineProperty(floatingToolsMedia,'matches',{configurable:true,value:matches});floatingToolsMedia.dispatchEvent(new MediaQueryListEvent('change',{matches,media:floatingToolsMedia.media}))},matches);await ready(matches);await identity(!matches);assert.equal(await bar.isVisible(),matches);assert.deepEqual(await snapshot(),stable)}
-  assert.deepEqual(await p.evaluate(()=>rightCommandRings[1].entries.map(e=>e.id)),['panView','snapToggle','snapOptions','drawingScalesToggle']);
+  assert.deepEqual(await p.evaluate(()=>rightCommandRings[1].entries.map(e=>e.id)),['panView','snapOptions']);
   assert.deepEqual(await p.locator('#tabletTopCommands button:not([hidden])').evaluateAll(es=>es.map(e=>e.id||e.dataset.toolbarIcon)),['clear','open','save','saveAs','svg','png']);
   const outputCamera=await cameraState();await tap(p.locator('#zoomLevel'));assert.deepEqual(await cameraState(),outputCamera);assert.equal(await p.evaluate(()=>Object.keys(localStorage).some(k=>k.includes('fit-view'))),false);assert.deepEqual(errors,[]);
   console.log('PASS authoritative Fit source/ownership, committed rendered bounds/padding/aspect/clamps, empty/degenerate/hidden/invalid, selection and active command preservation, same safe bounds; screenshots:',out);

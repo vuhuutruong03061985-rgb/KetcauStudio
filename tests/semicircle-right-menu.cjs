@@ -1,7 +1,7 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
 const legacyExpected={file:['clear','open','save','saveAs','svg','png'],history:['undo','redo'],edit:['copyObjects','pasteObjects','editSelected','delete'],view:['resetView','panView','zoomOut','zoomIn'],snap:['snapToggle','snapOptions'],settings:['drawingScalesToggle']};
-const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],R2:['panView','snapToggle','snapOptions','drawingScalesToggle']};
+const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],R2:['panView','snapOptions']};
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -17,12 +17,12 @@ const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','del
    };
    const openGroup=async group=>{if(!await p.evaluate(()=>rightCommandMenu.state.open))await activate('hub')};
    const focus=async id=>{await openGroup();if(['undo','redo'].includes(id))return;if(!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await activate(id)};
-   const command=async(group,id)=>{if(['clear','open','save','saveAs','svg','png','insertWord','zoomIn','zoomOut'].includes(id)){await p.evaluate(()=>rightCommandMenu.close());await p.locator(id==='insertWord'?'#tabletTopBar [data-toolbar-icon=insertWord]':'#'+id).tap();return;}await focus(id);await activate(id);assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),['undo','redo'].includes(id),id+' menu state')};
+   const command=async(group,id)=>{if(['clear','open','save','saveAs','svg','png','insertWord','zoomIn','zoomOut','snapToggle','drawingScalesToggle'].includes(id)){await p.evaluate(()=>rightCommandMenu.close());await p.locator(id==='insertWord'?'#tabletTopBar [data-toolbar-icon=insertWord]':'#'+id).tap();return;}await focus(id);await activate(id);assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),['undo','redo'].includes(id),id+' menu state')};
    const snapshot=()=>p.evaluate(()=>({doc:documentText(),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,first,second,selected,multi:[...multiSelection],geometryScale,internalForceScale,camera:JSON.stringify(camera),handle:documentHandle?.name,name:documentName}));
    assert.equal(await root.count(),1);assert.equal(await p.locator('.semicircle-prototype').count(),0);
    assert.deepEqual(await p.evaluate(()=>Object.fromEntries(rightCommandRings.map(g=>[g.id,g.entries.map(c=>c.id)]))),expected);
    // Observe the original handlers without replacing their behavior.
-   await p.evaluate(()=>{window.commandClicks={};for(const c of [...rightCommandRings.flatMap(g=>g.entries),...sharedOuterActions,...['clear','open','save','saveAs','svg','png','zoomIn','zoomOut'].map(id=>({id,source:document.getElementById(id)}))].filter(c=>c.id!=='snapOptions'))c.source.addEventListener('click',()=>commandClicks[c.id]=(commandClicks[c.id]||0)+1)});
+   await p.evaluate(()=>{window.commandClicks={};for(const c of [...rightCommandRings.flatMap(g=>g.entries),...sharedOuterActions,...['clear','open','save','saveAs','svg','png','zoomIn','zoomOut','snapToggle','drawingScalesToggle'].map(id=>({id,source:document.getElementById(id)}))].filter(c=>c.id!=='snapOptions'))c.source.addEventListener('click',()=>commandClicks[c.id]=(commandClicks[c.id]||0)+1)});
    await p.evaluate(()=>{setMode('bar');first={x:300,y:300};selected=items[0].id;multiSelection=new Set([selected]);render();saveDraft()});
    const before=await snapshot();await activate('hub');const sharedOuterCount=await root.locator('[data-fixed-action]').count();assert.equal(await root.locator('.semicircle-control').count(),1+Object.values(expected).flat().length+sharedOuterCount);
    await p.screenshot({path:`tests/semicircle-right-inner-${viewport.width}.png`});
@@ -77,7 +77,7 @@ const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','del
    await command('snap','snapToggle');assert.equal(await p.evaluate(()=>snapEnabled),false);await openGroup('snap');assert.equal(await sector('snapOptions').getAttribute('aria-disabled'),'true');await activate('snapOptions');assert.equal(await p.evaluate(()=>snapEnabled),false);await activate('hub');
    // Scale popup remains authoritative and stays open after radial close.
    await command('settings','drawingScalesToggle');assert(await p.locator('#drawingScales').isVisible());await p.locator('#geometryScale').fill('125');await p.locator('#geometryScale').press('Tab');assert.equal(await p.evaluate(()=>geometryScale),125);
-   await openGroup('settings');assert.equal(await sector('drawingScalesToggle').getAttribute('aria-expanded'),'true');await activate('drawingScalesToggle');assert(await p.locator('#drawingScales').isHidden());
+   await openGroup('settings');assert.equal(await p.locator('#drawingScalesToggle').getAttribute('aria-expanded'),'true');await command('settings','drawingScalesToggle');assert(await p.locator('#drawingScales').isHidden());
    for(const [group,ids]of Object.entries(expected)){await openGroup(group);for(const id of ids)if(await p.evaluate(id=>rightOneShot.has(id),id)){assert.equal(await sector(id).getAttribute('aria-pressed'),null);assert(!(await sector(id).getAttribute('class')).includes('active'))}}
    await openGroup('view');await sector('panView').dispatchEvent('pointerenter',{pointerType:'pen'});assert.equal(await p.evaluate(()=>rightCommandMenu.state.hoveredSector),'panView');await focus('panView');await sector('panView').focus();await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false);
    await p.evaluate(()=>{rightCommandSafeProbe.style.paddingRight='calc(100vw - 60px)';rightCommandMenu.refresh()});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');

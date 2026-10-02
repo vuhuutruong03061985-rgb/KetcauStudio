@@ -34,7 +34,7 @@ const ids=['snapToggle','drawingScalesToggle'];
   const landscape=await checkGeometry();console.log('LANDSCAPE',JSON.stringify(landscape));await shot('01-landscape-all-chrome');
   assert.deepEqual(await p.locator('#tabletTopBar button').evaluateAll(es=>es.map(e=>e.id||e.dataset.toolbarIcon)),['clear','open','save','saveAs','svg','png','insertWord']);
   assert.deepEqual(await p.locator('#tabletBottomZoom').evaluate(e=>[...e.children].map(c=>c.id)),['zoomOut','zoomLevel','zoomIn','fitView']);
-  const rightMapping=await p.evaluate(()=>rightCommandRings.map(r=>r.ids));assert.deepEqual(rightMapping,[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['panView','snapToggle','snapOptions','drawingScalesToggle','openCalculator']]);
+  const rightMapping=await p.evaluate(()=>rightCommandRings.map(r=>r.ids));assert.deepEqual(rightMapping,[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['panView','snapOptions','openCalculator']]);
   // Normal touches during pending geometry run each real handler once; they do
   // not forward a canvas contact, rotate either fan, or synthesize command keys.
   await p.evaluate(()=>{snapEnabled=false;updateSnapControls();snapPanel.open=false;setMode('bar');first={x:300,y:300};render();saveDraft()});const pending=await snapshot();await shot('03-snap-off');

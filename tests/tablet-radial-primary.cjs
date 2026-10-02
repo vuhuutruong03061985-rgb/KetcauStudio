@@ -24,7 +24,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
     },{id,side});await p.touchscreen.tap(q.x,q.y);
    };
    const command=async(side,group,id)=>{
-    if(side==='right'&&group==='file'){await p.evaluate(()=>rightCommandMenu.close());await p.locator('#'+id).tap();return;}
+    if(side==='right'&&(group==='file'||['snapToggle','drawingScalesToggle'].includes(id))){await p.evaluate(()=>rightCommandMenu.close());await p.locator('#'+id).tap();return;}
     if(!await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.open,side))await tap('hub',side);
     if(side==='left'){if(!await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side)}
     else if(!['undo','redo'].includes(id)&&!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side);

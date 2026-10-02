@@ -2677,7 +2677,7 @@ const rightOneShot=new Set(['clear','open','save','saveAs','svg','png','insertWo
 // Compact production navigation/utilities, using the existing authoritative controls.
 const rightCommandRings=[
  {id:'R1',label:'Chỉnh sửa / Chọn',ids:['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],defaultTool:'resetView',tint:'#edf2f6'},
- {id:'R2',label:'Điều hướng / Tiện ích',ids:['panView','snapToggle','snapOptions','drawingScalesToggle','openCalculator'],defaultTool:'panView',tint:'#edf2f4'}
+ {id:'R2',label:'Điều hướng / Tiện ích',ids:['panView','snapOptions','openCalculator'],defaultTool:'panView',tint:'#edf2f4'}
 ].map(ring=>({...ring,activeIndex:ring.ids.indexOf(ring.defaultTool),entries:[]}));
 function rightCommandSource(id){return id==='extend'?document.querySelector('button[data-mode="extend"]'):id==='insertWord'?wordButton:id==='snapOptions'?snapButton:$(id)}
 function refreshRightCommandEntries(){

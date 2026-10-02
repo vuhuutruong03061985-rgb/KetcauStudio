@@ -1,7 +1,7 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{pathToFileURL}=require('node:url');
-const expected=[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['panView','snapToggle','snapOptions','drawingScalesToggle','openCalculator']];
-const removed=['clear','open','save','saveAs','svg','png','insertWord','zoomOut','zoomIn','fitView','undo','redo'];
+const expected=[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['panView','snapOptions','openCalculator']];
+const removed=['snapToggle','drawingScalesToggle','clear','open','save','saveAs','svg','png','insertWord','zoomOut','zoomIn','fitView','undo','redo'];
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -16,7 +16,7 @@ const removed=['clear','open','save','saveAs','svg','png','insertWord','zoomOut'
   const memory=()=>p.evaluate(()=>rightCommandMenu.state.rings.map(r=>({id:r.id,focus:r.entries[r.activeIndex].id,offset:r.offset,index:r.activeIndex})));
   const snapshot=()=>p.evaluate(()=>({doc:documentText(),saved:savedDocument,past:JSON.stringify(past),future:JSON.stringify(future),scales:[geometryScale,internalForceScale],mode,snapEnabled,panEnabled}));
   const mapping=()=>p.evaluate(()=>({config:rightCommandRings.map(r=>r.ids),ids:rightCommandMenu.state.rings.map(r=>r.id),entries:rightCommandMenu.state.rings.map(r=>r.entries.map(e=>e.id||e.dataset.toolbarIcon)),real:rightCommandRings.flatMap(r=>r.entries).every(e=>e.source===rightCommandSource(e.id)),defaults:rightCommandRings.map(r=>r.defaultTool),snapShared:rightCommandRings[1].entries.find(e=>e.id==='snapOptions').source===snapButton}));
-  let map=await mapping();assert.deepEqual(map.config,expected);assert.deepEqual(map.ids,['R1','R2']);assert.deepEqual(map.defaults,['resetView','panView']);assert(map.real&&map.snapShared);assert.deepEqual(map.entries,[expected[0],expected[1].slice(0,4)]);
+  let map=await mapping();assert.deepEqual(map.config,expected);assert.deepEqual(map.ids,['R1','R2']);assert.deepEqual(map.defaults,['resetView','panView']);assert(map.real&&map.snapShared);assert.deepEqual(map.entries,[expected[0],expected[1].slice(0,2)]);
   await open();assert.equal(await p.locator('.semicircle-right-menu .semicircle-roller-ring').count(),2);
   for(const id of removed)assert.equal(await sector(id).count(),0,id+' has no keyboard-reachable roller sector');
   assert.deepEqual(await p.evaluate(()=>sharedOuterActions.map(e=>e.id)),['commandCancel','commandFinish','undo','redo']);
@@ -30,13 +30,13 @@ const removed=['clear','open','save','saveAs','svg','png','insertWord','zoomOut'
   const targets=()=>p.evaluate(()=>{const m=rightCommandMenu,l=m.layout;return l.rings.every((r,i)=>Math.abs(r.sectors[m.state.rings[i].activeIndex].icon.y-l.cy)<1e-8)&&l.rings.flatMap(r=>r.sectors).every(s=>{for(let a=0;a<2*Math.PI;a+=Math.PI/36)if(!semicircleEngine.hitTestRadialSector(s,s.icon.x+22*Math.cos(a),s.icon.y+22*Math.sin(a)))return false;return true})});
   assert(await targets());await shot('01-right-landscape');await shot('03-r1-select-default');await shot('05-r2-pan');await shot('11-all-chrome-compact-right');
   await p.evaluate(()=>{snapEnabled=false;updateSnapControls();snapPanel.open=false});const initial=await snapshot();await focus('editSelected');assert.deepEqual(await snapshot(),initial);await shot('04-r1-edit-focused');
-  await focus('snapToggle');await shot('06-r2-snap-focused');await sector('snapToggle').dispatchEvent('click');assert(await p.evaluate(()=>snapEnabled));await p.locator('header strong').tap();
+  await p.locator('#snapToggle').tap();await settled();await shot('06-bottom-snap-enabled');assert(await p.evaluate(()=>snapEnabled));await p.locator('header strong').tap();
   await focus('snapOptions');await sector('snapOptions').focus();await p.keyboard.press('Enter');assert(await p.evaluate(()=>snapPanel.open));assert.equal(await p.evaluate(()=>document.activeElement.id),'snap-endpoint');await shot('07-snap-options-open');await p.locator('header strong').tap();
-  await focus('drawingScalesToggle');await shot('08a-scale-focused');await sector('drawingScalesToggle').focus();await p.keyboard.press('Space');assert(await p.locator('#drawingScales').isVisible());await shot('08b-scale-open');await p.locator('header strong').tap();
+  await p.locator('#drawingScalesToggle').focus();await p.keyboard.press('Space');await settled();assert(await p.locator('#drawingScales').isVisible());await shot('08b-scale-open');await p.locator('header strong').tap();
   // Entry state memory and source synchronization stay independent after removed
   // source states/zoom changes; no file/zoom source is in a ring or observer list.
   await p.evaluate(()=>{snapEnabled=false;updateSnapControls();panEnabled=false;panButton.classList.remove('active');panButton.setAttribute('aria-pressed','false');snapPanel.open=false;closeDrawingScales();drawingScalesButton.setAttribute('aria-expanded','false')});
-  await p.evaluate(()=>setMode('bar'));await focus('copyObjects');await focus('drawingScalesToggle');const remembered=await memory();
+  await p.evaluate(()=>setMode('bar'));await focus('copyObjects');await focus('panView');const remembered=await memory();
   await p.evaluate(()=>{rightCommandMenu.close();for(const id of ['save','open','zoomIn'])$(id).setAttribute('aria-pressed','true');$('zoomIn').click();$('zoomOut').click()});await open();assert.deepEqual(await memory(),remembered);
   await p.evaluate(()=>{for(const id of ['save','open','zoomIn'])$(id).removeAttribute('aria-pressed')});
   // Count real handlers for both keyboard activation keys. First click only focuses.
@@ -51,10 +51,10 @@ const removed=['clear','open','save','saveAs','svg','png','insertWord','zoomOut'
   // Explicit capability fixture only: this build has no installed calculator.
   // It exercises existing conditional routing, never creates a production command.
   await p.evaluate(()=>{const source=document.createElement('button');source.id='openCalculator';source.title='Calculator capability fixture';source.hidden=true;source.onclick=()=>window.calculatorFixtureCalls=(window.calculatorFixtureCalls||0)+1;$('viewTools').append(source);refreshRightCommandEntries();rightCommandMenu.refresh()});
-  assert.deepEqual((await mapping()).entries,[expected[0],expected[1].slice(0,4)]);
+  assert.deepEqual((await mapping()).entries,[expected[0],expected[1].slice(0,2)]);
   await p.evaluate(()=>{$('openCalculator').hidden=false;refreshRightCommandEntries();rightCommandMenu.refresh()});assert.deepEqual((await mapping()).entries,expected);assert((await mapping()).real);assert(await targets());
   await focus('openCalculator');await shot('09-calculator-available-fixture');await sector('openCalculator').dispatchEvent('click');assert.equal(await p.evaluate(()=>calculatorFixtureCalls),1);
-  await p.evaluate(()=>{$('openCalculator').hidden=true;refreshRightCommandEntries();rightCommandMenu.refresh()});assert.deepEqual((await mapping()).entries,[expected[0],expected[1].slice(0,4)]);assert.equal(await sector('openCalculator').count(),0);await open();await shot('10b-calculator-hidden-fixture');
+  await p.evaluate(()=>{$('openCalculator').hidden=true;refreshRightCommandEntries();rightCommandMenu.refresh()});assert.deepEqual((await mapping()).entries,[expected[0],expected[1].slice(0,2)]);assert.equal(await sector('openCalculator').count(),0);await open();await shot('10b-calculator-hidden-fixture');
   await p.evaluate(()=>{$('openCalculator').remove();refreshRightCommandEntries();rightCommandMenu.refresh()});
   const projected=()=>p.evaluate(()=>{const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top,tabletRightChromeTop(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>({radius:m.layout.radius,bounds:bounds[i],fits:semicircleEngine.solveConcentricRingLayout({side:m.state.side,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits}))});
   const evidence=[];
