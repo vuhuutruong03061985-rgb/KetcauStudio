@@ -757,6 +757,19 @@ function updateGridControls(){
 }
 gridButton.onclick=()=>{gridVisible=!gridVisible;updateGridControls();render()};
 $('viewTools').append(gridButton);updateGridControls();
+const gridSizeControl=document.createElement('label');gridSizeControl.id='gridSizeControl';gridSizeControl.title='Bước lưới (đơn vị bản vẽ)';
+const gridSizeLabel=document.createElement('span');gridSizeLabel.textContent='Bước lưới';
+const gridSizeInput=document.createElement('input');gridSizeInput.id='gridSize';gridSizeInput.type='number';gridSizeInput.inputMode='decimal';gridSizeInput.step='any';gridSizeInput.min='10';gridSizeInput.max='1000';gridSizeInput.setAttribute('aria-label','Bước lưới');
+gridSizeControl.append(gridSizeLabel,gridSizeInput);$('viewTools').append(gridSizeControl);
+function syncGridSizeControl(){gridSizeInput.value=gridSize}
+function commitGridSize(){
+ const value=gridSizeInput.valueAsNumber;
+ if(!Number.isFinite(value)||value<10||value>1000){syncGridSizeControl();return}
+ const changed=value!==gridSize;gridSize=value;syncGridSizeControl();if(changed)render();
+}
+gridSizeInput.addEventListener('change',commitGridSize);
+gridSizeInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();e.stopPropagation();commitGridSize()}});
+gridSizeInput.addEventListener('blur',syncGridSizeControl);syncGridSizeControl();
 const snapButton=document.createElement('button');snapButton.id='snapToggle';
 const snapPanel=document.createElement('details');snapPanel.id='snapSettings';
 const snapSummary=document.createElement('summary');snapSummary.textContent='Kiểu bắt điểm';snapPanel.append(snapSummary);
@@ -2148,16 +2161,35 @@ const tabletBottomRightBar=document.createElement('div');tabletBottomRightBar.id
 tabletBottomRightBar.setAttribute('role','toolbar');tabletBottomRightBar.setAttribute('aria-label','Lưới, bắt điểm và tỷ lệ');
 const tabletBottomView=document.createElement('div');tabletBottomView.id='tabletBottomView';tabletBottomRightBar.append(tabletBottomView);
 document.body.append(tabletBottomRightBar);
-const tabletViewHomes=['gridToggle','snapToggle','drawingScalesToggle'].map(id=>{
+const tabletViewHomes=['gridToggle','gridSizeControl','snapToggle','drawingScalesToggle'].map(id=>{
  const control=$(id),anchor=document.createComment('tablet bottom view: '+id);control.before(anchor);return {control,anchor};
 });
+let tabletBottomChromeWidths=null;
 function paintTabletBottomView(active){
  for(const {control,anchor}of tabletViewHomes){
   if(active){if(control.parentNode!==tabletBottomView)tabletBottomView.append(control)}
   else if(control.previousSibling!==anchor)anchor.after(control);
  }
  tabletBottomRightBar.hidden=!active;
+ if(active)tabletBottomChromeWidths={left:tabletBottomLeftBar.offsetWidth,right:tabletBottomRightBar.offsetWidth};
+ positionGridSizeControl();
 }
+function tabletBottomChromeFits(){
+ // Retain measured mounted widths while the real controls live in fallback.
+ // This avoids a fit/hide loop caused by measuring the emptied hidden rows.
+ if(!tabletBottomLeftBar.hidden&&!tabletBottomRightBar.hidden)tabletBottomChromeWidths={left:tabletBottomLeftBar.offsetWidth,right:tabletBottomRightBar.offsetWidth};
+ if(!tabletBottomChromeWidths)return true;
+ const left=parseFloat(getComputedStyle(tabletBottomLeftBar).left),right=parseFloat(getComputedStyle(tabletBottomRightBar).right);
+ return left+tabletBottomChromeWidths.left<=innerWidth-right-tabletBottomChromeWidths.right;
+}
+function positionGridSizeControl(){
+ const vv=window.visualViewport,editing=document.activeElement===gridSizeInput&&!tabletBottomRightBar.hidden;
+ const inset=editing&&vv&&Number.isFinite(vv.height)&&Number.isFinite(vv.offsetTop)?Math.max(0,innerHeight-vv.height-vv.offsetTop):0;
+ tabletBottomRightBar.style.setProperty('--grid-keyboard-inset',inset+'px');
+}
+gridSizeInput.addEventListener('focus',positionGridSizeControl);gridSizeInput.addEventListener('blur',positionGridSizeControl);
+window.addEventListener('resize',positionGridSizeControl);
+window.visualViewport?.addEventListener('resize',positionGridSizeControl);window.visualViewport?.addEventListener('scroll',positionGridSizeControl);
 function tabletRightChromeTop(reserveBottomBar=false){
  if(!floatingToolsMedia.matches||(!reserveBottomBar&&tabletBottomRightBar.hidden))return Infinity;
  // Match LEFT admission: measure the row before showing it, without flashing.
@@ -2809,7 +2841,7 @@ function syncRadialPrimaryPresentation(){
  };
  const chromeBottom=tabletChromeBottom(true);
  const fitsChrome=(menu,bounds)=>!!menu?.layout&&menu.layout.radius<=bounds.right-bounds.left&&2*menu.layout.radius<=bounds.bottom-bounds.top;
- const fitted=floatingToolsMedia.matches&&usable(leftDrawingMenu)&&usable(rightCommandMenu)&&
+ const fitted=floatingToolsMedia.matches&&tabletBottomChromeFits()&&usable(leftDrawingMenu)&&usable(rightCommandMenu)&&
   fitsChrome(leftDrawingMenu,leftDrawingBounds(chromeBottom,tabletLeftChromeTop(true)))&&fitsChrome(rightCommandMenu,rightCommandBounds(chromeBottom,tabletRightChromeTop(true)));
  const keyboard=radialKeyboardShrink();
  if(fitted&&!keyboard)radialPrimaryLayout={width:innerWidth,height:innerHeight};

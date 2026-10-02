@@ -116,7 +116,9 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
   // Simulated MediaQueryList changes exercise same-node restoration without
   // reload; the opening desktop screenshot uses actual fine-pointer media.
   for(const matches of [false,true,false,true]){await p.evaluate(matches=>{Object.defineProperty(floatingToolsMedia,'matches',{configurable:true,value:matches});floatingToolsMedia.dispatchEvent(new MediaQueryListEvent('change',{matches,media:floatingToolsMedia.media}))},matches);await ready(matches);await identity(!matches);assert.deepEqual(await snapshot(),stable);assert.deepEqual(await view(),stableCamera);assert.equal(await bar.isVisible(),matches)}
-  await p.setViewportSize({width:390,height:784});await ready(true);await checkGeometry();assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  // The spacing input widens RIGHT chrome: restore sources when the rows overlap.
+  await p.setViewportSize({width:390,height:784});await ready(false);await identity(true);assert(await bar.isHidden());assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await p.setViewportSize({width:440,height:784});await ready(true);await checkGeometry();
   // RIGHT's low fixed sectors also stay clear on a narrow admitted viewport.
   await p.locator('.semicircle-right-menu [data-demo-id="hub"]').dispatchEvent('click');assert(await p.evaluate(()=>{const b=tabletBottomLeftBar.getBoundingClientRect(),controls=[...rightCommandMenu.host.querySelectorAll('.semicircle-control')].filter(e=>e.getBoundingClientRect().width);return controls.length>0&&controls.every(e=>{const r=e.getBoundingClientRect();return r.right<=b.left||r.left>=b.right||r.bottom<=b.top||r.top>=b.bottom})}));
   assert.deepEqual(await topCommands(),['clear','open','save','saveAs','svg','png']);assert.equal(await p.evaluate(()=>Object.keys(localStorage).some(k=>k.includes('bottom-zoom'))),false);assert.deepEqual(errors,[]);

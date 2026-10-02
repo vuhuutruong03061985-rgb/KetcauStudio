@@ -23,6 +23,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 #tools{display:grid;grid-template-columns:1fr 1fr;gap:3px}#tools button{margin:0;font-size:13px}
 #actions,#viewTools{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:10px}
 #actions button,#viewTools button{font-size:13px;margin:0}#zoomLevel{min-width:48px;text-align:center;font-size:13px}
+#gridSizeControl{display:flex;align-items:center;gap:4px;flex:none;margin:0;white-space:nowrap;font-size:13px}
+#gridSize{flex:none;width:60px;height:44px;min-height:44px;margin:0;padding:4px;font-size:16px;text-align:center}
 .canvas-wrap{overflow:hidden;background:#dce5eb;border-radius:8px;border:1px solid #cbd6df}
 #drawing{display:block;width:100%;height:100%;min-height:0;border:0;user-select:none;touch-action:none;background:white}
 
@@ -233,9 +235,11 @@ body[data-radial-context="true"] #commandControls{display:none}
 /* RIGHT view chrome mirrors the measured LEFT row, with its own safe inset. */
 #tabletBottomRightBar{display:none}
 @media(any-pointer:coarse){
- #tabletBottomRightBar{position:fixed;display:flex;right:calc(12px + env(safe-area-inset-right));bottom:calc(12px + env(safe-area-inset-bottom));height:48px;padding:1px;border:1px solid #cbd6df;border-radius:6px;background:#edf2f6;z-index:1500}
+ #tabletBottomRightBar{position:fixed;display:flex;right:calc(12px + env(safe-area-inset-right));bottom:calc(12px + env(safe-area-inset-bottom) + var(--grid-keyboard-inset,0px));height:48px;padding:1px;border:1px solid #cbd6df;border-radius:6px;background:#edf2f6;z-index:1500}
  #tabletBottomView{display:flex;align-items:center;gap:4px}
  #tabletBottomView button{flex:none;width:44px;height:44px;min-width:44px;min-height:44px;margin:0;padding:10px}
+ #tabletBottomView #gridSizeControl{width:60px;height:44px}
+ #tabletBottomView #gridSizeControl span{display:none}
  /* Closed fans retain the existing command row above the 48px view strip. */
  body[data-radial-primary="true"] #commandControls{bottom:calc(12px + env(safe-area-inset-bottom) + 48px + 8px)}
 }

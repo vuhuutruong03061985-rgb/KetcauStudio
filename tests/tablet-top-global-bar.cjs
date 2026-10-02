@@ -142,7 +142,8 @@ const commands=['clear','open','save','saveAs','svg','png','insertWord'];
   await p.setViewportSize({width:800,height:736});await ready(false);await settled();assert(await bar.isHidden());assert.equal(await p.evaluate(()=>rightCommandBounds().top),52);console.log('BASELINE 736 NOW FALLBACK',JSON.stringify(await geometry()));
   await p.setViewportSize({width:280,height:900});await ready(false);await p.evaluate(()=>{leftDrawingSafeProbe.style.paddingRight='calc(100vw - 60px)';leftDrawingMenu.refresh()});await settled();
   // A narrow admitted viewport keeps one row and every 44px source target.
-  await p.setViewportSize({width:390,height:900});await p.evaluate(()=>leftDrawingSafeProbe.style.removeProperty('padding-right'));await ready(true);await checkGeometry();assert.equal(await bar.locator('button:not([hidden])').count(),7);await identity(false);
+  await p.setViewportSize({width:390,height:900});await p.evaluate(()=>leftDrawingSafeProbe.style.removeProperty('padding-right'));await ready(false);await identity(true);assert(await bar.isHidden());
+  await p.setViewportSize({width:440,height:900});await ready(true);await checkGeometry();assert.equal(await bar.locator('button:not([hidden])').count(),7);await identity(false);
   assert.equal(await p.evaluate(()=>Object.keys(localStorage).some(k=>k.includes('tablet-top'))),false);
   assert.deepEqual(errors,[]);console.log('PASS exact real top sources, source Save/Open/New/SVG/PNG/Word, filename/dirty, no click-through, same-node restores, collapse independence, safe chrome/fit and media; screenshots:',out);
  }finally{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}

@@ -26,7 +26,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   const geometry=()=>p.evaluate(()=>({size:[tabletBottomRightBar.getBoundingClientRect().width,tabletBottomRightBar.getBoundingClientRect().height],
    targets:[gridButton,snapButton,drawingScalesButton].map(e=>[e.getBoundingClientRect().width,e.getBoundingClientRect().height]),
    bottoms:[leftDrawingBounds().bottom,rightCommandBounds().bottom],radii:[leftDrawingMenu.layout.radius,rightCommandMenu.layout.radius]}));
-  const measured=await geometry();assert.deepEqual(measured,{size:[144,48],targets:[[44,44],[44,44],[44,44]],bottoms:[732,732],radii:[304.04759747124507,248.81914748738225]});
+  const measured=await geometry();assert.deepEqual(measured,{size:[208,48],targets:[[44,44],[44,44],[44,44]],bottoms:[732,732],radii:[304.04759747124507,248.81914748738225]});
   const mapping=await p.evaluate(()=>rightCommandRings.map(r=>r.ids));assert.deepEqual(mapping,[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['panView','snapOptions','openCalculator']]);
   await shot('01-grid-off-landscape');await tap('#gridToggle');assert(await p.evaluate(()=>gridVisible));await shot('02-grid-on-landscape');await shot('11-three-bottom-right-controls');
   await p.setViewportSize({width:800,height:1280});await ready(true);await shot('03-grid-on-portrait');await p.setViewportSize({width:1280,height:800});await ready(true);
@@ -54,6 +54,6 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   if(!(await p.locator('#gridToggle').isVisible()))await p.locator('#ribbonToggle').click();await p.locator('#gridToggle').click();assert(!(await p.evaluate(()=>gridVisible)));await p.locator('#gridToggle').click();await shot('18-desktop-grid-on');
   assert.equal(await p.evaluate(()=>gridCanvasDowns),0);assert.deepEqual(await p.evaluate(()=>gridCommandKeys),[]);assert.deepEqual(await p.evaluate(()=>rightCommandRings.map(r=>r.ids)),mapping);assert.deepEqual(errors,[]);
   const report={measured,before:[96,48],jointMinimum:777,viewports:evidence,screenshots:fs.readdirSync(out).filter(n=>n.endsWith('.png')),input:'Edge headless, CDP touch emulation; no physical Android evidence'};
-  fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify(report,null,2));console.log('PASS Grid same-source ownership/handler, 144x48 strip, touch isolation, pending Bar, restored state, unchanged radii/bounds and joint threshold',JSON.stringify(report));
+  fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify(report,null,2));console.log('PASS Grid same-source ownership/handler, 208x48 strip, touch isolation, pending Bar, restored state, unchanged radii/bounds and joint threshold',JSON.stringify(report));
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
