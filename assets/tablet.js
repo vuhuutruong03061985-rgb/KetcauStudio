@@ -2066,6 +2066,30 @@ function tabletChromeBottom(reserveTopBar=false){
  return bottom;
 }
 
+// Zoom sources keep their existing camera handlers and output semantics.
+const tabletBottomLeftBar=document.createElement('div');tabletBottomLeftBar.id='tabletBottomLeftBar';tabletBottomLeftBar.hidden=true;
+tabletBottomLeftBar.setAttribute('role','toolbar');tabletBottomLeftBar.setAttribute('aria-label','Thu phóng');
+const tabletBottomZoom=document.createElement('div');tabletBottomZoom.id='tabletBottomZoom';tabletBottomLeftBar.append(tabletBottomZoom);
+document.body.append(tabletBottomLeftBar);
+const tabletZoomHomes=['zoomOut','zoomLevel','zoomIn'].map(id=>{
+ const control=$(id),anchor=document.createComment('tablet bottom zoom: '+id);control.before(anchor);return {control,anchor};
+});
+function paintTabletBottomZoom(active){
+ for(const {control,anchor}of tabletZoomHomes){
+  if(active){if(control.parentNode!==tabletBottomZoom)tabletBottomZoom.append(control)}
+  else if(control.previousSibling!==anchor)anchor.after(control);
+ }
+ tabletBottomLeftBar.hidden=!active;
+}
+function tabletLeftChromeTop(reserveBottomBar=false){
+ if(!floatingToolsMedia.matches||(!reserveBottomBar&&tabletBottomLeftBar.hidden))return Infinity;
+ // Admission measures the fixed row even in fallback, avoiding a fit/hide loop.
+ const hidden=tabletBottomLeftBar.hidden;if(hidden)tabletBottomLeftBar.hidden=false;
+ const top=tabletBottomLeftBar.getBoundingClientRect().top;
+ if(hidden)tabletBottomLeftBar.hidden=true;
+ return top;
+}
+
 // Shared Task 2B geometry/renderer; demo instances remain opt-in and session-only.
 const semicircleEngine=(()=>{
  const gap=2;let nextMenuId=0;
@@ -2470,9 +2494,10 @@ const leftContextOptions={
 };
 const leftContextEntries=focused=>leftContextOptions[focused?.id]||[];
 const leftDrawingSafeProbe=document.createElement('div');leftDrawingSafeProbe.className='semicircle-left-safe-probe';
-function leftDrawingBounds(chromeBottom=tabletChromeBottom()){
+function leftDrawingBounds(chromeBottom=tabletChromeBottom(),leftChromeTop=tabletLeftChromeTop()){
  const vv=window.visualViewport,s=getComputedStyle(leftDrawingSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
  const bounds={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),chromeBottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
+ bounds.bottom=Math.min(bounds.bottom,leftChromeTop-8);
  const reach=leftDrawingMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'left',rings:leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}).radius;
  // Use a free vertical interval when input/contextual controls occupy the left edge.
  // The engine keeps minimum targets and falls back to the old palette if it cannot fit.
@@ -2542,7 +2567,7 @@ function leftRingGesturePointer(e,entry,{centered,dragging}){
 window.addEventListener('pointerdown',e=>{
  if(leftDrawingForwarding)return;
  leftDrawingSwallowClick=false;
- if(tabletTopBar.contains(e.target)){leftDrawingMenu?.close();rightCommandMenu?.close();return}
+ if(tabletTopBar.contains(e.target)||tabletBottomLeftBar.contains(e.target)){leftDrawingMenu?.close();rightCommandMenu?.close();return}
  if(!leftDrawingMenu||leftDrawingMenu.host.hidden||window.semicircleDemo)return;
  if(rightCommandMenu?.host.contains(e.target))return;
  if(leftDrawingMenu.host.contains(e.target)){
@@ -2660,7 +2685,7 @@ for(const source of [commandControls,...sharedOuterActions.map(a=>a.source)])out
 const rightCommandConsumed=new Set();let rightCommandSwallowClick=false;
 window.addEventListener('pointerdown',e=>{
  rightCommandSwallowClick=false;
- if(tabletTopBar.contains(e.target))return;
+ if(tabletTopBar.contains(e.target)||tabletBottomLeftBar.contains(e.target))return;
  if(!rightCommandMenu||rightCommandMenu.host.hidden||window.semicircleDemo)return;
  if(rightCommandMenu.host.contains(e.target)){e.preventDefault();e.stopImmediatePropagation();return}
  if(leftDrawingMenu?.host.contains(e.target)||!rightCommandMenu.state.open)return;
@@ -2709,7 +2734,7 @@ function syncRadialPrimaryPresentation(){
  const chromeBottom=tabletChromeBottom(true);
  const fitsChrome=(menu,bounds)=>!!menu?.layout&&menu.layout.radius<=bounds.right-bounds.left&&2*menu.layout.radius<=bounds.bottom-bounds.top;
  const fitted=floatingToolsMedia.matches&&usable(leftDrawingMenu)&&usable(rightCommandMenu)&&
-  fitsChrome(leftDrawingMenu,leftDrawingBounds(chromeBottom))&&fitsChrome(rightCommandMenu,rightCommandBounds(chromeBottom));
+  fitsChrome(leftDrawingMenu,leftDrawingBounds(chromeBottom,tabletLeftChromeTop(true)))&&fitsChrome(rightCommandMenu,rightCommandBounds(chromeBottom));
  const keyboard=radialKeyboardShrink();
  if(fitted&&!keyboard)radialPrimaryLayout={width:innerWidth,height:innerHeight};
  // Unsafe fans remain hidden by the engine; close only their navigation state.
@@ -2723,6 +2748,7 @@ function syncRadialPrimaryPresentation(){
  // cannot intercept their taps when the added chrome forces fallback.
  if(value==='false'){leftDrawingMenu?.close();rightCommandMenu?.close()}
  paintTabletTopBar(value==='true');
+ paintTabletBottomZoom(value==='true');
  leftDrawingMenu?.refresh();rightCommandMenu?.refresh();
  // Only positioning is refreshed; no popup state, command or preference is changed.
  positionDrawingScales();positionSnapChoices();positionMomentPalette();positionSecondaryTools();
@@ -2733,6 +2759,7 @@ document.addEventListener('focusout',queueRadialPrimaryUpdate);
 queueRadialPrimaryUpdate();
 const tabletChromeObserver=new ResizeObserver(()=>{leftDrawingMenu?.refresh();rightCommandMenu?.refresh();queueRadialPrimaryUpdate()});
 tabletChromeObserver.observe(document.querySelector('header'));tabletChromeObserver.observe(tabletTopBar);
+tabletChromeObserver.observe(tabletBottomLeftBar);
 
 // DevTools: const demo = showSemicircleDemo(); demo.destroy() removes all listeners/UI.
 function showSemicircleDemo(){
