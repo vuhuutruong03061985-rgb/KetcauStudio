@@ -20,10 +20,11 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
       const r=aliases[id]?m.state.rings.find(r=>r.id===aliases[id]):m.state.rings.find(r=>r.entries.some(e=>e.id===id));
       const i=aliases[id]?(r.activeIndex+1)%r.entries.length:r.entries.findIndex(e=>e.id===id);return m.layout.rings.find(l=>l.id===r.id).sectors[i].icon;
      }
-     const aliases={file:'R2',history:'R1',edit:'R1',view:'R3',snap:'R3',settings:'R4'};const r=aliases[id]?m.state.rings.find(r=>r.id===aliases[id]):m.state.rings.find(r=>r.entries.some(e=>e.id===id));const i=aliases[id]?(r.activeIndex+1)%r.entries.length:r.entries.findIndex(e=>e.id===id);return m.layout.rings.find(l=>l.id===r.id).sectors[i].icon;
+     const aliases={history:'R1',edit:'R1',view:'R2',snap:'R2',settings:'R2'};const r=aliases[id]?m.state.rings.find(r=>r.id===aliases[id]):m.state.rings.find(r=>r.entries.some(e=>e.id===id));const i=aliases[id]?(r.activeIndex+1)%r.entries.length:r.entries.findIndex(e=>e.id===id);return m.layout.rings.find(l=>l.id===r.id).sectors[i].icon;
     },{id,side});await p.touchscreen.tap(q.x,q.y);
    };
    const command=async(side,group,id)=>{
+    if(side==='right'&&group==='file'){await p.evaluate(()=>rightCommandMenu.close());await p.locator('#'+id).tap();return;}
     if(!await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.open,side))await tap('hub',side);
     if(side==='left'){if(!await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side)}
     else if(!['undo','redo'].includes(id)&&!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side);
@@ -45,12 +46,12 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    await p.screenshot({path:`tests/radial-primary-closed-${viewport.width}.png`});
    // Review clean canvas and each navigation level in both orientations.
    for(const id of ['undo','redo'])assert(await p.locator('#'+id).isHidden());
-   for(const [side,group]of [['left','region'],['right','file']]){
+   for(const [side,group]of [['left','region'],['right','view']]){
     await tap('hub',side);
     await p.screenshot({path:`tests/task3a-${side}-open-${viewport.width}.png`});
     await tap(group,side);
     const root=p.locator(`.semicircle-${side}-menu`);
-    assert.equal(await root.locator('.selected-group').count(),4);
+    assert.equal(await root.locator('.selected-group').count(),side==='left'?4:2);
     assert.equal(await root.locator('text,button').count(),0);
     await p.screenshot({path:`tests/task3a-${side}-expanded-${viewport.width}.png`});
     await tap('hub',side);

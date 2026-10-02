@@ -61,7 +61,7 @@ const commands=['clear','open','save','saveAs','svg','png','insertWord'];
    const g=await geometry();assert.equal(g.primary,'true');assert.equal(g.height,48);assert.equal(g.headerBottom,g.topBarBottom-g.height);assert(g.canvasTop>=g.topBarBottom);assert(!g.overflow);
    assert(g.targets.every(t=>t.w>=44&&t.h>=44&&t.top>=g.headerBottom&&t.bottom<=g.topBarBottom));
    assert(g.menus.every(m=>m.fits&&m.bounds.top>=g.topBarBottom+8&&m.top>=g.topBarBottom+8));
-   assert.deepEqual(g.menus.map(m=>m.radius),[304.04759747124507,333.608041374721]);return g;
+   assert.deepEqual(g.menus.map(m=>m.radius),[304.04759747124507,248.81914748738225]);return g;
   };
   console.log('LANDSCAPE',JSON.stringify(await checkGeometry()));await shot('landscape');
   await p.evaluate(()=>{wordButton.hidden=true});await settled();assert.deepEqual(await visibleCommands(),commands.slice(0,-1));const exportWidth=await p.locator('#exportToolbar').evaluate(e=>e.getBoundingClientRect().width);await shot('word-hidden');
@@ -134,13 +134,13 @@ const commands=['clear','open','save','saveAs','svg','png','insertWord'];
   await p.evaluate(()=>{document.querySelector('header').style.removeProperty('height');tabletTopBar.style.removeProperty('padding-left');tabletTopBar.style.removeProperty('padding-right');leftDrawingSafeProbe.style.removeProperty('padding-left');rightCommandSafeProbe.style.removeProperty('padding-right')});await p.waitForFunction(()=>leftDrawingMenu.layout.bounds.top===100&&rightCommandMenu.layout.bounds.top===100);await p.setViewportSize({width:1280,height:800});await ready(true);
   await p.locator('.semicircle-left-menu [data-demo-id="hub"]').dispatchEvent('click');await checkGeometry();await shot('left-open');
   await p.locator('.semicircle-right-menu [data-demo-id="hub"]').dispatchEvent('click');await checkGeometry();await shot('right-open');
-  assert.deepEqual(await p.evaluate(()=>rightCommandRings[1].entries.map(e=>e.id)),commands);
+  assert.deepEqual(await p.evaluate(()=>rightCommandRings[1].entries.map(e=>e.id)),['panView','snapToggle','snapOptions','drawingScalesToggle']);
   await p.evaluate(()=>{leftDrawingMenu.close();rightCommandMenu.close()});await p.setViewportSize({width:800,height:1280});await ready(true);await checkGeometry();await shot('portrait');
   await p.setViewportSize({width:800,height:784});await ready(true);await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom===768);console.log('BOUNDARY FIT',JSON.stringify(await checkGeometry()));await p.locator('.semicircle-right-menu [data-demo-id="hub"]').dispatchEvent('click');await shot('boundary-fit');
-  await p.setViewportSize({width:800,height:783});await ready(false);await identity(true);assert(await bar.isHidden());await tap(p.locator('#ribbonToggle'));assert(await source('save').isVisible());await shot('fallback-ribbon');
+  await p.setViewportSize({width:800,height:776});await ready(false);await identity(true);assert(await bar.isHidden());await tap(p.locator('#ribbonToggle'));assert(await source('save').isVisible());await shot('fallback-ribbon');
   for(let i=0;i<6;i++){await p.evaluate(()=>{leftDrawingMenu.refresh();rightCommandMenu.refresh()});await settled();assert.equal(await p.evaluate(()=>document.body.dataset.radialPrimary),'false')}
   await p.setViewportSize({width:800,height:736});await ready(false);await settled();assert(await bar.isHidden());assert.equal(await p.evaluate(()=>rightCommandBounds().top),52);console.log('BASELINE 736 NOW FALLBACK',JSON.stringify(await geometry()));
-  await p.setViewportSize({width:320,height:900});await ready(false);await p.evaluate(()=>{leftDrawingSafeProbe.style.paddingRight='calc(100vw - 60px)';leftDrawingMenu.refresh()});await settled();
+  await p.setViewportSize({width:280,height:900});await ready(false);await p.evaluate(()=>{leftDrawingSafeProbe.style.paddingRight='calc(100vw - 60px)';leftDrawingMenu.refresh()});await settled();
   // A narrow admitted viewport keeps one row and every 44px source target.
   await p.setViewportSize({width:390,height:900});await p.evaluate(()=>leftDrawingSafeProbe.style.removeProperty('padding-right'));await ready(true);await checkGeometry();assert.equal(await bar.locator('button:not([hidden])').count(),7);await identity(false);
   assert.equal(await p.evaluate(()=>Object.keys(localStorage).some(k=>k.includes('tablet-top'))),false);

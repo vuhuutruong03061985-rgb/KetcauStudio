@@ -2647,12 +2647,10 @@ const rightCommandGroups=[
  {id:'settings',label:'Cài đặt',icon:'drawingScalesToggle',ids:['drawingScalesToggle','openCalculator']}
 ].map((group,index)=>({...group,tint:leftDrawingGroups[index].tint,children:[]}));
 const rightOneShot=new Set(['clear','open','save','saveAs','svg','png','insertWord','undo','redo','copyObjects','pasteObjects','zoomOut','zoomIn']);
-// Transitional complete command access, using the existing authoritative controls.
+// Compact production navigation/utilities, using the existing authoritative controls.
 const rightCommandRings=[
  {id:'R1',label:'Chỉnh sửa / Chọn',ids:['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],defaultTool:'resetView',tint:'#edf2f6'},
- {id:'R2',label:'Tệp tin',ids:['clear','open','save','saveAs','svg','png','insertWord'],defaultTool:'save',tint:'#edf3ef'},
- {id:'R3',label:'Chế độ xem / Bắt điểm',ids:['panView','zoomOut','zoomIn','snapToggle','snapOptions'],defaultTool:'panView',tint:'#edf2f4'},
- {id:'R4',label:'Tiện ích',ids:['drawingScalesToggle','openCalculator'],defaultTool:'drawingScalesToggle',tint:'#f3f0e9'}
+ {id:'R2',label:'Điều hướng / Tiện ích',ids:['panView','snapToggle','snapOptions','drawingScalesToggle','openCalculator'],defaultTool:'panView',tint:'#edf2f4'}
 ].map(ring=>({...ring,activeIndex:ring.ids.indexOf(ring.defaultTool),entries:[]}));
 function rightCommandSource(id){return id==='extend'?document.querySelector('button[data-mode="extend"]'):id==='insertWord'?wordButton:id==='snapOptions'?snapButton:$(id)}
 function refreshRightCommandEntries(){

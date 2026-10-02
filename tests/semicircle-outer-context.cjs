@@ -35,7 +35,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
   for(const side of ['left','right']){
    await open(side);const paths=await fixedPaths(side),before=await snapshot();
    // Real mouse contacts move each functional ring, leaving fixed geometry unchanged.
-   for(let index=0;index<4;index++){
+   for(let index=0;index<(side==='left'?4:2);index++){
     const q=await p.evaluate(({side,index})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu,r=m.state.rings[index],s=m.layout.rings[index].sectors[r.activeIndex];return{x:s.icon.x,y:s.icon.y,cx:m.layout.cx,cy:m.layout.cy,r:(s.r0+s.r1)/2,step:m.layout.rings[index].step}}, {side,index});
     const sign=side==='left'?1:-1;await p.mouse.move(q.x,q.y);await p.mouse.down();for(let i=1;i<=8;i++){const a=-sign*q.step*i/8;await p.mouse.move(q.cx+sign*q.r*Math.cos(a),q.cy+sign*q.r*Math.sin(a))}await p.mouse.up();await p.waitForTimeout(210);assert.deepEqual(await fixedPaths(side),paths);assert.deepEqual(await snapshot(),before);
    }
@@ -52,7 +52,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
   await p.locator('header strong').tap();await reset('select');await open('left');await shot('landscape');await p.setViewportSize({width:800,height:1280});await settled();await open('right');await shot('portrait');
   const geometry=()=>p.evaluate(()=>[leftDrawingMenu,rightCommandMenu].map(m=>({side:m.state.side,radius:m.layout.radius,bounds:m.layout.bounds,fits:m.layout.fits})));
   console.log('OUTER ENVELOPES',await geometry());await p.setViewportSize({width:800,height:784});await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom===768&&document.body.dataset.radialPrimary==='true');await open('right');await shot('boundary-fit');console.log('BOUNDARY FIT',await geometry());
-  await p.setViewportSize({width:800,height:783});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');await p.evaluate(()=>setMode('hatch'));await settled();assert(await p.locator('#commandControls').isVisible());assert.equal(await p.locator('.semicircle-outer-context:visible').count(),0);await shot('fallback');await p.locator('#commandCancel').tap();assert.equal(await p.evaluate(()=>mode),'select');console.log('BOUNDARY FALLBACK',await geometry());
+  await p.setViewportSize({width:800,height:776});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');await p.evaluate(()=>setMode('hatch'));await settled();assert(await p.locator('#commandControls').isVisible());assert.equal(await p.locator('.semicircle-outer-context:visible').count(),0);await shot('fallback');await p.locator('#commandCancel').tap();assert.equal(await p.evaluate(()=>mode),'select');console.log('BOUNDARY FALLBACK',await geometry());
   assert.deepEqual(errors,[]);console.log('PASS fixed outer geometry/mirroring/44px targets, source Cancel/Finish/history/disabled, Dynamic Input, fixed contacts/hover, independent rollers, switching/fallback; screenshots:',out);
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

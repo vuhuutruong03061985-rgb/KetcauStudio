@@ -1,7 +1,7 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
 const legacyExpected={file:['clear','open','save','saveAs','svg','png'],history:['undo','redo'],edit:['copyObjects','pasteObjects','editSelected','delete'],view:['resetView','panView','zoomOut','zoomIn'],snap:['snapToggle','snapOptions'],settings:['drawingScalesToggle']};
-const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],R2:['clear','open','save','saveAs','svg','png'],R3:['panView','zoomOut','zoomIn','snapToggle','snapOptions'],R4:['drawingScalesToggle']};
+const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],R2:['panView','snapToggle','snapOptions','drawingScalesToggle']};
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -17,12 +17,12 @@ const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','del
    };
    const openGroup=async group=>{if(!await p.evaluate(()=>rightCommandMenu.state.open))await activate('hub')};
    const focus=async id=>{await openGroup();if(['undo','redo'].includes(id))return;if(!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await activate(id)};
-   const command=async(group,id)=>{await focus(id);await activate(id);assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),['undo','redo'].includes(id),id+' menu state')};
+   const command=async(group,id)=>{if(['clear','open','save','saveAs','svg','png','insertWord','zoomIn','zoomOut'].includes(id)){await p.evaluate(()=>rightCommandMenu.close());await p.locator(id==='insertWord'?'#tabletTopBar [data-toolbar-icon=insertWord]':'#'+id).tap();return;}await focus(id);await activate(id);assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),['undo','redo'].includes(id),id+' menu state')};
    const snapshot=()=>p.evaluate(()=>({doc:documentText(),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,first,second,selected,multi:[...multiSelection],geometryScale,internalForceScale,camera:JSON.stringify(camera),handle:documentHandle?.name,name:documentName}));
    assert.equal(await root.count(),1);assert.equal(await p.locator('.semicircle-prototype').count(),0);
    assert.deepEqual(await p.evaluate(()=>Object.fromEntries(rightCommandRings.map(g=>[g.id,g.entries.map(c=>c.id)]))),expected);
    // Observe the original handlers without replacing their behavior.
-   await p.evaluate(()=>{window.commandClicks={};for(const c of [...rightCommandRings.flatMap(g=>g.entries),...sharedOuterActions].filter(c=>c.id!=='snapOptions'))c.source.addEventListener('click',()=>commandClicks[c.id]=(commandClicks[c.id]||0)+1)});
+   await p.evaluate(()=>{window.commandClicks={};for(const c of [...rightCommandRings.flatMap(g=>g.entries),...sharedOuterActions,...['clear','open','save','saveAs','svg','png','zoomIn','zoomOut'].map(id=>({id,source:document.getElementById(id)}))].filter(c=>c.id!=='snapOptions'))c.source.addEventListener('click',()=>commandClicks[c.id]=(commandClicks[c.id]||0)+1)});
    await p.evaluate(()=>{setMode('bar');first={x:300,y:300};selected=items[0].id;multiSelection=new Set([selected]);render();saveDraft()});
    const before=await snapshot();await activate('hub');const sharedOuterCount=await root.locator('[data-fixed-action]').count();assert.equal(await root.locator('.semicircle-control').count(),1+Object.values(expected).flat().length+sharedOuterCount);
    await p.screenshot({path:`tests/semicircle-right-inner-${viewport.width}.png`});
@@ -33,7 +33,7 @@ const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','del
      mirror:l.rings.flatMap(r=>r.sectors).every(s=>s.icon.x<l.cx),
      controls:rightCommandRings.flatMap(r=>r.entries).map(c=>({id:c.id,real:c.source===rightCommandSource(c.id),label:c.proxyLabel||c.source.getAttribute('aria-label')||c.source.title}))};
    });
-   assert(geometry.fits&&geometry.safe&&geometry.targets&&geometry.mirror);assert.equal(geometry.hub,26);assert(geometry.radius>253);
+   assert(geometry.fits&&geometry.safe&&geometry.targets&&geometry.mirror);assert.equal(geometry.hub,26);assert.equal(geometry.radius,248.81914748738225);
    for(const c of geometry.controls){assert(c.real);assert.equal(await sector(c.id).getAttribute('aria-label'),c.label);assert(await sector(c.id).locator('title').textContent());assert.equal(await sector(c.id).locator('.semicircle-icon').evaluate(el=>getComputedStyle(el).pointerEvents),'none')}
    console.log('GEOMETRY',viewport,geometry);
    assert.deepEqual(await snapshot(),before);await activate('hub','left');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),true);
@@ -57,10 +57,9 @@ const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','del
    await p.evaluate(()=>listCandidates([{name:'radial.json',handle:makeTestHandle('radial.json')}]));await p.locator('#drawingFileList button').click();await p.waitForFunction(()=>!$('confirmOpenDrawing').disabled);
    p.once('dialog',d=>d.accept());await p.locator('#confirmOpenDrawing').click();await p.waitForFunction(()=>documentName==='radial.json');assert(await p.locator('#openDrawingDialog').isHidden());
    for(const id of ['svg','png']){const download=p.waitForEvent('download');await command('file',id);assert.equal((await download).suggestedFilename(),'ket-cau.'+id)}
-   // Conditional Word proxy uses the same original button; no external Word request in this test.
+   // Word remains exclusively in the top bar, with its real availability/disabled state.
    await p.evaluate(()=>{wordButton.hidden=false;wordButton.addEventListener('click',()=>commandClicks.insertWord=(commandClicks.insertWord||0)+1)});await command('file','insertWord');assert.equal(await p.evaluate(()=>commandClicks.insertWord),1);
-   await p.evaluate(()=>wordButton.disabled=true);await focus('insertWord');assert.equal(await sector('insertWord').getAttribute('aria-disabled'),'true');await activate('insertWord');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),true);
-   await p.evaluate(()=>{wordButton.disabled=false;wordButton.hidden=true});assert.equal(await sector('insertWord').count(),0);await activate('hub');
+   await p.evaluate(()=>wordButton.disabled=true);assert(await p.locator('#tabletTopBar [data-toolbar-icon=insertWord]').isDisabled());await p.evaluate(()=>wordButton.click());assert.equal(await p.evaluate(()=>commandClicks.insertWord),1);await p.evaluate(()=>{wordButton.disabled=false;wordButton.hidden=true});assert.equal(await sector('insertWord').count(),0);
    // Existing history and base-point Copy/Paste, followed by mode commands.
    await p.evaluate(()=>{activateSelection();past=[];future=[];checkpoint();items[0].label='history';render()});
    await command('history','undo');assert.notEqual(await p.evaluate(()=>items[0].label),'history');await command('history','redo');assert.equal(await p.evaluate(()=>items[0].label),'history');
@@ -80,12 +79,12 @@ const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','del
    await command('settings','drawingScalesToggle');assert(await p.locator('#drawingScales').isVisible());await p.locator('#geometryScale').fill('125');await p.locator('#geometryScale').press('Tab');assert.equal(await p.evaluate(()=>geometryScale),125);
    await openGroup('settings');assert.equal(await sector('drawingScalesToggle').getAttribute('aria-expanded'),'true');await activate('drawingScalesToggle');assert(await p.locator('#drawingScales').isHidden());
    for(const [group,ids]of Object.entries(expected)){await openGroup(group);for(const id of ids)if(await p.evaluate(id=>rightOneShot.has(id),id)){assert.equal(await sector(id).getAttribute('aria-pressed'),null);assert(!(await sector(id).getAttribute('class')).includes('active'))}}
-   await openGroup('view');await sector('panView').dispatchEvent('pointerenter',{pointerType:'pen'});assert.equal(await p.evaluate(()=>rightCommandMenu.state.hoveredSector),'panView');await focus('zoomIn');await sector('zoomIn').focus();await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false);
+   await openGroup('view');await sector('panView').dispatchEvent('pointerenter',{pointerType:'pen'});assert.equal(await p.evaluate(()=>rightCommandMenu.state.hoveredSector),'panView');await focus('panView');await sector('panView').focus();await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false);
    await p.evaluate(()=>{rightCommandSafeProbe.style.paddingRight='calc(100vw - 60px)';rightCommandMenu.refresh()});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');
    await p.locator('#toggleTools').tap();await p.locator('button[data-mode=bar]').tap();assert.equal(await p.evaluate(()=>mode),'bar');await p.locator('#ribbonToggle').tap();await p.locator('#ribbonToggle').tap();assert(await p.locator('#ribbonScroll').isVisible());
    await p.evaluate(()=>{rightCommandSafeProbe.style.removeProperty('padding-right');rightCommandMenu.refresh()});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='true');
    // Every real required command above went through its original control.
-   const clicks=await p.evaluate(()=>commandClicks);for(const id of Object.values(expected).flat().filter(id=>id!=='snapOptions'))assert(clicks[id]>0,id+' original handler invoked');
+   const clicks=await p.evaluate(()=>commandClicks);for(const id of [...new Set([...Object.values(legacyExpected).flat(),...Object.values(expected).flat()])].filter(id=>id!=='snapOptions'))assert(clicks[id]>0,id+' original handler invoked');
    await command('snap','snapToggle');await p.locator('header strong').tap();await openGroup('snap');await p.screenshot({path:`tests/semicircle-right-${viewport.width}.png`});
    await p.evaluate(()=>{const vv=new EventTarget();Object.assign(vv,{offsetLeft:0,offsetTop:0,width:800,height:240});Object.defineProperty(window,'visualViewport',{configurable:true,value:vv});rightCommandMenu.refresh()});assert(await root.isHidden());assert(await p.locator('#ribbonToggle').isVisible());
    assert.deepEqual(errors,[]);console.log('PASS real right commands, navigation isolation, mirrored geometry, File, history, Edit, View, Snap, scales and fallback UI',viewport);await p.close();

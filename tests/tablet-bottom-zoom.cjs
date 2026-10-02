@@ -49,7 +49,7 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
    assert.equal(g.topHeight,48);assert(g.controls.every(c=>c.width>=44&&c.height>=44&&c.top>=g.bar.top&&c.bottom<=g.bar.bottom));
    assert.equal(g.menus[0].bounds.bottom,g.bar.top-8);assert.equal(g.menus[1].bounds.bottom,g.viewport.height-16);
    assert(g.menus.every(m=>m.fits&&m.top>=100));assert(g.menus[0].bottom<=g.bar.top-8);
-   assert.deepEqual(g.menus.map(m=>m.radius),[304.04759747124507,333.608041374721]);return g;
+   assert.deepEqual(g.menus.map(m=>m.radius),[304.04759747124507,248.81914748738225]);return g;
   };
   console.log('LANDSCAPE',JSON.stringify(await checkGeometry()));await output();await shot('landscape');await shot('zoom-100');await shot('top-and-bottom');
   const topCommands=()=>p.locator('#tabletTopCommands button:not([hidden])').evaluateAll(es=>es.map(e=>e.id||e.dataset.toolbarIcon));
@@ -91,13 +91,13 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
   assert.equal(await bar.evaluate(e=>e.getBoundingClientRect().left),24);assert.equal(await p.evaluate(()=>leftDrawingBounds().bottom),await bar.evaluate(e=>e.getBoundingClientRect().top-8));assert.equal(await p.evaluate(()=>rightCommandBounds().bottom),784);
   await p.evaluate(()=>{tabletBottomLeftBar.style.removeProperty('left');tabletBottomLeftBar.style.removeProperty('bottom');leftDrawingMenu.refresh()});await ready(true);await checkGeometry();
   for(const side of ['left','right']){await p.locator(`.semicircle-${side}-menu [data-demo-id="hub"]`).dispatchEvent('click');assert(await bar.isVisible());await checkGeometry();await shot(side+'-open')}
-  assert.deepEqual(await p.evaluate(()=>rightCommandRings[2].entries.map(e=>e.id)),['panView','zoomOut','zoomIn','snapToggle','snapOptions']);
+  assert.deepEqual(await p.evaluate(()=>rightCommandRings[1].entries.map(e=>e.id)),['panView','snapToggle','snapOptions','drawingScalesToggle']);
   await p.evaluate(()=>{leftDrawingMenu.close();rightCommandMenu.close();ribbonCollapsed=true;localStorage.setItem('ket-cau-ribbon-collapsed','true');paintCommandRibbon()});assert(await bar.isVisible());
   await p.setViewportSize({width:800,height:1280});await ready(true);console.log('PORTRAIT',JSON.stringify(await checkGeometry()));await shot('portrait');
   // Separate projected fan thresholds from joint admission. In fallback both
   // bars hide; hypothetical DOM measurements keep admission stable and truthful.
   const thresholds={left:null,right:null};
-  for(let height=760;height<=790;height++){
+  for(let height=600;height<=790;height++){
    await p.setViewportSize({width:800,height});await settled();await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom===innerHeight-16);
    const projected=await p.evaluate(()=>{
     const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top)];
@@ -106,9 +106,9 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
    for(const [i,side]of ['left','right'].entries())if(projected[i]&&thresholds[side]===null)thresholds[side]=height;
    await ready(projected.every(Boolean));
   }
-  assert.deepEqual(thresholds,{left:777,right:784});console.log('PROJECTED THRESHOLDS',JSON.stringify(thresholds));
+  assert.deepEqual(thresholds,{left:777,right:614});console.log('PROJECTED THRESHOLDS',JSON.stringify(thresholds));
   await p.setViewportSize({width:800,height:784});await ready(true);await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom===768);await p.locator('.semicircle-left-menu [data-demo-id="hub"]').dispatchEvent('click');console.log('JOINT BOUNDARY FIT',JSON.stringify(await checkGeometry()));await shot('boundary-fit');
-  const stable=await snapshot(),stableCamera=await view();await p.setViewportSize({width:800,height:783});await ready(false);await identity(true);assert(await bar.isHidden());assert(await p.locator('#tabletTopBar').isHidden());assert.equal(await p.evaluate(()=>leftDrawingBounds().bottom),767);assert.equal(await p.evaluate(()=>rightCommandBounds().bottom),767);
+  const stable=await snapshot(),stableCamera=await view();await p.setViewportSize({width:800,height:776});await ready(false);await identity(true);assert(await bar.isHidden());assert(await p.locator('#tabletTopBar').isHidden());assert.equal(await p.evaluate(()=>leftDrawingBounds().bottom),760);assert.equal(await p.evaluate(()=>rightCommandBounds().bottom),760);
   for(let i=0;i<6;i++){await p.evaluate(()=>{leftDrawingMenu.refresh();rightCommandMenu.refresh()});await settled();assert.equal(await p.evaluate(()=>document.body.dataset.radialPrimary),'false')}
   await tap(p.locator('#ribbonToggle'));assert(await p.locator('#zoomIn').isVisible());assert(await p.locator('#zoomOut').isVisible());assert(await p.locator('#zoomLevel').isVisible());await p.locator('#zoomIn').scrollIntoViewIfNeeded();await shot('fallback-ribbon');
   const fallbackWidth=(await view()).w;await tap(p.locator('#zoomIn'));assert.equal((await view()).w,fallbackWidth/1.25);await output();await tap(p.locator('#zoomOut'));assert.equal((await view()).w,fallbackWidth);

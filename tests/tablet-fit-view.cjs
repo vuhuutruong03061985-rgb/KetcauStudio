@@ -49,7 +49,7 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
   const geometry=async()=>{
    await settled();const g=await p.evaluate(()=>{const b=tabletBottomLeftBar.getBoundingClientRect();return {width:b.width,height:b.height,top:b.top,fit:{w:fitButton.getBoundingClientRect().width,h:fitButton.getBoundingClientRect().height},left:leftDrawingMenu.layout.bounds,right:rightCommandMenu.layout.bounds,radii:[leftDrawingMenu.layout.radius,rightCommandMenu.layout.radius]}});
    assert.equal(g.width,200);assert.equal(g.height,48);assert.deepEqual(g.fit,{w:44,h:44});assert.equal(g.left.bottom,g.top-8);assert.equal(g.right.bottom,await p.evaluate(()=>innerHeight-16));assert.equal(g.left.top,100);assert.equal(g.right.top,100);
-   assert.deepEqual(g.radii,[304.04759747124507,333.608041374721]);return g;
+   assert.deepEqual(g.radii,[304.04759747124507,248.81914748738225]);return g;
   };
   await p.evaluate(()=>{items=copy(fitInitialItems);render();camera={x:0,y:0,w:1100,h:720};applyCamera()});console.log('STRIP / SAFE BOUNDS',JSON.stringify(await geometry()));await shot('final-strip');await shot('fit-icon-100');
   const contained=async b=>{
@@ -108,11 +108,11 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
   // radial navigation is open, without changing ring positions or commands.
   await seed('wide');await p.locator('.semicircle-left-menu [data-demo-id="hub"]').dispatchEvent('click');await geometry();await shot('left-open');await invoke();assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
   await p.setViewportSize({width:800,height:1280});await ready(true);await invoke();await geometry();await shot('portrait');
-  const stable=await snapshot();await p.setViewportSize({width:800,height:783});await ready(false);await identity(true);assert(await bar.isHidden());assert(await fit.isVisible());await fit.scrollIntoViewIfNeeded();await shot('fallback-fit');await invoke();assert.deepEqual(await snapshot(),stable);
+  const stable=await snapshot();await p.setViewportSize({width:800,height:776});await ready(false);await identity(true);assert(await bar.isHidden());assert(await fit.isVisible());await fit.scrollIntoViewIfNeeded();await shot('fallback-fit');await invoke();assert.deepEqual(await snapshot(),stable);
   await p.setViewportSize({width:1280,height:800});await ready(true);await identity(false);await geometry();
   // MQL injection checks runtime restore; initial desktop used actual fine CSS.
   for(const matches of [false,true,false,true]){await p.evaluate(matches=>{Object.defineProperty(floatingToolsMedia,'matches',{configurable:true,value:matches});floatingToolsMedia.dispatchEvent(new MediaQueryListEvent('change',{matches,media:floatingToolsMedia.media}))},matches);await ready(matches);await identity(!matches);assert.equal(await bar.isVisible(),matches);assert.deepEqual(await snapshot(),stable)}
-  assert.deepEqual(await p.evaluate(()=>rightCommandRings[2].entries.map(e=>e.id)),['panView','zoomOut','zoomIn','snapToggle','snapOptions']);
+  assert.deepEqual(await p.evaluate(()=>rightCommandRings[1].entries.map(e=>e.id)),['panView','snapToggle','snapOptions','drawingScalesToggle']);
   assert.deepEqual(await p.locator('#tabletTopCommands button:not([hidden])').evaluateAll(es=>es.map(e=>e.id||e.dataset.toolbarIcon)),['clear','open','save','saveAs','svg','png']);
   const outputCamera=await cameraState();await tap(p.locator('#zoomLevel'));assert.deepEqual(await cameraState(),outputCamera);assert.equal(await p.evaluate(()=>Object.keys(localStorage).some(k=>k.includes('fit-view'))),false);assert.deepEqual(errors,[]);
   console.log('PASS authoritative Fit source/ownership, committed rendered bounds/padding/aspect/clamps, empty/degenerate/hidden/invalid, selection and active command preservation, same safe bounds; screenshots:',out);
