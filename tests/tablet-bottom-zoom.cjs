@@ -1,6 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{pathToFileURL}=require('node:url');
-const ids=['zoomOut','zoomLevel','zoomIn'];
+const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -19,7 +19,7 @@ const ids=['zoomOut','zoomLevel','zoomIn'];
   const output=async()=>assert.equal(await p.locator('#zoomLevel').textContent(),Math.round(1100/(await view()).w*100)+'%');
   const screen=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});
   await p.evaluate(()=>{
-   window.zoomSources=['zoomOut','zoomLevel','zoomIn'].map(id=>$(id));window.zoomHandlers=zoomSources.map(e=>e.onclick);
+   window.zoomSources=['zoomOut','zoomLevel','zoomIn','fitView'].map(id=>$(id));window.zoomHandlers=zoomSources.map(e=>e.onclick);
    window.zoomAttrs=zoomSources.map(e=>({title:e.title,label:e.getAttribute('aria-label'),icon:e.style.getPropertyValue('--tool-icon')}));
    window.zoomOriginalOrder=[...$('viewTools').children];window.zoomCalls={zoomOut:0,zoomIn:0};
    for(const id of ['zoomOut','zoomIn'])$(id).addEventListener('click',()=>zoomCalls[id]++);
@@ -27,7 +27,7 @@ const ids=['zoomOut','zoomLevel','zoomIn'];
    window.addEventListener('keydown',e=>{if(e.key==='Escape')zoomEscapes++},true);
   });
   const identity=async restored=>{
-   assert(await p.evaluate(restored=>zoomSources.every((e,i)=>e===$(['zoomOut','zoomLevel','zoomIn'][i])&&e.onclick===zoomHandlers[i]&&e.title===zoomAttrs[i].title&&e.getAttribute('aria-label')===zoomAttrs[i].label&&e.style.getPropertyValue('--tool-icon')===zoomAttrs[i].icon&&e.parentElement.id===(restored?'viewTools':'tabletBottomZoom')),restored));
+   assert(await p.evaluate(restored=>zoomSources.every((e,i)=>e===$(['zoomOut','zoomLevel','zoomIn','fitView'][i])&&e.onclick===zoomHandlers[i]&&e.title===zoomAttrs[i].title&&e.getAttribute('aria-label')===zoomAttrs[i].label&&e.style.getPropertyValue('--tool-icon')===zoomAttrs[i].icon&&e.parentElement.id===(restored?'viewTools':'tabletBottomZoom')),restored));
    if(restored)assert(await p.evaluate(()=>[...$('viewTools').children].every((e,i)=>e===zoomOriginalOrder[i])&&$('viewTools').children.length===zoomOriginalOrder.length));
    for(const id of ids)assert.equal(await p.locator('#'+id).count(),1);
   };
@@ -36,7 +36,7 @@ const ids=['zoomOut','zoomLevel','zoomIn'];
   await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:2});await ready(true);await identity(false);
   assert.deepEqual(await snapshot(),desktopState);assert.deepEqual(await view(),desktopCamera);
   assert.deepEqual(await p.locator('#tabletBottomZoom').evaluate(e=>[...e.children].map(c=>c.id)),ids);
-  assert.equal(await bar.locator('button').count(),2);assert.equal(await bar.locator('output').count(),1);
+  assert.equal(await bar.locator('button').count(),3);assert.equal(await bar.locator('output').count(),1);
   assert.equal(await p.locator('#zoomLevel').evaluate(e=>e.tagName),'OUTPUT');assert.equal(await p.locator('#zoomLevel').evaluate(e=>e.onclick),null);
   const geometry=()=>p.evaluate(()=>{
    const r=tabletBottomLeftBar.getBoundingClientRect(),top=tabletTopBar.getBoundingClientRect();
@@ -45,7 +45,7 @@ const ids=['zoomOut','zoomLevel','zoomIn'];
     menus:[leftDrawingMenu,rightCommandMenu].map(m=>({radius:m.layout.radius,fits:m.layout.fits,bounds:m.layout.bounds,top:m.layout.cy-m.layout.radius,bottom:m.layout.cy+m.layout.radius}))};
   });
   const checkGeometry=async()=>{
-   await settled();const g=await geometry();assert.equal(g.bar.height,48);assert.equal(g.bar.left,12);assert.equal(g.bar.bottom,g.viewport.height-12);assert.equal(g.bar.width,152);
+   await settled();const g=await geometry();assert.equal(g.bar.height,48);assert.equal(g.bar.left,12);assert.equal(g.bar.bottom,g.viewport.height-12);assert.equal(g.bar.width,200);
    assert.equal(g.topHeight,48);assert(g.controls.every(c=>c.width>=44&&c.height>=44&&c.top>=g.bar.top&&c.bottom<=g.bar.bottom));
    assert.equal(g.menus[0].bounds.bottom,g.bar.top-8);assert.equal(g.menus[1].bounds.bottom,g.viewport.height-16);
    assert(g.menus.every(m=>m.fits&&m.top>=100));assert(g.menus[0].bottom<=g.bar.top-8);

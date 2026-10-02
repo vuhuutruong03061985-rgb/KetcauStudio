@@ -1,6 +1,7 @@
 'use strict';
 
 // The camera changes only the SVG viewBox, never the drawing coordinates.
+const CAMERA_ASPECT=1100/720,CAMERA_MIN_WIDTH=137.5,CAMERA_MAX_WIDTH=4400;
 let camera={x:0,y:0,w:1100,h:720},panEnabled=false,gesture=null;
 const contacts=new Map();
 let touchSnapshot=null,suppressTouch=false,installPrompt=null;
@@ -137,8 +138,48 @@ function applyCamera(){
  if(['support','force','udl'].includes(mode))renderReferenceAnglePreview();
 }
 function zoomAt(factor,anchor={x:camera.x+camera.w/2,y:camera.y+camera.h/2}){
- const w=Math.max(137.5,Math.min(4400,camera.w/factor)),ratio=w/camera.w;
+ const w=Math.max(CAMERA_MIN_WIDTH,Math.min(CAMERA_MAX_WIDTH,camera.w/factor)),ratio=w/camera.w;
  camera={x:anchor.x-(anchor.x-camera.x)*ratio,y:anchor.y-(anchor.y-camera.y)*ratio,w,h:camera.h*ratio};
+ applyCamera();
+}
+function getDrawingVisualBounds(){
+ const committed=new Set(items.map(o=>o.id));let bounds=null;
+ const groups=[...svg.querySelectorAll('g[data-id]')].filter(g=>{
+  // Handles share the object's ID, but are camera-dependent editing overlays.
+  if(!committed.has(g.dataset.id)||g.matches('[data-move-anchor],[data-endpoint],[data-extend-end],[data-rigid-point],[data-rigid-action]'))return false;
+  const style=getComputedStyle(g);
+  return style.display!=='none'&&style.visibility!=='hidden'&&style.visibility!=='collapse'&&Number(style.opacity)!==0;
+ });
+ // Hide all editing decoration for one measurement pass, then restore exact
+ // styles synchronously. This keeps object measurements in the same layout.
+ const overlays=groups.flatMap(g=>[...g.querySelectorAll('[data-selection-decoration],[data-hit-area]')]).map(el=>({el,style:el.getAttribute('style')}));
+ try{
+  for(const {el}of overlays)el.style.setProperty('display','none','important');
+  for(const g of groups){
+   try{
+    const b=g.getBBox(),right=b.x+b.width,bottom=b.y+b.height;
+    if(![b.x,b.y,b.width,b.height,right,bottom].every(Number.isFinite)||b.width<0||b.height<0)continue;
+    bounds=bounds?{left:Math.min(bounds.left,b.x),top:Math.min(bounds.top,b.y),right:Math.max(bounds.right,right),bottom:Math.max(bounds.bottom,bottom)}:{left:b.x,top:b.y,right,bottom};
+   }catch{/* An unavailable/invalid SVG box does not prevent fitting other objects. */}
+  }
+ }finally{
+  for(const {el,style}of overlays){
+   // Preserve absent SVG style attributes as absent, without empty serialization.
+   if(style===null){const attr=el.getAttributeNode('style');if(attr)el.removeAttributeNode(attr)}
+   else el.setAttribute('style',style);
+  }
+ }
+ return bounds;
+}
+function fitDrawingView(){
+ const bounds=getDrawingVisualBounds();
+ if(!bounds)camera={x:0,y:0,w:1100,h:720};
+ else{
+  const width=bounds.right-bounds.left,height=bounds.bottom-bounds.top,padding=Math.max(24,Math.max(width,height)*.07);
+  const requiredWidth=Math.max(width+2*padding,(height+2*padding)*CAMERA_ASPECT);
+  const w=Math.max(CAMERA_MIN_WIDTH,Math.min(CAMERA_MAX_WIDTH,requiredWidth)),h=w/CAMERA_ASPECT;
+  camera={x:bounds.left+width/2-w/2,y:bounds.top+height/2-h/2,w,h};
+ }
  applyCamera();
 }
 function viewButton(id,label,handler){
@@ -148,6 +189,7 @@ function viewButton(id,label,handler){
 viewButton('zoomOut','−',()=>zoomAt(1/1.25)).setAttribute('aria-label','Thu nhỏ');
 const zoomLabel=document.createElement('output');zoomLabel.id='zoomLevel';zoomLabel.textContent='100%';$('viewTools').append(zoomLabel);
 viewButton('zoomIn','+',()=>zoomAt(1.25)).setAttribute('aria-label','Phóng to');
+const fitButton=viewButton('fitView','Vừa khung bản vẽ',fitDrawingView);
 function activateSelection(){
  rememberCancelSelection();const retainedSelection=cancelSelection;
  cancelLoadPlacement();
@@ -401,7 +443,7 @@ document.addEventListener('pointermove',e=>{
  if(contacts.has(e.pointerId))contacts.set(e.pointerId,{x:e.clientX,y:e.clientY});
  if(gesture?.kind==='pinch'&&contacts.size>=2){
   const pair=contactPair(),base=gesture.camera;
-  const width=Math.max(137.5,Math.min(4400,base.w*gesture.distance/pair.distance));
+  const width=Math.max(CAMERA_MIN_WIDTH,Math.min(CAMERA_MAX_WIDTH,base.w*gesture.distance/pair.distance));
   camera={...base,w:width,h:base.h*width/base.w};applyCamera();
   const current=new DOMPoint(pair.mid.x,pair.mid.y).matrixTransform(svg.getScreenCTM().inverse());
   camera.x+=gesture.anchor.x-current.x;camera.y+=gesture.anchor.y-current.y;applyCamera();stopPointer(e);
@@ -872,6 +914,7 @@ const toolIconPaths={
  joint:'M3 5L12 12L21 5M12 12V22M16 12A4 4 0 1 1 8 12A4 4 0 1 1 16 12',
  snapToggle:'M5 3V13A7 7 0 0 0 19 13V3H15V13A3 3 0 0 1 9 13V3ZM5 7H9M15 7H19',
  zoomIn:'M12 4V20M4 12H20',zoomOut:'M4 12H20',
+ fitView:'M8 3H3V8M16 3H21V8M3 16V21H8M21 16V21H16M3 3L8 8M21 3L16 8M3 21L8 16M21 21L16 16',
  resetView:'M9 3H3V9M15 3H21V9M3 15V21H9M15 21H21V15',
  panView:'M12 2V22M2 12H22M8 6L12 2L16 6M8 18L12 22L16 18M6 8L2 12L6 16M18 8L22 12L18 16',
  undo:'M4 10H15A6 6 0 0 1 15 22M9 5L4 10L9 15',
@@ -2071,7 +2114,7 @@ const tabletBottomLeftBar=document.createElement('div');tabletBottomLeftBar.id='
 tabletBottomLeftBar.setAttribute('role','toolbar');tabletBottomLeftBar.setAttribute('aria-label','Thu phóng');
 const tabletBottomZoom=document.createElement('div');tabletBottomZoom.id='tabletBottomZoom';tabletBottomLeftBar.append(tabletBottomZoom);
 document.body.append(tabletBottomLeftBar);
-const tabletZoomHomes=['zoomOut','zoomLevel','zoomIn'].map(id=>{
+const tabletZoomHomes=['zoomOut','zoomLevel','zoomIn','fitView'].map(id=>{
  const control=$(id),anchor=document.createComment('tablet bottom zoom: '+id);control.before(anchor);return {control,anchor};
 });
 function paintTabletBottomZoom(active){
