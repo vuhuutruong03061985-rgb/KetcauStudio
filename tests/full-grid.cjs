@@ -3,7 +3,7 @@ const {pathToFileURL}=require('node:url'),path=require('node:path'),assert=requi
 (async()=>{const b=await chromium.launch({channel:'msedge',headless:true});try{
  const p=await b.newPage({viewport:{width:800,height:1100}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
  await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>items.length>0);
- const absent=async()=>{assert.equal(await p.locator('[data-grid-background],#drawingGridPattern,#grid,#snap-grid').count(),0);assert.equal(await p.getByText('Cỡ lưới (px)',{exact:true}).count(),0)};
+ const absent=async()=>{assert.equal(await p.locator('[data-grid-background],#drawingGridPattern,#grid').count(),0);assert.equal(await p.getByText('Cỡ lưới (px)',{exact:true}).count(),0)};
  await absent();await p.locator('#zoomOut').click();await absent();
  await p.evaluate(()=>{camera.x=-1600;camera.y=2200;applyCamera();render()});await absent();
  await p.setViewportSize({width:1400,height:800});await absent();

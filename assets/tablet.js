@@ -782,7 +782,8 @@ snapChoices.setAttribute('role','group');snapChoices.setAttribute('aria-label','
 const snapIcons={endpoint:'M5 26L24 7M20 3H28V11H20Z',midpoint:'M3 24H29M16 7L24 23H8Z',intersection:'M5 5L27 27M27 5L5 27M11 11H21V21H11Z',member:'M3 26L29 6M20 16A4 4 0 1 0 12 16A4 4 0 1 0 20 16',dimension:'M6 3V29M26 3V29M6 16H26M10 12L6 16L10 20M22 12L26 16L22 20'};
 snapIcons.tangent='M3 24H29M8 24A8 8 0 1 1 24 24';
 snapIcons.perpendicular='M6 4V26H28M6 16H16V26';
-for(const [key,title]of [['endpoint','Đầu / cuối nét'],['midpoint','Trung điểm'],['intersection','Giao điểm'],['perpendicular','Vuông góc'],['tangent','Tangent / Contact'],['member','Điểm trên thanh'],['dimension','Căn đường kích thước']]){
+snapIcons.grid='M4 4H28V28H4ZM12 4V28M20 4V28M4 12H28M4 20H28';
+for(const [key,title]of [['endpoint','Đầu / cuối nét'],['midpoint','Trung điểm'],['intersection','Giao điểm'],['perpendicular','Vuông góc'],['tangent','Tangent / Contact'],['member','Điểm trên thanh'],['dimension','Căn đường kích thước'],['grid','Lưới']]){
  const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.checked=snapOptions[key];input.id='snap-'+key;
  const icon=document.createElementNS(NS,'svg');icon.setAttribute('viewBox','0 0 32 32');icon.setAttribute('aria-hidden','true');icon.style.cssText='width:30px;height:30px;border:0;flex:none';
  el('path',{d:snapIcons[key],fill:'none',stroke:'currentColor','stroke-width':1.5},icon);
@@ -1278,7 +1279,7 @@ document.addEventListener('pointerdown',e=>{
    items.push(...added);sectionPending=null;sectionPoints=[];activateSelection();
    if(placementTouch){touchSnapshot=placementTouch.snapshot;for(const [id,contact]of placementTouch.contacts)contacts.set(id,contact)}
    const ids=new Set(added.map(o=>o.id));multiSelection=ids;
-   groupDrag={start:point(e),before,ids,moved:true};
+   groupDrag={start:point(e,undefined,false),before,ids,moved:true};
    // Group drag needs original positions for the new objects as well as the undo snapshot.
    groupDrag.sectionAdded=copy(added);
    svg.setPointerCapture(e.pointerId);render();msg('Kéo bản trích đến vị trí mong muốn rồi thả chuột.');return;
@@ -1292,7 +1293,7 @@ document.addEventListener('pointerdown',e=>{
   if(o?.sectionGroup){
    const ids=new Set(items.filter(q=>q.sectionGroup===o.sectionGroup).map(q=>q.id));
    if(ids.size>1){e.preventDefault();e.stopImmediatePropagation();multiSelection=ids;selected=null;
-    groupDrag={start:point(e),before:copy(items),ids,moved:false};svg.setPointerCapture(e.pointerId);render();
+    groupDrag={start:point(e,undefined,false),before:copy(items),ids,moved:false};svg.setPointerCapture(e.pointerId);render();
    }
   }
  }

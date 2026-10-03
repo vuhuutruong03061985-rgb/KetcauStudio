@@ -214,7 +214,7 @@ function restoreDrawingScales(data={}){
 const newId=()=>typeof crypto.randomUUID==='function'?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
 const copy=x=>JSON.parse(JSON.stringify(x)),msg=()=>{}; // Bottom status panel removed; keep notification calls harmless.
 let snapEnabled=true;
-const snapOptions={endpoint:true,midpoint:true,intersection:true,member:true,dimension:true,perpendicular:true,tangent:false};
+const snapOptions={endpoint:true,midpoint:true,intersection:true,member:true,dimension:true,perpendicular:true,tangent:false,grid:false};
 try{const saved=JSON.parse(localStorage.getItem('ket-cau-snap-settings')||'null');if(saved){if(typeof saved.enabled==='boolean')snapEnabled=saved.enabled;for(const key of Object.keys(snapOptions))if(typeof saved.options?.[key]==='boolean')snapOptions[key]=saved.options[key]}}catch{}
 modes.curve='Cong bậc 2 · 3 điểm';
 function midpointSnap(p,excludeId=null){
@@ -1137,7 +1137,7 @@ svg.addEventListener('pointerdown',e=>{
   svg.setPointerCapture(e.pointerId);paintMarquee();return;
  }
  if(selectedObjectIds().size>1&&selectedObjectIds().has(id)){
-  e.stopImmediatePropagation();groupDrag={start:items.some(o=>selectedObjectIds().has(o.id)&&o.type==='person')?rawPoint(e):point(e),freeMove:items.some(o=>selectedObjectIds().has(o.id)&&o.type==='person'),before:copy(items),ids:selectedObjectIds(),moved:false,...(e.pointerType==='mouse'?{clickId:id,screenStart:{x:e.clientX,y:e.clientY},thresholdPassed:false}:{})};svg.setPointerCapture(e.pointerId);return;
+  e.stopImmediatePropagation();groupDrag={start:items.some(o=>selectedObjectIds().has(o.id)&&o.type==='person')?rawPoint(e):point(e,undefined,false),freeMove:items.some(o=>selectedObjectIds().has(o.id)&&o.type==='person'),before:copy(items),ids:selectedObjectIds(),moved:false,...(e.pointerType==='mouse'?{clickId:id,screenStart:{x:e.clientX,y:e.clientY},thresholdPassed:false}:{})};svg.setPointerCapture(e.pointerId);return;
  }
  multiSelection.clear();
 },true);
@@ -1145,7 +1145,7 @@ svg.addEventListener('pointermove',e=>{
  if(boxSelect){e.stopImmediatePropagation();boxSelect.end=rawPoint(e);boxSelect.dragged=Math.hypot(e.clientX-boxSelect.screenStart.x,e.clientY-boxSelect.screenStart.y)>=4;paintMarquee();return}
  if(!groupDrag)return;e.stopImmediatePropagation();
  if(groupDrag.screenStart&&!groupDrag.thresholdPassed){if(Math.hypot(e.clientX-groupDrag.screenStart.x,e.clientY-groupDrag.screenStart.y)<4)return;groupDrag.thresholdPassed=true}
- const p=groupDrag.freeMove?rawPoint(e):point(e),dx=p.x-groupDrag.start.x,dy=p.y-groupDrag.start.y;
+ const p=groupDrag.freeMove?rawPoint(e):point(e,undefined,false),dx=p.x-groupDrag.start.x,dy=p.y-groupDrag.start.y;
  groupDrag.moved=groupDrag.moved||!!(dx||dy);
  for(const original of [...groupDrag.before,...(groupDrag.sectionAdded||[])]){if(!groupDrag.ids.has(original.id))continue;const o=items.find(o=>o.id===original.id);if(!o)continue;
  o.x=original.x+dx;o.y=original.y+dy;if(original.x2!==undefined){o.x2=original.x2+dx;o.y2=original.y2+dy}}
@@ -1178,8 +1178,19 @@ function setMode(m){clearSupportPlacement();if(m!=='select')rememberCancelSelect
 for(const [m,title]of Object.entries(modes)){const b=document.createElement('button');b.textContent=title;b.dataset.mode=m;b.onclick=()=>chooseToolOptions(m);$('tools').append(b)}
 function props(){return Object.fromEntries(['label','support','direction','rotation'].map(k=>[k,$(k).value]))}
 function make(type,x,y,x2,y2,p={}){if(type==='person')return {id:newId(),type,x,y,angle:p.angle??0,size:p.size??PERSON_DEFAULT_SIZE};return {id:newId(),type,x,y,...(x2===undefined?{}:{x2,y2}),...props(),label:({force:'P',moment:'M',udl:'q',dim:'L',text:'A',diagramM:'kN.m',diagramQ:'kN',diagramN:'kN'})[type]||'',...p}}
-function point(e,exclude=rigidDrag?.kind==='pivot'?null:(rigidDrag?.id||(drag?selected:null))){const p=rawPoint(e);
+function gridSnap(p){
+ if(!snapEnabled||!gridVisible||!snapOptions.grid||!Number.isFinite(gridSize)||gridSize<10||gridSize>1000||!Number.isFinite(p.x)||!Number.isFinite(p.y))return null;
+ // Constrain the lattice index, keeping edge candidates on-grid and inside model bounds.
+ const limit=Math.floor(10000/gridSize),coordinate=value=>{
+  const index=Math.max(-limit,Math.min(limit,Math.round(value/gridSize)));
+  return Number((index*gridSize).toFixed(10))||0; // Remove multiplication noise and negative zero.
+ };
+ return {x:coordinate(p.x),y:coordinate(p.y)};
+}
+function point(e,exclude=rigidDrag?.kind==='pivot'?null:(rigidDrag?.id||(drag?selected:null)),useGrid=true){const p=rawPoint(e);
  const hit=geometricSnap(p,exclude);if(hit)return hit.point;
+ // Whole-object movement retains its existing geometric/raw acquisition path.
+ const grid=useGrid?gridSnap(p):null;if(grid)return grid;
  // The visible canvas can extend beyond the original page after panning/zooming.
  const coordinate=value=>Math.max(-10000,Math.min(10000,value));
  return {x:coordinate(p.x),y:coordinate(p.y)};
@@ -1187,9 +1198,9 @@ function point(e,exclude=rigidDrag?.kind==='pivot'?null:(rigidDrag?.id||(drag?se
 function orthogonalPoint(anchor,p){
  return Math.abs(p.x-anchor.x)>=Math.abs(p.y-anchor.y)?{x:p.x,y:anchor.y}:{x:anchor.x,y:p.y};
 }
-function drawingPoint(e){
+function drawingPoint(e,useGrid=true){
  const construction=constructionSnap(e);if(construction)return construction.point;
- const p=['moment','thin','dashed'].includes(mode)?(snapToBar(rawPoint(e))||point(e)):point(e);
+ const p=['moment','thin','dashed'].includes(mode)?(snapToBar(rawPoint(e))||point(e,undefined,useGrid)):point(e,undefined,useGrid);
  return e.shiftKey&&first&&['bar','thin','dashed','udl','linkBar'].includes(mode)?orthogonalPoint(first,p):p;
 }
 function extensionPoint(line,boundary,start){
@@ -1313,7 +1324,7 @@ if(mode==='person'){
  checkpoint();const o=make('person',placement.x,placement.y,undefined,undefined,{angle:placement.angle});items.push(o);selected=o.id;render();return;
 }
 if(mode==='support'){placeSupport(e);return}
-let p=drawingPoint(e);
+let p=drawingPoint(e,mode!=='select'||!!e.target.closest('[data-endpoint],[data-move-anchor]'));
 if(mode==='thin'&&first){commitThinCandidate(p,e);return}
 if(mode==='bar'&&first){commitBarCandidate(p,e);return}
 if(mode==='select'){selected=e.target.closest('[data-id]')?.dataset.id||null;const o=items.find(o=>o.id===selected);if(o){if(o.type!=='person')Object.keys(props()).forEach(k=>$(k).value=o[k]);drag={p:o.type==='person'||o.type==='rigidRegion'||drawingConnection(o)?rawPoint(e):p,o:copy(o),before:copy(items),moved:false,endpoint:e.target.closest('[data-endpoint]')?.dataset.endpoint,anchor:o.type!=='rigidRegion'&&!drawingConnection(o)&&!!e.target.closest('[data-move-anchor]')};svg.setPointerCapture(e.pointerId)}render();return}if(mode==='dim'){
@@ -1337,7 +1348,7 @@ if(drawingConnection(o)){
  try{validateConnection(next)}catch{return}Object.assign(o,next);drag.moved=JSON.stringify(next)!==JSON.stringify(drag.o);render();return;
 }
 if(o.type==='rigidRegion'){const p=rawPoint(e),next=translatedRigid(drag.o,{x:p.x-drag.p.x,y:p.y-drag.p.y});try{validateRigidRegion(next)}catch{rigidSnapHint=null;render();return}drag.moved=next.x!==drag.o.x||next.y!==drag.o.y;o.x=next.x;o.y=next.y;render();return;}
-let p=(drag.anchor||drag.endpoint)?(snapToBar(rawPoint(e),o.id)||point(e)):point(e);
+let p=(drag.anchor||drag.endpoint)?(snapToBar(rawPoint(e),o.id)||point(e)):point(e,undefined,false);
 if(drag.endpoint){
  const start=drag.endpoint==='start',otherX=start?o.x2:o.x,otherY=start?o.y2:o.y;
  if(e.shiftKey&&['bar','thin','dashed','udl'].includes(o.type))p=orthogonalPoint({x:otherX,y:otherY},p);
