@@ -369,7 +369,16 @@ function translationSnap(sources,excludeId){
  // Discrete targets win over contact; equal candidates retain control-point order.
  const rank={intersection:0,endpoint:1,midpoint:2,tangent:3,member:3};
  for(const source of sources){const hit=geometricSnap(source,excludeId);if(!hit)continue;const distance=Math.hypot(hit.point.x-source.x,hit.point.y-source.y);if(!best||rank[hit.kind]<rank[best.kind]||rank[hit.kind]===rank[best.kind]&&distance<best.distance-1e-9)best={...hit,source,distance}}
+ if(best)return best;
+ // Grid is a fallback after every geometric source has been considered.
+ for(const source of sources){const point=gridSnap(source);if(!point)continue;const distance=Math.hypot(point.x-source.x,point.y-source.y);if(!best||distance<best.distance)best={point,source,distance,kind:'grid'}}
  return best;
+}
+function translationWithinBounds(objects,dx,dy){
+ return objects.every(o=>{
+  const points=[{x:o.x,y:o.y},...(o.x2===undefined?[]:[{x:o.x2,y:o.y2}]),...(o.type==='rigidRegion'?geometricPoints(o):[])];
+  return points.every(p=>[p.x+dx,p.y+dy].every(value=>Number.isFinite(value)&&Math.abs(value)<=10000));
+ });
 }
 function offsetAt(a,b,p){const dx=b.x-a.x,dy=b.y-a.y;return ((p.x-a.x)*(-dy)+(p.y-a.y)*dx)/(Math.hypot(dx,dy)||1)}
 function snapDimensionOffset(a,b,offset,exclude=null){
@@ -1145,7 +1154,8 @@ svg.addEventListener('pointermove',e=>{
  if(boxSelect){e.stopImmediatePropagation();boxSelect.end=rawPoint(e);boxSelect.dragged=Math.hypot(e.clientX-boxSelect.screenStart.x,e.clientY-boxSelect.screenStart.y)>=4;paintMarquee();return}
  if(!groupDrag)return;e.stopImmediatePropagation();
  if(groupDrag.screenStart&&!groupDrag.thresholdPassed){if(Math.hypot(e.clientX-groupDrag.screenStart.x,e.clientY-groupDrag.screenStart.y)<4)return;groupDrag.thresholdPassed=true}
- const p=groupDrag.freeMove?rawPoint(e):point(e,undefined,false),dx=p.x-groupDrag.start.x,dy=p.y-groupDrag.start.y;
+ const p=groupDrag.freeMove?rawPoint(e):point(e),dx=p.x-groupDrag.start.x,dy=p.y-groupDrag.start.y;
+ if(!groupDrag.freeMove&&gridSnap(rawPoint(e))&&!translationWithinBounds([...groupDrag.before,...(groupDrag.sectionAdded||[])].filter(o=>groupDrag.ids.has(o.id)),dx,dy))return;
  groupDrag.moved=groupDrag.moved||!!(dx||dy);
  for(const original of [...groupDrag.before,...(groupDrag.sectionAdded||[])]){if(!groupDrag.ids.has(original.id))continue;const o=items.find(o=>o.id===original.id);if(!o)continue;
  o.x=original.x+dx;o.y=original.y+dy;if(original.x2!==undefined){o.x2=original.x2+dx;o.y2=original.y2+dy}}
@@ -1348,7 +1358,7 @@ if(drawingConnection(o)){
  try{validateConnection(next)}catch{return}Object.assign(o,next);drag.moved=JSON.stringify(next)!==JSON.stringify(drag.o);render();return;
 }
 if(o.type==='rigidRegion'){const p=rawPoint(e),next=translatedRigid(drag.o,{x:p.x-drag.p.x,y:p.y-drag.p.y});try{validateRigidRegion(next)}catch{rigidSnapHint=null;render();return}drag.moved=next.x!==drag.o.x||next.y!==drag.o.y;o.x=next.x;o.y=next.y;render();return;}
-let p=(drag.anchor||drag.endpoint)?(snapToBar(rawPoint(e),o.id)||point(e)):point(e,undefined,false);
+let p=(drag.anchor||drag.endpoint)?(snapToBar(rawPoint(e),o.id)||point(e)):point(e);
 if(drag.endpoint){
  const start=drag.endpoint==='start',otherX=start?o.x2:o.x,otherY=start?o.y2:o.y;
  if(e.shiftKey&&['bar','thin','dashed','udl'].includes(o.type))p=orthogonalPoint({x:otherX,y:otherY},p);
@@ -1358,6 +1368,7 @@ if(drag.endpoint){
  o[keyX]=p.x;o[keyY]=p.y;render();return;
 } 
 const dx=p.x-(drag.anchor?(['bar','dim','udl','thin','dashed'].includes(o.type)?(drag.o.x+drag.o.x2)/2:drag.o.x):drag.p.x),dy=p.y-(drag.anchor?(['bar','dim','udl','thin','dashed'].includes(o.type)?(drag.o.y+drag.o.y2)/2:drag.o.y):drag.p.y);
+if(!drag.anchor&&o.type!=='dim'&&gridSnap(rawPoint(e))&&!translationWithinBounds([drag.o],dx,dy))return;
 drag.moved=drag.moved||!!(dx||dy);if(o.type==='dim'&&!drag.anchor){o.offset=snapDimensionOffset(drag.o,{x:drag.o.x2,y:drag.o.y2},(drag.o.offset??0)+offsetAt(drag.o,{x:drag.o.x2,y:drag.o.y2},{x:drag.o.x+dx,y:drag.o.y+dy}),o.id);render();return}o.x=drag.o.x+dx;o.y=drag.o.y+dy;if(o.x2!==undefined){o.x2=drag.o.x2+dx;o.y2=drag.o.y2+dy}render()};
 svg.addEventListener('pointerleave',clearPersonPreview);
 svg.addEventListener('pointercancel',clearPersonPreview);

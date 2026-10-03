@@ -50,7 +50,7 @@ const near=(a,b)=>assert(Math.abs(a-b)<.003,`${a} != ${b}`),nearPoint=(a,b)=>{ne
   await reset('select');await p.evaluate(()=>{items=[make('bar',300,413,700,413)];snapOptions.member=true;render();setMode('thin')});await click(425,413);assert(await p.evaluate(()=>!!getThinReferenceBar()));
   const q=await coords(461,467),expected=await p.evaluate(q=>getThinConstrainedGeometry(getThinReferenceBar(),rawPoint({clientX:q.x,clientY:q.y})),q);
   await click(461,467);const thin=await p.evaluate(()=>items.at(-1));nearPoint(thin,expected.drawStartPoint);nearPoint({x:thin.x2,y:thin.y2},expected.endpoint);assert(Math.abs(thin.y2/25-Math.round(thin.y2/25))>.001);
-  // Whole-object drags must produce the same non-lattice translation with Grid checked or unchecked.
+  // C2 adds destination Grid fallback; the off preference retains C1's raw movement.
   const translation=[];
   for(const kind of ['bar','linkBar','rigidRegion','group','sectionGroup']){
    const outputs=[];for(const grid of [false,true]){
@@ -64,7 +64,13 @@ const near=(a,b)=>assert(Math.abs(a-b)<.003,`${a} != ${b}`),nearPoint=(a,b)=>{ne
     else{await p.mouse.move(a.x,a.y);await p.mouse.down();await p.mouse.move(b.x,b.y,{steps:3});await p.mouse.up()}
     outputs.push(await p.evaluate(()=>items.map(({id,...o})=>o)));
    }
-   for(let i=0;i<outputs[0].length;i++){nearPoint(outputs[0][i],{x:423.4,y:['group','sectionGroup'].includes(kind)&&i===1?537.6:437.6});for(const key of ['x','y','x2','y2'])if(key in outputs[0][i])near(outputs[0][i][key],outputs[1][i][key])}
+   for(let i=0;i<outputs[0].length;i++){
+    const grouped=['group','sectionGroup'].includes(kind),connection=['linkBar','rigidRegion'].includes(kind);
+    nearPoint(outputs[0][i],{x:423.4,y:grouped&&i===1?537.6:437.6});
+    nearPoint(outputs[1][i],{x:connection?425:427,y:grouped&&i===1?550:450});
+    if('x2' in outputs[0][i]){near(outputs[1][i].x2-outputs[1][i].x,outputs[0][i].x2-outputs[0][i].x);near(outputs[1][i].y2-outputs[1][i].y,outputs[0][i].y2-outputs[0][i].y)}
+    if(kind==='rigidRegion')assert.deepEqual(outputs[1][i].points,outputs[0][i].points);
+   }
    translation.push({kind,withoutGrid:outputs[0],withGrid:outputs[1]});
   }
   // Existing endpoint editing acquires a point, unlike body translation.
@@ -72,5 +78,5 @@ const near=(a,b)=>assert(Math.abs(a-b)<.003,`${a} != ${b}`),nearPoint=(a,b)=>{ne
   await p.mouse.move(end.x,end.y);await p.mouse.down();await p.mouse.move(dest.x,dest.y,{steps:3});await p.mouse.up();nearPoint(await p.evaluate(()=>({x:items[0].x2,y:items[0].y2})),{x:725,y:525});
   assert.deepEqual(errors,[]);fs.writeFileSync(path.join(out,touch?'touch-evidence.json':'desktop-evidence.json'),JSON.stringify({priority,translation},null,2));await context.close();
  }
- console.log('PASS geometric/construction priority, representative tools, locked Bar, Thin reference, whole-object translation exclusion and endpoint edits (desktop + emulated touch)');
+ console.log('PASS geometric/construction priority, representative tools, locked Bar, Thin reference, C2 translation fallback/default-off and C1 endpoint edits (desktop + emulated touch)');
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
