@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id),svg=$('drawing'),NS='http://www.w3.org/2
 const modes={person:'H\u00ecnh ng\u01b0\u1eddi',select:'Chọn',hatch:'Hatch biểu đồ',extend:'Kéo dài tới biên',bar:'Thanh',thin:'Nét liền mảnh',dashed:'Nét đứt mảnh',support:'Gối tựa',hinge:'Khớp',force:'Lực',moment:'Mô men',udl:'Tải đều',dim:'Kích thước',text:'Chữ',positive:'Dấu (+)',negative:'Dấu (−)',diagramM:'Biểu đồ M',diagramQ:'Biểu đồ Q',diagramN:'Biểu đồ N'};
 let hatchPoints=[];
 let rigidPoints=[],rigidDrag=null;
-let rigidPivot=null,rigidSnapHint=null;
+let rigidPivot=null,rigidSnapHint=null,rigidSnapGridSize=null;
 const rigidRadians=o=>(o.rigidAngle||0)*Math.PI/180;
 // Pure support orientation: SVG local +Y points toward the cursor.
 // Degrees in (-180, 180], with positive zero; <= 1e-9 drawing units has no direction.
@@ -182,7 +182,7 @@ function renderRigidControls(){
   const mark=el('text',{x:p.x,y:p.y+4/scale,'text-anchor':'middle','font-size':12/scale,fill:'#087d95','pointer-events':'none'},g);mark.textContent=kind==='pivot'?'+':'↻';
   el('title',{},g).textContent=kind==='pivot'?'Kéo tâm xoay':'Kéo để xoay quanh tâm';
  }
- if(rigidSnapHint){const p=rigidSnapHint.point,r=6/scale,g=el('g',{'data-rigid-snap':rigidSnapHint.kind,'pointer-events':'none',stroke:'#087d95',fill:'none'});el('circle',{cx:p.x,cy:p.y,r,'vector-effect':'non-scaling-stroke'},g);if(rigidSnapHint.tangent){const v=rigidSnapHint.tangent;line(g,p.x-v.x*r*2,p.y-v.y*r*2,p.x+v.x*r*2,p.y+v.y*r*2)}}
+ if(rigidSnapHint){const p=rigidSnapHint.point,r=6/scale,g=el('g',{'data-rigid-snap':rigidSnapHint.kind,'pointer-events':'none','aria-hidden':'true',stroke:'#087d95',fill:'none'});el('circle',{cx:p.x,cy:p.y,r,'vector-effect':'non-scaling-stroke'},g);if(rigidSnapHint.tangent){const v=rigidSnapHint.tangent;line(g,p.x-v.x*r*2,p.y-v.y*r*2,p.x+v.x*r*2,p.y+v.y*r*2)}}
 }
 let extendBoundary=null;
 let multiSelection=new Set(),boxSelect=null,groupDrag=null;
@@ -362,7 +362,7 @@ function geometricSnap(p,exclude=null){
 }
 function translatedRigid(o,delta){
  const moved={...o,x:o.x+delta.x,y:o.y+delta.y},best=translationSnap(o.points.map(local=>rigidWorld(moved,local)),o.id);
- if(best){moved.x+=best.point.x-best.source.x;moved.y+=best.point.y-best.source.y}rigidSnapHint=best;return moved;
+ if(best){moved.x+=best.point.x-best.source.x;moved.y+=best.point.y-best.source.y}rigidSnapHint=best;rigidSnapGridSize=best?.kind==='grid'?gridSize:null;return moved;
 }
 function translationSnap(sources,excludeId){
  let best=null;
@@ -867,6 +867,8 @@ function definePersonSymbol(defs){
  for(const [x1,y1,x2,y2]of [[0,2,0,12],[0,5,-5,9],[0,5,5,9],[0,12,-5,20],[0,12,5,20]])line(symbol,x1,y1,x2,y2);
 }
 function render(clean=false){
+ // A settings redraw must not preserve a Grid marker from an earlier spacing or disabled option.
+ if(rigidSnapHint?.kind==='grid'&&(rigidSnapGridSize!==gridSize||!gridSnap(rigidSnapHint.point)))rigidSnapHint=null;
  syncThinReferenceSession();
  if(typeof syncBarNumericInput==='function')syncBarNumericInput();
  if(typeof syncThinNumericInput==='function')syncThinNumericInput();
@@ -1629,6 +1631,7 @@ document.addEventListener('keydown',e=>{
  const chosen=items.filter(o=>ids.has(o.id));if(!chosen.length)return;
  e.preventDefault();
  const step=(e.shiftKey?5:1),[vx,vy]=arrows[e.key];
+ rigidSnapHint=null;
  checkpoint();for(const o of chosen){o.x+=vx*step;o.y+=vy*step;if(o.x2!==undefined){o.x2+=vx*step;o.y2+=vy*step}}
  render();
 });
