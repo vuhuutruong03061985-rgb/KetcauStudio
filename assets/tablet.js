@@ -338,9 +338,11 @@ const toolboxHeading=document.createElement('div');toolboxHeading.className='too
 toolboxPanel.prepend(toolboxHeading);toolboxHeading.append(toolboxPanel.querySelector('h2'),toolboxPin);
 toolboxShell.append(toolboxHandle);toolboxHandle.className='toolbox-edge-handle';
 let toolboxMode='pinned-open',toolboxOpen=false,toolboxCloseTimer=null,toolboxTouchInteraction=false;
+let tabletOwnershipSyncing=false;
 function cancelToolboxClose(){clearTimeout(toolboxCloseTimer);toolboxCloseTimer=null}
 function paintToolbox(){
  if(floatingToolsMedia.matches){paintFloatingTools();return}
+ toolboxHandle.hidden=false;toolboxHandle.inert=false;
  const visible=toolboxMode==='pinned-open'||toolboxMode==='auto-hide'&&toolboxOpen;
  toolboxShell.dataset.toolboxMode=toolboxMode;toolboxShell.classList.toggle('toolbox-overlay-open',toolboxMode==='auto-hide'&&toolboxOpen);
  document.body.classList.toggle('tools-collapsed',!visible);
@@ -2029,6 +2031,14 @@ function positionFloatingTools(){
 }
 function paintFloatingTools(){
  toolboxShell.dataset.floatingTools='true';document.body.classList.remove('tools-collapsed');
+ const radial=document.body.dataset.radialPrimary==='true';
+ toolboxHandle.hidden=radial;toolboxHandle.inert=radial;
+ if(radial){
+  cancelToolboxClose();floatingToolsOpen=false;toolboxOpen=false;
+  const pointer=floatingToolsDrag?.id;floatingToolsDrag=null;
+  if(pointer!==undefined&&toolboxHandle.hasPointerCapture(pointer))toolboxHandle.releasePointerCapture(pointer);
+  if(toolboxPanel.contains(document.activeElement)||toolboxHandle===document.activeElement)document.activeElement.blur();
+ }
  toolboxPanel.hidden=!floatingToolsOpen;toolboxPanel.inert=!floatingToolsOpen;
  toolboxHandle.textContent='\u2637';toolboxHandle.setAttribute('aria-label','C\u00f4ng c\u1ee5');toolboxHandle.title='C\u00f4ng c\u1ee5';toolboxHandle.setAttribute('aria-expanded',String(floatingToolsOpen));
  toolboxHandle.classList.toggle('active',mode!=='select');toolboxHandle.dataset.activeTool=mode;
@@ -2084,6 +2094,7 @@ function paintCommandRibbon(){
   ribbonToggle.style.setProperty('--tool-icon',`url("data:image/svg+xml,${encodeURIComponent(ribbonIcon)}")`);
   ribbonToggle.title=ribbonCollapsed?'M\u1edf thanh c\u00f4ng c\u1ee5':'Thu g\u1ecdn thanh c\u00f4ng c\u1ee5';ribbonToggle.setAttribute('aria-label',ribbonToggle.title);ribbonToggle.setAttribute('aria-expanded',String(!ribbonCollapsed));
  }else if(commandRibbon.isConnected){commandRibbon.before($('actions'),$('viewTools'));commandRibbon.remove()}
+ if(!tabletOwnershipSyncing&&document.body.dataset.radialPrimary!==undefined)queueRadialPrimaryUpdate();
 }
 ribbonToggle.addEventListener('pointerdown',e=>e.preventDefault());
 ribbonToggle.onclick=()=>{
@@ -2181,11 +2192,12 @@ function tabletBottomChromeFits(){
  if(!tabletBottomLeftBar.hidden&&!tabletBottomRightBar.hidden)tabletBottomChromeWidths={left:tabletBottomLeftBar.offsetWidth,right:tabletBottomRightBar.offsetWidth};
  if(!tabletBottomChromeWidths)return true;
  const left=parseFloat(getComputedStyle(tabletBottomLeftBar).left),right=parseFloat(getComputedStyle(tabletBottomRightBar).right);
- return left+tabletBottomChromeWidths.left<=innerWidth-right-tabletBottomChromeWidths.right;
+ return left+tabletBottomChromeWidths.left<=(window.visualViewport?.width||innerWidth)-right-tabletBottomChromeWidths.right;
 }
 function positionGridSizeControl(){
- const vv=window.visualViewport,editing=document.activeElement===gridSizeInput&&!tabletBottomRightBar.hidden;
- const inset=editing&&vv&&Number.isFinite(vv.height)&&Number.isFinite(vv.offsetTop)?Math.max(0,innerHeight-vv.height-vv.offsetTop):0;
+ const vv=window.visualViewport;
+ const inset=vv&&Number.isFinite(vv.height)&&Number.isFinite(vv.offsetTop)?Math.max(0,innerHeight-vv.height-vv.offsetTop):0;
+ tabletBottomLeftBar.style.setProperty('--tablet-viewport-inset',inset+'px');
  tabletBottomRightBar.style.setProperty('--grid-keyboard-inset',inset+'px');
 }
 gridSizeInput.addEventListener('focus',positionGridSizeControl);gridSizeInput.addEventListener('blur',positionGridSizeControl);
@@ -2594,7 +2606,7 @@ const leftDrawingRings=[
  {id:'L3',label:'Tải trọng',tools:['force','moment','udl'],defaultTool:'force',tint:leftDrawingGroups[2].tint},
  {id:'L4',label:'Chú thích / Biểu diễn',tools:['dim','text','person','section','rigidRegion','hatch','joint','diagram'],defaultTool:'dim',tint:leftDrawingGroups[3].tint}
 ].map(ring=>({...ring,activeIndex:ring.tools.indexOf(ring.defaultTool),entries:ring.tools.map(id=>id==='diagram'?leftDiagramParent:leftDrawingGroups.flatMap(g=>g.children).find(entry=>entry.id===id))}));
-let leftDrawingMenu=null,rightCommandMenu=null,radialPrimaryQueued=false,radialPrimaryLayout=null;
+let leftDrawingMenu=null,rightCommandMenu=null,radialPrimaryQueued=false;
 // Context belongs to the last focused function, independently of drawing mode.
 // Children retain their authoritative controls; no alternate activation path.
 const leftContextOptions={
@@ -2604,11 +2616,21 @@ const leftContextOptions={
 };
 const leftContextEntries=focused=>leftContextOptions[focused?.id]||[];
 const leftDrawingSafeProbe=document.createElement('div');leftDrawingSafeProbe.className='semicircle-left-safe-probe';
-function leftDrawingBounds(chromeBottom=tabletChromeBottom(),leftChromeTop=tabletLeftChromeTop()){
+// The fixed outer actions do not occupy the poles of their enclosing circle.
+// Admit the existing artwork using its swept envelope, with decoration clearance;
+// only expand the engine's conservative bounds when the real envelope fits.
+function fitTabletRadialBounds(bounds,layout){
+ if(!layout.contextRing||2*layout.radius<=bounds.bottom-bounds.top)return bounds;
+ const sectors=[...layout.contextRing.sectors,...layout.contextRing.middle.flat()];
+ const extent=Math.max(layout.hubRadius,...layout.rings.map(r=>r.r1),...sectors.flatMap(s=>[Math.abs(Math.sin(s.a0))*s.r1,Math.abs(Math.sin(s.a1))*s.r1]))+3;
+ if(2*extent<=bounds.bottom-bounds.top){const spare=Math.max(0,layout.radius-extent);bounds.top-=spare;bounds.bottom+=spare}
+ return bounds;
+}
+function leftDrawingBounds(chromeBottom=tabletChromeBottom(true),leftChromeTop=tabletLeftChromeTop(true)){
  const vv=window.visualViewport,s=getComputedStyle(leftDrawingSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
  const bounds={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),chromeBottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
  bounds.bottom=Math.min(bounds.bottom,leftChromeTop-8);
- const reach=leftDrawingMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'left',rings:leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}).radius;
+ const layout=leftDrawingMenu?.layout??semicircleEngine.solveConcentricRingLayout({side:'left',rings:leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}),reach=layout.radius;
  // Use a free vertical interval when input/contextual controls occupy the left edge.
  // The engine keeps minimum targets and falls back to the old palette if it cannot fit.
  for(const id of ['dynamicInput']){
@@ -2620,7 +2642,7 @@ function leftDrawingBounds(chromeBottom=tabletChromeBottom(),leftChromeTop=table
   }
  }
  bounds.bottom=Math.max(bounds.top+1,bounds.bottom);bounds.right=Math.max(bounds.left+1,bounds.right);
- return bounds;
+ return fitTabletRadialBounds(bounds,layout);
 }
 function mountLeftDrawingMenu(){
  if(!floatingToolsMedia.matches){leftDrawingMenu?.destroy();leftDrawingMenu=null;leftDrawingSafeProbe.remove();return}
@@ -2739,11 +2761,11 @@ function refreshRightCommandEntries(){
  }
 }
 const rightCommandSafeProbe=document.createElement('div');rightCommandSafeProbe.className='semicircle-left-safe-probe';
-function rightCommandBounds(chromeBottom=tabletChromeBottom(),rightChromeTop=tabletRightChromeTop()){
+function rightCommandBounds(chromeBottom=tabletChromeBottom(true),rightChromeTop=tabletRightChromeTop(true)){
  const vv=window.visualViewport,s=getComputedStyle(rightCommandSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
  const b={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),chromeBottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
  if(Number.isFinite(rightChromeTop))b.bottom=Math.min(b.bottom,rightChromeTop-8);
- const reach=rightCommandMenu?.layout.radius??semicircleEngine.solveConcentricRingLayout({side:'right',rings:rightCommandRings.map(r=>({id:r.id,count:r.entries.length})),bounds:b,fixedOuter:true}).radius;
+ const layout=rightCommandMenu?.layout??semicircleEngine.solveConcentricRingLayout({side:'right',rings:rightCommandRings.map(r=>({id:r.id,count:r.entries.length})),bounds:b,fixedOuter:true}),reach=layout.radius;
  for(const id of ['dynamicInput']){
   const control=$(id);if(!control||control.hidden)continue;
   const r=control.getBoundingClientRect();
@@ -2751,7 +2773,7 @@ function rightCommandBounds(chromeBottom=tabletChromeBottom(),rightChromeTop=tab
    if(r.top-b.top>=b.bottom-r.bottom)b.bottom=Math.min(b.bottom,r.top-8);else b.top=Math.max(b.top,r.bottom+8);
   }
  }
- b.bottom=Math.max(b.top+1,b.bottom);b.right=Math.max(b.left+1,b.right);return b;
+ b.bottom=Math.max(b.top+1,b.bottom);b.right=Math.max(b.left+1,b.right);return fitTabletRadialBounds(b,layout);
 }
 function mountRightCommandMenu(){
  if(!floatingToolsMedia.matches){rightCommandMenu?.destroy();rightCommandMenu=null;rightCommandSafeProbe.remove();return}
@@ -2812,27 +2834,23 @@ function queueRadialPrimaryUpdate(){
  if(radialPrimaryQueued)return;
  radialPrimaryQueued=true;queueMicrotask(()=>{radialPrimaryQueued=false;syncRadialPrimaryPresentation()});
 }
-let radialKeyboardSession=null;
-function radialKeyboardShrink(){
- const el=document.activeElement,vv=window.visualViewport,baseline=radialPrimaryLayout;
- const editable=el&&(el.isContentEditable||el.matches('input:not([readonly]):not([disabled]),textarea:not([readonly]):not([disabled]),select:not([disabled])'));
- // Editable focus identifies the keyboard initially. Only the same open Dynamic
- // Input capture may retain it through the temporary blur between its fields.
- // Android may shrink both heights. Compare with the last fitted layout, while
- // substantial width changes (orientation/split view) still use normal fallback.
- const shrunk=floatingToolsMedia.matches&&vv&&baseline&&
-  [innerWidth,innerHeight,vv.width,vv.height].every(n=>Number.isFinite(n)&&n>0)&&
-  Math.abs(innerWidth-baseline.width)<=baseline.width*.05&&Math.abs(vv.width-baseline.width)<=baseline.width*.05&&
-  Math.min(innerHeight,vv.height)<baseline.height*.75&&
-  leftDrawingMenu?.host.isConnected&&rightCommandMenu?.host.isConnected;
- const capture=dynamicNumericCapture;
- const sameSession=radialKeyboardSession&&radialKeyboardSession===capture&&dynamicInputUI.owns(capture.confirm);
- if(!shrunk){radialKeyboardSession=null;return false}
- if(sameSession)return true;
- radialKeyboardSession=null;
- if(document.body.dataset.radialPrimary!=='true'||!editable)return false;
- if(capture&&dynamicInputUI.owns(capture.confirm)&&$('dynamicInput').contains(el))radialKeyboardSession=capture;
- return true;
+// Reconcile ownership even when the admission decision has not changed.
+// Hidden legacy source boxes remain available for the existing popup anchors.
+function syncTabletPresentationOwnership(active){
+ const homes=[...tabletTopHomes.map(h=>[h.group,active?tabletTopCommands:h.anchor.parentNode]),...tabletZoomHomes.map(h=>[h.control,active?tabletBottomZoom:h.anchor.parentNode]),...tabletViewHomes.map(h=>[h.control,active?tabletBottomView:h.anchor.parentNode])];
+ const focused=document.activeElement,movingFocus=homes.some(([control,parent])=>control.parentNode!==parent&&control.contains(focused));
+ const changed=[tabletTopBar,tabletBottomLeftBar,tabletBottomRightBar].some(bar=>bar.hidden===active)||homes.some(([control,parent])=>control.parentNode!==parent);
+ tabletOwnershipSyncing=true;
+ try{
+  paintCommandRibbon();paintToolbox();
+  paintTabletTopBar(active);paintTabletBottomZoom(active);paintTabletBottomView(active);
+  for(const menu of [leftDrawingMenu,rightCommandMenu])if(menu){
+   menu.host.inert=!active;
+   if(!active){if(menu.host.contains(document.activeElement))document.activeElement.blur();if(menu.state.open)menu.close()}
+  }
+ }finally{tabletOwnershipSyncing=false}
+ if(movingFocus&&focused.isConnected&&focused.getClientRects().length&&getComputedStyle(focused).visibility==='visible')focused.focus({preventScroll:true});
+ return changed;
 }
 function syncRadialPrimaryPresentation(){
  const usable=menu=>{
@@ -2844,21 +2862,12 @@ function syncRadialPrimaryPresentation(){
  const fitsChrome=(menu,bounds)=>!!menu?.layout&&menu.layout.radius<=bounds.right-bounds.left&&2*menu.layout.radius<=bounds.bottom-bounds.top;
  const fitted=floatingToolsMedia.matches&&tabletBottomChromeFits()&&usable(leftDrawingMenu)&&usable(rightCommandMenu)&&
   fitsChrome(leftDrawingMenu,leftDrawingBounds(chromeBottom,tabletLeftChromeTop(true)))&&fitsChrome(rightCommandMenu,rightCommandBounds(chromeBottom,tabletRightChromeTop(true)));
- const keyboard=radialKeyboardShrink();
- if(fitted&&!keyboard)radialPrimaryLayout={width:innerWidth,height:innerHeight};
- // Unsafe fans remain hidden by the engine; close only their navigation state.
- if(keyboard)for(const menu of [leftDrawingMenu,rightCommandMenu])if(!usable(menu)&&menu.state.open)menu.close();
- const value=String(!!(fitted||keyboard));
+ const value=String(!!fitted),changed=document.body.dataset.radialPrimary!==value;
  const context=String(fitted&&[leftDrawingMenu,rightCommandMenu].some(menu=>menu.state.open&&menu.layout.contextRing));
  if(document.body.dataset.radialContext!==context)document.body.dataset.radialContext=context;
- if(document.body.dataset.radialPrimary===value)return;
- document.body.dataset.radialPrimary=value;
- // Dismiss navigation before restoring legacy controls, so a still-fitting fan
- // cannot intercept their taps when the added chrome forces fallback.
- if(value==='false'){leftDrawingMenu?.close();rightCommandMenu?.close()}
- paintTabletTopBar(value==='true');
- paintTabletBottomZoom(value==='true');
- paintTabletBottomView(value==='true');
+ if(changed)document.body.dataset.radialPrimary=value;
+ const repaired=syncTabletPresentationOwnership(fitted);
+ if(!changed&&!repaired)return;
  leftDrawingMenu?.refresh();rightCommandMenu?.refresh();
  // Only positioning is refreshed; no popup state, command or preference is changed.
  positionDrawingScales();positionSnapChoices();positionMomentPalette();positionSecondaryTools();

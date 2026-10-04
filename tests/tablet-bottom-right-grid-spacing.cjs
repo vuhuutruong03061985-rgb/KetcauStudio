@@ -39,32 +39,31 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   await p.evaluate(()=>{setMode('bar');first={x:300,y:300};hover={x:450,y:350};beginBarNumericInput({clientX:400,clientY:400,pointerType:'touch'});render();window.spacingCapture=dynamicNumericCapture});
   await edit(50);const pending=await state();await tap('#gridSize');await edit(25);assert.deepEqual(await state(),pending);assert(await p.evaluate(()=>dynamicNumericCapture===spacingCapture));
   await shot('08-active-bar-edited-spacing');
-  // Moderate and stronger visual-only keyboard shrink move only the focused row.
-  const otherChrome=()=>p.evaluate(()=>[tabletTopBar,tabletBottomLeftBar].map(e=>e.getBoundingClientRect().toJSON())),chromeBefore=await otherChrome();
+  // Unsafe visual-only keyboard sizes restore complete fallback and retain the input/session.
   for(const viewport of [{height:480,top:0},{height:260,top:20}]){
-   await p.evaluate(v=>{Object.defineProperty(visualViewport,'height',{configurable:true,value:v.height});Object.defineProperty(visualViewport,'offsetTop',{configurable:true,value:v.top});visualViewport.dispatchEvent(new Event('resize'))},viewport);await ready(true);
+   await p.evaluate(v=>{Object.defineProperty(visualViewport,'height',{configurable:true,value:v.height});Object.defineProperty(visualViewport,'offsetTop',{configurable:true,value:v.top});visualViewport.dispatchEvent(new Event('resize'))},viewport);await ready(false);
    const field=await input.boundingBox();assert.equal(await p.evaluate(()=>document.activeElement.id),'gridSize');assert(field.y>=viewport.top&&field.y+field.height<=viewport.top+viewport.height);
-   assert.deepEqual(await state(),pending);assert.deepEqual(await otherChrome(),chromeBefore);
+   assert.deepEqual(await state(),pending);assert(await p.locator('#tabletTopBar').isHidden());assert(await p.locator('#tabletBottomLeftBar').isHidden());assert(await p.locator('#tabletBottomRightBar').isHidden());
    await shot(viewport.height===480?'07-focused-keyboard-visual-viewport':'18-strong-keyboard-visual-viewport');
   }
   await edit(12.5);assert(await p.evaluate(()=>dynamicNumericCapture===spacingCapture));
   await p.evaluate(()=>{delete visualViewport.height;delete visualViewport.offsetTop;visualViewport.dispatchEvent(new Event('resize'))});await ready(true);
-  // Android can resize both layout and visual viewport; focus and source stay put.
-  await p.setViewportSize({width:1280,height:480});await ready(true);assert.equal(await input.inputValue(),'12.5');assert((await input.boundingBox()).y+44<=480);await identity(false);await shot('15-focused-keyboard-layout-viewport');
+  // Android can resize both viewports; fallback retains the focused real input.
+  await p.setViewportSize({width:1280,height:480});await ready(false);assert.equal(await input.inputValue(),'12.5');assert((await input.boundingBox()).y+44<=480);await identity(true);await shot('15-focused-keyboard-layout-viewport');
   await p.setViewportSize({width:1280,height:800});await ready(true);await input.blur();await p.evaluate(()=>cancelToSelection());
   await edit(25);await input.blur();await p.evaluate(()=>zoomAt(2));await shot('09-zoom-in-25');await edit(100);await input.blur();await p.evaluate(()=>zoomAt(.25));await shot('10-zoom-out-100');
   await edit(10);await input.blur();await p.evaluate(()=>{camera={x:0,y:0,w:4400,h:2880};applyCamera()});await shot('16-min-spacing-max-zoom-out');
   await edit(25);await input.blur();await p.evaluate(()=>{camera={x:0,y:0,w:1100,h:720};applyCamera()});
   for(const side of ['right','left']){await p.locator('.semicircle-'+side+'-menu [data-demo-id="hub"]').dispatchEvent('click');await shot(side==='right'?'11-right-radial':'12-left-radial');await tap('#gridSize');assert.equal(await p.evaluate(()=>gridSize),25);await input.blur()}
   const evidence=[];
-  for(const viewport of [{width:1280,height:800},{width:800,height:1280},{width:800,height:784},{width:800,height:783},{width:800,height:777},{width:800,height:776},{width:390,height:800},{width:431,height:800},{width:432,height:800},{width:440,height:800}]){
-   const admitted=viewport.height!==776&&viewport.width>=432;await p.setViewportSize(viewport);await ready(admitted);await identity(!admitted);assert.equal(await input.inputValue(),'25');
+  for(const viewport of [{width:1280,height:800},{width:800,height:1280},{width:800,height:784},{width:800,height:783},{width:800,height:777},{width:800,height:766},{width:390,height:800},{width:431,height:800},{width:432,height:800},{width:440,height:800}]){
+   const admitted=viewport.height!==766&&viewport.width>=432;await p.setViewportSize(viewport);await ready(admitted);await identity(!admitted);assert.equal(await input.inputValue(),'25');
    for(let i=0;i<3;i++){await p.evaluate(()=>{leftDrawingMenu.refresh();rightCommandMenu.refresh()});await settle();assert.equal(await p.evaluate(()=>document.body.dataset.radialPrimary),String(admitted))}
    const bars=await p.evaluate(()=>[tabletBottomLeftBar,tabletBottomRightBar].map(e=>e.getBoundingClientRect().toJSON()));
    if(admitted)assert(bars[0].right<=bars[1].left);else assert(bars.every(r=>r.width===0&&r.height===0));
    evidence.push({viewport,admitted,bars});
    if(viewport.width===431||viewport.width===432)await shot(viewport.width===431?'19-narrow-431-fallback':'20-narrow-432-admitted');
-   if(viewport.height===776){if(!(await input.isVisible()))await tap('#ribbonToggle');await tap('#gridSize');await shot('13-tablet-fallback');await edit(50);await edit(25);await input.blur()}
+   if(viewport.height===766){if(!(await input.isVisible()))await tap('#ribbonToggle');await tap('#gridSize');await shot('13-tablet-fallback');await edit(50);await edit(25);await input.blur()}
   }
   await p.setViewportSize({width:1280,height:800});await ready(true);assert.deepEqual(await geometry(),measured);
   await edit(1000);await shot('17-max-value-focused');await edit(25);await input.blur();

@@ -166,7 +166,7 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
   assert.deepEqual(landscape.map(g=>g.radius),[304.04759747124507,248.81914748738225]);
   await p.setViewportSize({width:800,height:1280});await settled();await open();assert.deepEqual((await bounds()).map(g=>g.radius),landscape.map(g=>g.radius));await shot('left-portrait');
   await p.setViewportSize({width:800,height:784});await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom===716&&document.body.dataset.radialPrimary==='true');await open();await shot('boundary-fit');console.log('BOUNDARY FIT',JSON.stringify(await bounds()));
-  await p.setViewportSize({width:800,height:776});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');await p.evaluate(()=>{leftDrawingMenu.close();rightCommandMenu.close()});
+  await p.setViewportSize({width:800,height:766});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');await p.evaluate(()=>{leftDrawingMenu.close();rightCommandMenu.close()});
   for(const id of children){const source=p.locator(`#tools button[data-mode="${id}"]`);if(!await source.isVisible())await p.locator('#toggleTools').tap();await source.tap();assert.equal(await p.evaluate(()=>mode),id)}
   // Keep all original options accessible in the fallback palette.
   if(!await p.locator('#toolPanel').isVisible())await p.locator('#toggleTools').tap();await p.locator('#tools button[data-mode="diagramM"]').scrollIntoViewIfNeeded();await shot('fallback');console.log('BOUNDARY FALLBACK',JSON.stringify(await bounds()));

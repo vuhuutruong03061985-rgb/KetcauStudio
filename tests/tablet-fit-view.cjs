@@ -108,7 +108,7 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
   // radial navigation is open, without changing ring positions or commands.
   await seed('wide');await p.locator('.semicircle-left-menu [data-demo-id="hub"]').dispatchEvent('click');await geometry();await shot('left-open');await invoke();assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
   await p.setViewportSize({width:800,height:1280});await ready(true);await invoke();await geometry();await shot('portrait');
-  const stable=await snapshot();await p.setViewportSize({width:800,height:776});await ready(false);await identity(true);assert(await bar.isHidden());assert(await fit.isVisible());await fit.scrollIntoViewIfNeeded();await shot('fallback-fit');await invoke();assert.deepEqual(await snapshot(),stable);
+  const stable=await snapshot();await p.setViewportSize({width:800,height:766});await ready(false);await identity(true);assert(await bar.isHidden());assert(await fit.isVisible());await fit.scrollIntoViewIfNeeded();await shot('fallback-fit');await invoke();assert.deepEqual(await snapshot(),stable);
   await p.setViewportSize({width:1280,height:800});await ready(true);await identity(false);await geometry();
   // MQL injection checks runtime restore; initial desktop used actual fine CSS.
   for(const matches of [false,true,false,true]){await p.evaluate(matches=>{Object.defineProperty(floatingToolsMedia,'matches',{configurable:true,value:matches});floatingToolsMedia.dispatchEvent(new MediaQueryListEvent('change',{matches,media:floatingToolsMedia.media}))},matches);await ready(matches);await identity(!matches);assert.equal(await bar.isVisible(),matches);assert.deepEqual(await snapshot(),stable)}

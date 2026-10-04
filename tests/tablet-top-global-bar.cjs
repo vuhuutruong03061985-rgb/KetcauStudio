@@ -137,9 +137,9 @@ const commands=['clear','open','save','saveAs','svg','png','insertWord'];
   assert.deepEqual(await p.evaluate(()=>rightCommandRings[1].entries.map(e=>e.id)),['panView','snapOptions']);
   await p.evaluate(()=>{leftDrawingMenu.close();rightCommandMenu.close()});await p.setViewportSize({width:800,height:1280});await ready(true);await checkGeometry();await shot('portrait');
   await p.setViewportSize({width:800,height:784});await ready(true);await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom===716);console.log('BOUNDARY FIT',JSON.stringify(await checkGeometry()));await p.locator('.semicircle-right-menu [data-demo-id="hub"]').dispatchEvent('click');await shot('boundary-fit');
-  await p.setViewportSize({width:800,height:776});await ready(false);await identity(true);assert(await bar.isHidden());await tap(p.locator('#ribbonToggle'));assert(await source('save').isVisible());await shot('fallback-ribbon');
+  await p.setViewportSize({width:800,height:766});await ready(false);await identity(true);assert(await bar.isHidden());await tap(p.locator('#ribbonToggle'));assert(await source('save').isVisible());await shot('fallback-ribbon');
   for(let i=0;i<6;i++){await p.evaluate(()=>{leftDrawingMenu.refresh();rightCommandMenu.refresh()});await settled();assert.equal(await p.evaluate(()=>document.body.dataset.radialPrimary),'false')}
-  await p.setViewportSize({width:800,height:736});await ready(false);await settled();assert(await bar.isHidden());assert.equal(await p.evaluate(()=>rightCommandBounds().top),52);console.log('BASELINE 736 NOW FALLBACK',JSON.stringify(await geometry()));
+  await p.setViewportSize({width:800,height:736});await ready(false);await settled();assert(await bar.isHidden());assert.equal(await p.evaluate(()=>rightCommandBounds().top),100);console.log('BASELINE 736 NOW FALLBACK',JSON.stringify(await geometry()));
   await p.setViewportSize({width:280,height:900});await ready(false);await p.evaluate(()=>{leftDrawingSafeProbe.style.paddingRight='calc(100vw - 60px)';leftDrawingMenu.refresh()});await settled();
   // A narrow admitted viewport keeps one row and every 44px source target.
   await p.setViewportSize({width:390,height:900});await p.evaluate(()=>leftDrawingSafeProbe.style.removeProperty('padding-right'));await ready(false);await identity(true);assert(await bar.isHidden());

@@ -77,79 +77,31 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    await p.setViewportSize({width:viewport.height,height:viewport.width});await ready(true);await p.setViewportSize(viewport);await ready(true);
    await p.evaluate(()=>{window.primaryVV=window.visualViewport;const vv=new EventTarget();Object.assign(vv,{width:innerWidth,height:240,offsetLeft:0,offsetTop:0});Object.defineProperty(window,'visualViewport',{configurable:true,value:vv});window.dispatchEvent(new Event('resize'))});await ready(false);
    await p.evaluate(()=>{Object.defineProperty(window,'visualViewport',{configurable:true,value:primaryVV});window.dispatchEvent(new Event('resize'))});await ready(true);assert.deepEqual(await snapshot(),before);
-   // A focused real scale input identifies a transient keyboard shrink. The same
-   // no-fit viewport without focus must fall back, including after focus is lost.
+   // 3C.7A requires complete fallback whenever the fans cannot fit, even with
+   // editable focus. Preserve pending state and field switching across that move.
    await command('right','settings','drawingScalesToggle');await p.locator('#geometryScale').focus();await settled();
    await p.evaluate(()=>{setMode('bar');first={x:300,y:300};saveDraft()});
    const keyboardBefore=await snapshot(),pendingBefore=await p.evaluate(()=>JSON.stringify(first));
+   const fallback=async()=>{await settled();await ready(false);for(const id of ['tabletTopBar','tabletBottomLeftBar','tabletBottomRightBar'])assert(await p.locator('#'+id).isHidden());assert(await p.locator('#toggleTools').isVisible());assert(await p.locator('#commandRibbon').isVisible());assert.equal(await p.locator('.semicircle-left-menu:visible,.semicircle-right-menu:visible').count(),0)};
    await p.evaluate(()=>{leftDrawingMenu.state.open=true;leftDrawingMenu.refresh();window.primaryVV=visualViewport;const vv=new EventTarget();Object.assign(vv,{width:innerWidth,height:240,offsetLeft:0,offsetTop:0});Object.defineProperty(window,'visualViewport',{configurable:true,value:vv});window.dispatchEvent(new Event('resize'))});
-   await settled();await ready(true);
-   assert.equal(await p.evaluate(()=>leftDrawingMenu.layout.fits),false);
-   assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
-   for(const id of ['commandRibbon','ribbonToggle','toggleTools'])assert(await p.locator('#'+id).isHidden());
-   assert.equal(await p.locator('#toolPanel button[data-mode=bar]').count(),1);
-   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
-   // Viewport restoration while focus remains also resumes normal safe-fit.
-   await p.evaluate(()=>{visualViewport.height=innerHeight;window.dispatchEvent(new Event('resize'))});await settled();await ready(true);
-   assert.equal(await p.evaluate(()=>leftDrawingMenu.layout.fits&&rightCommandMenu.layout.fits),true);
-   await p.evaluate(()=>{visualViewport.height=240;window.dispatchEvent(new Event('resize'))});await settled();await ready(true);
-   await p.locator('#geometryScale').blur();await ready(false);
-   assert(await p.locator('#commandRibbon').isVisible());assert(await p.locator('#toggleTools').isVisible());
-   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
-   // Focusing after no-fit cannot promote a fallback presentation to radial-primary.
-   await p.locator('#geometryScale').focus();await settled();await ready(false);
-   await p.evaluate(()=>{Object.defineProperty(window,'visualViewport',{configurable:true,value:primaryVV});window.dispatchEvent(new Event('resize'))});await ready(true);
-   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
-   // Xiaomi Chrome can shrink BOTH layout and visual viewport heights. A small
-   // width change is tolerated; preserve the last fitted baseline while typing.
-   const fittedBaseline=await p.evaluate(()=>({...radialPrimaryLayout}));
+   await fallback();assert.equal(await p.evaluate(()=>leftDrawingMenu.layout.fits),false);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
+   await p.locator('#geometryScale').blur();await fallback();await p.locator('#geometryScale').focus();await fallback();
+   await p.evaluate(()=>{Object.defineProperty(window,'visualViewport',{configurable:true,value:primaryVV});window.dispatchEvent(new Event('resize'))});await ready(true);assert.deepEqual(await snapshot(),keyboardBefore);
    const keyboardViewport={width:Math.round(viewport.width*.98),height:240};
-   await p.setViewportSize(keyboardViewport);await settled();
-   assert(await p.evaluate(()=>innerHeight===240&&visualViewport.height===240));
-   assert.equal(await p.locator('body').getAttribute('data-radial-primary'),'true');
-   assert.deepEqual(await p.evaluate(()=>radialPrimaryLayout),fittedBaseline);
-   for(const id of ['commandRibbon','ribbonToggle','toggleTools'])assert(await p.locator('#'+id).isHidden());
-   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
-   await p.locator('#geometryScale').blur();await ready(false);
-   assert(await p.locator('#commandRibbon').isVisible());assert(await p.locator('#toggleTools').isVisible());
-   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
-   await p.locator('#geometryScale').focus();await settled();await ready(false);
-   await p.setViewportSize(viewport);await ready(true);
-   await p.setViewportSize(keyboardViewport);await settled();await ready(true);
-   await p.setViewportSize(viewport);await settled();await ready(true);
-   assert.equal(await p.evaluate(()=>leftDrawingMenu.layout.fits&&rightCommandMenu.layout.fits),true);
-   // A substantial width change/orientation while focused must use normal fallback.
-   await p.setViewportSize({width:viewport.height,height:300});await ready(false);
-   assert(await p.locator('#toggleTools').isVisible());
-   await p.setViewportSize(viewport);await ready(true);
-   assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
+   for(const size of [keyboardViewport,viewport,keyboardViewport,{width:viewport.height,height:300},viewport]){
+    await p.setViewportSize(size);if(size.height<=300)await fallback();else await ready(true);assert.deepEqual(await snapshot(),keyboardBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),pendingBefore);
+   }
    await p.evaluate(()=>{closeDrawingScales();cancelToSelection()});await settled();
-   // Xiaomi field switching can leave body focused for a full event turn.
-   await p.evaluate(()=>{setMode('bar');first={x:300,y:300};beginBarNumericInput({clientX:400,clientY:400,pointerType:'touch'});saveDraft()});
-   await p.locator('#dynamicInputValue').focus();
-   const fieldBefore=await snapshot(),fieldPoint=await p.evaluate(()=>JSON.stringify(first));
-   const preserved=async()=>{
-    await settled();assert.equal(await p.locator('body').getAttribute('data-radial-primary'),'true');
-    for(const id of ['commandRibbon','ribbonToggle','toggleTools'])assert(await p.locator('#'+id).isHidden());
-    assert.deepEqual(await snapshot(),fieldBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),fieldPoint);
-   };
+   await p.evaluate(()=>{setMode('bar');first={x:300,y:300};beginBarNumericInput({clientX:400,clientY:400,pointerType:'touch'});window.primaryCapture=dynamicNumericCapture;saveDraft()});
+   await p.locator('#dynamicInputValue').focus();const fieldBefore=await snapshot(),fieldPoint=await p.evaluate(()=>JSON.stringify(first));
+   const preserved=async()=>{await fallback();assert.deepEqual(await snapshot(),fieldBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),fieldPoint);assert(await p.evaluate(()=>dynamicNumericCapture===primaryCapture))};
    await p.setViewportSize(keyboardViewport);await preserved();
    for(const [from,to] of [['dynamicInputValue','dynamicInputSecondary'],['dynamicInputSecondary','dynamicInputValue']]){
-    await p.locator('#'+from).blur();assert.equal(await p.evaluate(()=>document.activeElement===document.body),true);await preserved();
-    await p.locator('#'+to).focus();await preserved();
+    await p.locator('#'+from).blur();assert.equal(await p.evaluate(()=>document.activeElement===document.body),true);await preserved();await p.locator('#'+to).focus();await preserved();
    }
-   await p.setViewportSize(viewport);await preserved();assert.equal(await p.evaluate(()=>radialKeyboardSession),null);
-   await p.setViewportSize(keyboardViewport);await preserved();
-   await p.setViewportSize({width:viewport.height,height:240});await ready(false);
-   assert.equal(await p.evaluate(()=>radialKeyboardSession),null);assert(await p.locator('#toggleTools').isVisible());
-   assert.deepEqual(await snapshot(),fieldBefore);assert.equal(await p.evaluate(()=>JSON.stringify(first)),fieldPoint);
-   await p.setViewportSize(viewport);await settled();await ready(true);
-   await p.locator('#dynamicInputValue').focus();await p.setViewportSize(keyboardViewport);await preserved();
-   await p.evaluate(()=>hideDynamicInput());await ready(false);
-   assert.equal(await p.evaluate(()=>radialKeyboardSession),null);
-   assert(await p.locator('#toggleTools').isVisible());assert.deepEqual(await snapshot(),fieldBefore);
-   await p.setViewportSize(viewport);await settled();await ready(true);
-   await p.evaluate(()=>cancelToSelection());
+   await p.setViewportSize(viewport);await ready(true);assert.deepEqual(await snapshot(),fieldBefore);
+   await p.setViewportSize(keyboardViewport);await preserved();await p.evaluate(()=>hideDynamicInput());await fallback();assert.deepEqual(await snapshot(),fieldBefore);
+   await p.setViewportSize(viewport);await settled();await ready(true);await p.evaluate(()=>cancelToSelection());
    // Hidden sources retain real anchor rectangles; collapsed Ribbon preference is preserved.
    await p.evaluate(()=>ribbonToggle.click());await ready(true);
    const anchors=await p.evaluate(()=>[drawingScalesButton,snapButton,momentButton].map(el=>{const r=el.getBoundingClientRect();return {width:r.width,height:r.height}}));assert(anchors.every(r=>r.width>0&&r.height>0));

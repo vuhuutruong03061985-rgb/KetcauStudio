@@ -63,13 +63,13 @@ const removed=['snapToggle','drawingScalesToggle','clear','open','save','saveAs'
    if(viewport.height>=777){await open();assert(await targets())}
    if(viewport.height===1280)await shot('02-right-portrait');
   }
-  assert.deepEqual(evidence.map(e=>[e.left,e.right,e.joint]),[[true,true,true],[true,true,true],[true,true,true],[true,true,true],[true,true,true],[false,true,false],[false,true,false],[false,false,false]]);
+  assert.deepEqual(evidence.map(e=>[e.left,e.right,e.joint]),[[true,true,true],[true,true,true],[true,true,true],[true,true,true],[true,true,true],[true,true,true],[false,true,false],[false,true,false]]);
   // Search every possible height against unchanged hypothetical chrome bounds,
   // independently of fallback hiding those chrome nodes.
-  const minima=await p.evaluate(()=>{const b=[leftDrawingBounds(tabletChromeBottom(true),tabletLeftChromeTop(true)),rightCommandBounds(tabletChromeBottom(true),tabletRightChromeTop(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>{for(let h=1;h<=900;h++){const bounds={...b[i],bottom:b[i].bottom+h-innerHeight};if(bounds.bottom>bounds.top&&semicircleEngine.solveConcentricRingLayout({side:m.state.side,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}).fits)return h}return null})});
-  assert.deepEqual(minima,[777,666]);
+  const minima=await p.evaluate(()=>{const b=[leftDrawingBounds(tabletChromeBottom(true),tabletLeftChromeTop(true)),rightCommandBounds(tabletChromeBottom(true),tabletRightChromeTop(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>{for(let h=1;h<=900;h++){const bounds=fitTabletRadialBounds({...b[i],top:tabletChromeBottom(true)+8,bottom:h-68},m.layout);if(bounds.bottom>bounds.top&&semicircleEngine.solveConcentricRingLayout({side:m.state.side,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}).fits)return h}return null})});
+  assert.deepEqual(minima,[767,661]);
   await p.setViewportSize({width:1280,height:800});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='true');await p.locator('.semicircle-left-menu [data-demo-id="hub"]').dispatchEvent('click');await shot('12-left-regression');
   assert.deepEqual(await p.evaluate(()=>leftDrawingRings.map(r=>r.entries.map(e=>e.id||e.dataset.toolbarIcon))),left);assert.deepEqual(errors,[]);
-  const report={before:333.608041374721,after:248.81914748738225,leftRadius:304.04759747124507,minima:{left:777,right:666,joint:777},evidence,calculator:'native source absent; conditional available/hidden adapter tested with explicit fixture',screenshots:fs.readdirSync(out).filter(n=>n.endsWith('.png'))};fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify(report,null,2));console.log('PASS compact RIGHT sources/mapping/memory/keyboard/44px targets/chrome/fit thresholds',JSON.stringify(report));
+  const report={before:333.608041374721,after:248.81914748738225,leftRadius:304.04759747124507,minima:{left:767,right:661,joint:767},evidence,calculator:'native source absent; conditional available/hidden adapter tested with explicit fixture',screenshots:fs.readdirSync(out).filter(n=>n.endsWith('.png'))};fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify(report,null,2));console.log('PASS compact RIGHT sources/mapping/memory/keyboard/44px targets/chrome/fit thresholds',JSON.stringify(report));
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

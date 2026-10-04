@@ -226,7 +226,7 @@ body[data-radial-context="true"] #commandControls{display:none}
 /* Local bottom chrome does not resize the canvas or reserve RIGHT fan space. */
 #tabletBottomLeftBar{display:none}
 @media(any-pointer:coarse){
- #tabletBottomLeftBar{position:fixed;display:flex;left:calc(12px + env(safe-area-inset-left));bottom:calc(12px + env(safe-area-inset-bottom));height:48px;padding:1px;border:1px solid #cbd6df;border-radius:6px;background:#edf2f6;z-index:1500}
+ #tabletBottomLeftBar{position:fixed;display:flex;left:calc(12px + env(safe-area-inset-left));bottom:calc(12px + env(safe-area-inset-bottom) + var(--tablet-viewport-inset,0px));height:48px;padding:1px;border:1px solid #cbd6df;border-radius:6px;background:#edf2f6;z-index:1500}
  #tabletBottomZoom{display:flex;align-items:center;gap:4px}
  #tabletBottomZoom button{flex:none;width:44px;height:44px;min-width:44px;min-height:44px;margin:0;padding:10px}
  #tabletBottomZoom #zoomLevel{display:flex;align-items:center;justify-content:center;flex:none;width:52px;min-width:52px;height:44px;white-space:nowrap}
@@ -256,6 +256,8 @@ body .semicircle-multi-roller>svg{touch-action:none}
 .roller-slot{fill:none;stroke:#087e90;stroke-width:3;stroke-linecap:round}
 .semicircle-outer-context .semicircle-hit{stroke:#78909f;stroke-width:1.5}
 body:not([data-radial-primary="true"]) :is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-outer-context{display:none}
+/* A fitting individual hub is still unavailable when the complete tablet UI cannot fit. */
+body:not([data-radial-primary="true"]) :is(.semicircle-left-menu,.semicircle-right-menu){visibility:hidden;pointer-events:none}
 :is(.semicircle-left-menu,.semicircle-right-menu) .group-selector .semicircle-hit{filter:saturate(3)}
 :is(.semicircle-left-menu,.semicircle-right-menu) .semicircle-hit{touch-action:none}
 body :is(.semicircle-left-menu,.semicircle-right-menu)>svg{touch-action:none}
