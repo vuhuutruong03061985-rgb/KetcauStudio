@@ -106,7 +106,7 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
    await p.waitForFunction(bottom=>Math.abs(rightCommandMenu.layout.bounds.bottom-bottom)<1e-8,expectedBottom);
    const projected=await p.evaluate(()=>{
     const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top,tabletRightChromeTop(true))];
-    return [leftDrawingMenu,rightCommandMenu].map((m,i)=>semicircleEngine.solveAdaptiveConcentricRingLayout({side:m.state.side,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits);
+    return [leftDrawingMenu,rightCommandMenu].map((m,i)=>semicircleEngine.solveAdaptiveConcentricRingLayout({side:m.state.side,rings:i===0?[4,6,3,8].map((count,j)=>({id:'L'+(j+1),count})):m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits);
    });
    for(const [i,side]of ['left','right'].entries())if(projected[i]&&thresholds[side]===null)thresholds[side]=height;
    await ready(projected.every(Boolean));

@@ -27,7 +27,7 @@ const normal=[304.04759747124507,248.81914748738225],compact=[278.04759747124507
     const failures=[],sizes=[],top=tabletChromeBottom(true)+8,bottoms=[tabletLeftChromeTop(true)-8,tabletRightChromeTop(true)-8];
     [leftDrawingMenu,rightCommandMenu].forEach((m,index)=>{
      if(m.state.open){
-      const expected=index===0?[4,6,3,8]:[6,2];
+      const expected=index===0?[4,leftDrawingCategories.find(c=>c.id===leftCategoryId).entries.length]:[6,2];
       m.state.rings.forEach((r,i)=>{const nodes=[...m.host.querySelectorAll('[data-roller-ring="'+r.id+'"]')];if(nodes.length!==expected[i]||nodes.some(g=>getComputedStyle(g).visibility!=='visible'||getComputedStyle(g).display==='none'))failures.push({type:'hidden-tools',side:index,ring:r.id})});
       if([...m.host.querySelectorAll('.semicircle-icon[transform],.roller-artwork')].some(g=>g.getAttribute('transform')?.includes('rotate')))failures.push({type:'rotated-artwork',side:index});
      }
@@ -52,9 +52,9 @@ const normal=[304.04759747124507,248.81914748738225],compact=[278.04759747124507
      }
     });
     for(const id of ['tabletBottomLeftBar','tabletBottomRightBar','gridSize','gridToggle','snapToggle','drawingScalesToggle']){const r=document.getElementById(id).getBoundingClientRect();sizes.push([r.width,r.height])}
-    return {failures,sizes,mappings:[leftDrawingMenu,rightCommandMenu].map(m=>m.state.rings.map(r=>r.entries.map(e=>e.id)))};
+    return {category:leftCategoryId,failures,sizes,mappings:[leftDrawingMenu,rightCommandMenu].map(m=>m.state.rings.map(r=>r.entries.map(e=>e.id)))};
    });
-   assert.deepEqual(result.failures,[]);assert.deepEqual(result.mappings,[left,right]);
+   assert.deepEqual(result.failures,[]);assert.deepEqual(result.mappings,[[['geometry','supports','loads','annotation'],left[['geometry','supports','loads','annotation'].indexOf(result.category)]],right]);
    assert.deepEqual(result.sizes,[[200,48],[208,48],[60,44],[44,44],[44,44],[44,44]]);
   };
   await p.evaluate(()=>saveDraft());const initial=await state(),rows=[];
@@ -82,7 +82,7 @@ const normal=[304.04759747124507,248.81914748738225],compact=[278.04759747124507
   // Real production contextual subfunctions, with the existing pending command.
   await p.setViewportSize({width:1152,height:584});await ownership(p,true);
   await p.evaluate(()=>{setMode('bar');first={x:600,y:300};render()});const pending=await state();
-  await toggle('left');await p.evaluate(()=>{const m=leftDrawingMenu,r=m.state.rings.find(r=>r.id==='L3');r.offset=r.activeIndex=1;m.state.focusedEntry={ringId:'L3',id:'moment'};m.refresh()});
+  await toggle('left');await p.evaluate(()=>{selectLeftCategory('loads','moment');leftDrawingMenu.refresh()});
   assert.equal(await p.locator('.semicircle-left-menu [data-context-action]').count(),2);await geometry();await shot('1152x584-left-context');await toggle('left');
   await toggle('right');await geometry();await shot('1152x584-right-context');await toggle('right');assert.deepEqual(await state(),pending);
   // A captured touch drag selects one detent, keeps other rollers independent,
@@ -90,7 +90,7 @@ const normal=[304.04759747124507,248.81914748738225],compact=[278.04759747124507
   const cdp=await p.context().newCDPSession(p);
   for(const side of ['left','right']){
    await toggle(side);
-   const q=await p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu,r=m.state.rings[0],g=m.layout.rings[0],mid=(g.r0+g.r1)/2;r.offset=r.activeIndex=0;m.refresh();return {x:m.layout.cx+(side==='left'?1:-1)*mid,y:m.layout.cy,toX:m.layout.cx+(side==='left'?1:-1)*mid*Math.cos(g.step),toY:m.layout.cy-mid*Math.sin(g.step),others:m.state.rings.slice(1).map(r=>r.offset)}},side);
+   const q=await p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu,r=m.state.rings[0],g=m.layout.rings[0],mid=(g.r0+g.r1)/2;r.offset=r.activeIndex=0;m.refresh();return {x:side==='left'?g.sectors[0].icon.x:m.layout.cx-mid,y:side==='left'?g.sectors[0].icon.y:m.layout.cy,toX:side==='left'?g.sectors[1].icon.x:m.layout.cx-mid*Math.cos(g.step),toY:side==='left'?g.sectors[1].icon.y:m.layout.cy-mid*Math.sin(g.step),others:m.state.rings.slice(1).map(r=>r.offset)}},side);
    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{id:0,x:q.x,y:q.y}]});
    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{id:0,x:q.toX,y:q.toY}]});
    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});

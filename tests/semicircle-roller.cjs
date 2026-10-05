@@ -26,52 +26,65 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
   await p.evaluate(()=>{selected=null;multiSelection.clear();render();window.rollerClicks=0;for(const c of [...leftDrawingGroups,...rightCommandGroups].flatMap(g=>g.children))c.source.addEventListener('click',()=>rollerClicks++);});
   const before=await snapshot();
   const open=side=>p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;if(!m.state.open)m.host.querySelector('[data-demo-id="hub"]').dispatchEvent(new MouseEvent('click',{bubbles:true}))},side);
-  const group=(side,id)=>p.evaluate(({side,id})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;{id=(side==='left'?{geometry:'bar',loads:'moment',annotation:'text',connections:'fixed'}:{edit:'delete',file:'open',view:'panView',snap:'snapToggle'})[id]||id;const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));if(r.entries[r.activeIndex].id===id)return}m.host.querySelector(`[data-demo-id="${id}"]`).dispatchEvent(new MouseEvent('click',{bubbles:true}))},{side,id});
+  const group=(side,id)=>p.evaluate(({side,id})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;
+   if(side==='left'){
+    const [category,tool]={geometry:['geometry','bar'],loads:['loads','moment'],annotation:['annotation','text'],connections:['supports','fixed']}[id];
+    if(leftCategoryId!==category)m.host.querySelector(`[data-demo-id="${category}"]`).dispatchEvent(new MouseEvent('click',{bubbles:true}));
+    if(m.state.rings[1].focusedId!==tool)m.host.querySelector(`[data-demo-id="${tool}"]`).dispatchEvent(new MouseEvent('click',{bubbles:true}));
+    return;
+   }
+   {id=(side==='left'?{geometry:'bar',loads:'moment',annotation:'text',connections:'fixed'}:{edit:'delete',file:'open',view:'panView',snap:'snapToggle'})[id]||id;const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));if(r.entries[r.activeIndex].id===id)return}m.host.querySelector(`[data-demo-id="${id}"]`).dispatchEvent(new MouseEvent('click',{bubbles:true}))},{side,id});
   const drag=async(side,type,cancel=false)=>{
    const start=await p.evaluate(({side,type})=>{
-    const m=side==='left'?leftDrawingMenu:rightCommandMenu,s=m.layout.rings[0].sectors.find(s=>Math.abs((s.a0+s.a1)/2)<1e-8),id=61;
+    const m=side==='left'?leftDrawingMenu:rightCommandMenu,index=m.state.roller.activeIndex,s=side==='left'?m.layout.rings[0].sectors[index]:m.layout.rings[0].sectors.find(s=>Math.abs((s.a0+s.a1)/2)<1e-8),id=61,target=index===3?2:index+1;
     const g=document.elementFromPoint(s.icon.x,s.icon.y),angle=Math.atan2(s.icon.y-m.layout.cy,s.icon.x-m.layout.cx),r=(s.r0+s.r1)/2;
-    window.rollerTest={m,g,id,angle,r,step:m.layout.rings[0].step};g.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:id,pointerType:type,button:0,clientX:s.icon.x,clientY:s.icon.y}));
-    return {offset:m.state.roller.offset,hub:JSON.stringify(m.host.querySelector('[data-demo-id="hub"] .semicircle-hit').getAttribute('d'))};
+    window.rollerTest={m,g,id,angle,r,step:m.layout.rings[0].step,delta:side==='left'?(target-index)*Math.PI/4:null};g.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:id,pointerType:type,button:0,clientX:s.icon.x,clientY:s.icon.y}));
+    return {target,paths:side==='left'?m.layout.rings.map(r=>r.sectors.map(s=>s.path)):null,offset:m.state.roller.offset,hub:JSON.stringify(m.host.querySelector('[data-demo-id="hub"] .semicircle-hit').getAttribute('d'))};
    },{side,type});
    await p.evaluate(({side,type,cancel})=>{
-    const {m,id,angle,r,step}=rollerTest,sign=side==='left'?1:-1;
-    for(let i=1;i<=8;i++){const a=angle-sign*step*i/8;m.host.querySelector('svg').dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:id,pointerType:type,clientX:m.layout.cx+r*Math.cos(a),clientY:m.layout.cy+r*Math.sin(a)}))}
+    const {m,id,angle,r,step,delta}=rollerTest,sign=side==='left'?1:-1;
+    for(let i=1;i<=8;i++){const a=angle+(side==='left'?delta:-sign*step)*i/8;m.host.querySelector('svg').dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:id,pointerType:type,clientX:m.layout.cx+r*Math.cos(a),clientY:m.layout.cy+r*Math.sin(a)}))}
     m.host.querySelector('svg').dispatchEvent(new PointerEvent(cancel?'pointercancel':'pointerup',{bubbles:true,pointerId:id,pointerType:type}));
    },{side,type,cancel});
    await p.waitForTimeout(210);
-   const end=await p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;return {offset:m.state.roller.offset,pointer:m.state.roller.pointerId,dragging:m.state.roller.dragging,hub:JSON.stringify(m.host.querySelector('[data-demo-id="hub"] .semicircle-hit').getAttribute('d')),clicks:rollerClicks}},side);
-   assert.equal(end.offset,cancel?start.offset:(start.offset+1)%(side==='left'?4:6));assert.equal(end.hub,start.hub);assert.equal(end.pointer,null);assert.equal(end.dragging,false);assert.equal(end.clicks,0);
+   const end=await p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;return {focused:m.state.roller.focusedId,paths:side==='left'?m.layout.rings.map(r=>r.sectors.map(s=>s.path)):null,offset:m.state.roller.offset,pointer:m.state.roller.pointerId,dragging:m.state.roller.dragging,hub:JSON.stringify(m.host.querySelector('[data-demo-id="hub"] .semicircle-hit').getAttribute('d')),clicks:rollerClicks}},side);
+   if(side==='left'){assert.equal(end.offset,cancel?start.offset:start.target);assert.equal(end.focused,['geometry','supports','loads','annotation'][cancel?start.offset:start.target]);assert.deepEqual(end.paths,start.paths)}else assert.equal(end.offset,cancel?start.offset:(start.offset+1)%6);assert.equal(end.hub,start.hub);assert.equal(end.pointer,null);assert.equal(end.dragging,false);assert.equal(end.clicks,0);
   };
   await open('left');
+  // Production LEFT has fixed full-arc sectors, including even counts: no N+1 slot
+  // or forced center at zero. Generic rotary math above still covers the old API.
+  const fullArc=()=>p.evaluate(()=>leftDrawingMenu.layout.rings.map(r=>r.sectors.map(s=>[s.a0,s.a1,s.path])));
+  const initialArc=await fullArc();assert.deepEqual(initialArc.map(r=>r.length),[4,4]);
+  for(const ring of initialArc)for(const [i,s]of ring.entries()){assert.equal(s[0],-Math.PI/2+i*Math.PI/4);assert.equal(s[1],-Math.PI/2+(i+1)*Math.PI/4)}
+  assert.deepEqual(await p.locator('.semicircle-left-menu .semicircle-roller-ring').evaluateAll(gs=>gs.map(g=>g.querySelectorAll('[data-roller-ring]').length)),[4,4]);
   await p.evaluate(()=>{window.hoverBefore=JSON.stringify(leftDrawingMenu.state.roller);for(let i=0;i<30;i++)leftDrawingMenu.host.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:77,pointerType:'pen',clientX:i*20,clientY:i*10}));});
   assert(await p.evaluate(()=>hoverBefore===JSON.stringify(leftDrawingMenu.state.roller)));assert.deepEqual(await snapshot(),before);
   for(const type of ['touch','pen','mouse'])await drag('left',type);
   await drag('left','pen',true);assert.deepEqual(await snapshot(),before);
   // Real browser pointer lifecycle verifies capture and click suppression.
   for(const type of ['mouse','pen','touch']){
-   const q=await p.evaluate(()=>{const m=leftDrawingMenu,s=m.layout.rings[0].sectors.find(s=>Math.abs((s.a0+s.a1)/2)<1e-8);return {x:s.icon.x,y:s.icon.y,cx:m.layout.cx,cy:m.layout.cy,r:(s.r0+s.r1)/2,index:m.state.roller.offset,step:m.layout.rings[0].step}});
+   const q=await p.evaluate(()=>{const m=leftDrawingMenu,index=m.state.roller.activeIndex,s=m.layout.rings[0].sectors[index],target=index===3?2:index+1;return {x:s.icon.x,y:s.icon.y,cx:m.layout.cx,cy:m.layout.cy,r:(s.r0+s.r1)/2,index,target,angle:-Math.PI/2+(index+.5)*Math.PI/4,delta:(target-index)*Math.PI/4}});
    const cdp=await p.context().newCDPSession(p);
    if(type==='touch')await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:q.x,y:q.y}]});
    else await cdp.send('Input.dispatchMouseEvent',{type:'mousePressed',x:q.x,y:q.y,button:'left',buttons:1,clickCount:1,pointerType:type});
    assert(await p.evaluate(()=>leftDrawingMenu.host.querySelector('svg').hasPointerCapture(leftDrawingMenu.state.roller.pointerId)));
-   for(let i=1;i<=8;i++){const a=-q.step*i/8,x=q.cx+q.r*Math.cos(a),y=q.cy+q.r*Math.sin(a);
+   for(let i=1;i<=8;i++){const a=q.angle+q.delta*i/8,x=q.cx+q.r*Math.cos(a),y=q.cy+q.r*Math.sin(a);
     if(type==='touch')await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y}]});
     else await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y,button:'left',buttons:1,pointerType:type});
    }
    if(type==='touch')await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
-   else await cdp.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:q.cx+q.r*Math.cos(-q.step),y:q.cy+q.r*Math.sin(-q.step),button:'left',buttons:0,clickCount:1,pointerType:type});
-   await p.waitForTimeout(210);console.log('PASS captured browser drag',type);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.roller.offset),(q.index+1)%4);assert.equal(await p.evaluate(()=>rollerClicks),0);await cdp.detach();
+   else await cdp.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:q.cx+q.r*Math.cos(q.angle+q.delta),y:q.cy+q.r*Math.sin(q.angle+q.delta),button:'left',buttons:0,clickCount:1,pointerType:type});
+   await p.waitForTimeout(210);console.log('PASS captured browser drag',type);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.roller.focusedId),['geometry','supports','loads','annotation'][q.target]);assert.deepEqual(await fullArc(),initialArc);assert.equal(await p.evaluate(()=>leftCategoryId),'geometry');assert.equal(await p.evaluate(()=>rollerClicks),0);await cdp.detach();
   }
   assert.deepEqual(await snapshot(),before);
   await open('right');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);await drag('right','touch');
   await p.evaluate(()=>{$('delete').disabled=true;rightCommandMenu.refresh()});await group('right','edit');assert.equal(await p.locator('.semicircle-right-menu [data-demo-id="delete"]').getAttribute('aria-disabled'),'true');
   await open('left');assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),false);
-  await group('left','annotation');await p.evaluate(()=>leftDrawingMenu.close());await open('left');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.rings[3].entries[leftDrawingMenu.state.rings[3].activeIndex].id),'text');
-  await group('left','loads');await p.locator('.semicircle-left-menu [data-demo-id="thin"]').focus();await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.rings[0].entries[leftDrawingMenu.state.rings[0].activeIndex].id),'thin');
-  const q=await p.evaluate(()=>leftDrawingMenu.layout.rings[2].sectors[2].icon);await p.touchscreen.tap(q.x,q.y);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.rings[2].entries[leftDrawingMenu.state.rings[2].activeIndex].id),'udl');
+  await group('left','annotation');await p.evaluate(()=>leftDrawingMenu.close());await open('left');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.rings[1].focusedId),'text');
+  await group('left','loads');await group('left','geometry');await p.locator('.semicircle-left-menu [data-demo-id="thin"]').focus();await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.rings[1].focusedId),'thin');
+  await group('left','loads');const q=await p.evaluate(()=>leftDrawingMenu.layout.rings[1].sectors[2].icon);await p.touchscreen.tap(q.x,q.y);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.rings[1].focusedId),'udl');
   assert.deepEqual(await snapshot(),before);
-  await group('left','geometry');const child=await p.evaluate(()=>leftDrawingMenu.layout.rings[0].sectors[0].icon);await p.touchscreen.tap(child.x,child.y);assert.equal(await p.evaluate(()=>rollerClicks),1);assert.equal(await p.evaluate(()=>mode),'bar');
+  await group('left','geometry');const child=await p.evaluate(()=>leftDrawingMenu.layout.rings[1].sectors[0].icon);await p.touchscreen.tap(child.x,child.y);assert.equal(await p.evaluate(()=>rollerClicks),1);assert.equal(await p.evaluate(()=>mode),'bar');
   await open('left');assert.equal(await p.locator('.semicircle-left-menu [data-demo-id="bar"]').getAttribute('aria-pressed'),'true');
   const out=path.resolve('.test-tools/semicircle-roller');fs.mkdirSync(out,{recursive:true});
   const shot=async name=>{await p.screenshot({path:path.join(out,name+'.png')});};

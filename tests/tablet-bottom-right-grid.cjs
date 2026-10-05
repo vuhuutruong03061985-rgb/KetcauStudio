@@ -44,7 +44,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   const evidence=[];
   for(const viewport of [{width:1280,height:800},{width:800,height:1280},{width:800,height:784},{width:800,height:783},{width:800,height:777},{width:800,height:568}]){
    await p.setViewportSize(viewport);await ready(viewport.height!==568);await identity(viewport.height===568);
-   const sides=await p.evaluate(()=>{const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top,tabletRightChromeTop(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>semicircleEngine.solveAdaptiveConcentricRingLayout({side:m.state.side,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits)});
+   const sides=await p.evaluate(()=>{const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top,tabletRightChromeTop(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>semicircleEngine.solveAdaptiveConcentricRingLayout({side:m.state.side,rings:i===0?[4,6,3,8].map((count,j)=>({id:'L'+(j+1),count})):m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits)});
    assert.deepEqual(sides,viewport.height===568?[false,true]:[true,true]);assert(await p.evaluate(()=>gridVisible));
    evidence.push({viewport,left:sides[0],right:sides[1],joint:sides.every(Boolean)});
    if(viewport.height===568){if(!(await p.locator('#gridToggle').isVisible()))await tap('#ribbonToggle');await shot('14-tablet-fallback');await tap('#gridToggle');assert(!(await p.evaluate(()=>gridVisible)));await tap('#gridToggle')}

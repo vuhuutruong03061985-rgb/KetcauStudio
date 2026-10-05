@@ -1,8 +1,8 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
-const expected={L1:['bar','thin','dashed','curve'],L2:['hinge','linkBar','weld','pin','roller','fixed'],L3:['force','moment','udl'],L4:['dim','text','person','section','rigidRegion','hatch','joint','diagram']};
+const expected={geometry:['bar','thin','dashed','curve'],supports:['hinge','linkBar','weld','pin','roller','fixed'],loads:['force','moment','udl'],annotation:['dim','text','person','section','rigidRegion','hatch','joint','diagram']};
 const diagramChildren=['diagramM','diagramQ','diagramN','positive','negative'];
-const sourceExpected={...expected,L4:[...expected.L4.slice(0,-1),...diagramChildren]};
+const sourceExpected={...expected,annotation:[...expected.annotation.slice(0,-1),...diagramChildren]};
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -15,10 +15,10 @@ const sourceExpected={...expected,L4:[...expected.L4.slice(0,-1),...diagramChild
    p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.resolve('index.html')).href);
    const root=p.locator('.semicircle-left-menu'),sector=id=>root.locator(`[data-demo-id="${id}"]`);
    assert.equal(await root.count(),1);assert.equal(await p.locator('.semicircle-prototype').count(),0);
-   assert.equal(await p.evaluate(()=>leftDrawingRings.map(g=>g.label).join('|')),'Vẽ / Hình học|Liên kết|Tải trọng|Chú thích / Biểu diễn');
-   assert.deepEqual(await p.evaluate(()=>Object.fromEntries(leftDrawingRings.map(g=>[g.id,g.entries.map(c=>c.id)]))),expected);
+   assert.equal(await p.evaluate(()=>leftDrawingCategories.map(g=>g.label).join('|')),'Vẽ|Liên kết|Tải trọng|Chú thích / biểu diễn');
+   assert.deepEqual(await p.evaluate(()=>Object.fromEntries(leftDrawingCategories.map(g=>[g.id,g.entries.map(c=>c.id)]))),expected);
    const point=id=>p.evaluate(id=>{const m=leftDrawingMenu;if(id==='hub')return{x:m.layout.cx+13,y:m.layout.cy};const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));return m.layout.rings.find(l=>l.id===r.id).sectors[r.entries.findIndex(e=>e.id===id)].icon},id);
-   const focusTool=async(id,pointer='touch')=>{const centered=await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id);if(!centered){const q=await point(id);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)}};
+   const focusTool=async(id,pointer='touch')=>{const cat=await p.evaluate(id=>leftDrawingCategories.find(c=>c.entries.some(e=>e.id===id)).id,id);if(await p.evaluate(()=>leftCategoryId)!==cat){const q=await point(cat);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)}const centered=await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.focusedId===id},id);if(!centered){const q=await point(id);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)}};
    const activate=async(id,pointer='touch')=>{
     if(id==='region'||id==='connections'){await focusTool(id==='region'?'text':'fixed',pointer);return}
     if(diagramChildren.includes(id)){await focusTool('diagram',pointer);const q=await p.evaluate(id=>{const entries=leftContextEntries(leftDrawingMenu.state.focusedEntry);return leftDrawingMenu.layout.contextRing.middle[entries.length][entries.findIndex(e=>e.id===id)].icon},id);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y);return}
@@ -31,7 +31,7 @@ const sourceExpected={...expected,L4:[...expected.L4.slice(0,-1),...diagramChild
    // Compare every actual source click with a hit-tested radial touch, including option UI.
    for(const [group,children]of Object.entries(sourceExpected))for(const id of children){
     await reset();await p.evaluate(id=>{const c=leftDrawingGroups.flatMap(g=>g.children).find(c=>c.id===id);window.sourceClicks=0;c.source.addEventListener('click',()=>window.sourceClicks++);c.source.click()},id);
-    const original=await state();await reset();await openGroup(group);if(diagramChildren.includes(id))await focusTool('diagram');
+    const original=await state();await reset();await openGroup(group);await focusTool(diagramChildren.includes(id)?'diagram':id);
     const source=await p.evaluate(id=>{const c=leftDrawingGroups.flatMap(g=>g.children).find(c=>c.id===id);return {label:c.source.getAttribute('aria-label'),title:c.source.title,real:c.source.matches('button[data-mode],button[data-support-type]'),clicks:sourceClicks}},id);
     assert(source.real);assert.equal(await sector(id).getAttribute('aria-label'),source.label);assert.equal(await sector(id).locator('title').textContent(),source.title);
     await activate(id);assert.equal(await p.evaluate(()=>sourceClicks),source.clicks+1,id+' delegates one click');
@@ -73,7 +73,7 @@ const sourceExpected={...expected,L4:[...expected.L4.slice(0,-1),...diagramChild
     separation:l.rings.every((r,i)=>r.r0>=(i?l.rings[i-1].r1:l.hubRadius)+3-1e-8),
     centers:l.rings.every(r=>r.cx===l.cx&&r.cy===l.cy),
     upright:[...m.host.querySelectorAll('.semicircle-icon')].every(el=>!el.getAttribute('transform')?.includes('rotate'))}});
-   assert(geometry.fits&&geometry.safe&&geometry.targets&&geometry.centers&&geometry.separation&&geometry.upright);assert(geometry.radius<310);assert.equal(await root.locator('.semicircle-roller-ring').count(),4);assert.equal(await root.locator('text,button').count(),0);console.log('GEOMETRY',viewport,geometry);
+   assert(geometry.fits&&geometry.safe&&geometry.targets&&geometry.centers&&geometry.separation&&geometry.upright);assert(geometry.radius<310);assert.equal(await root.locator('.semicircle-roller-ring').count(),2);assert.equal(await root.locator('text,button').count(),0);console.log('GEOMETRY',viewport,geometry);
    await activate('bar');await openGroup();await focusTool('thin');await p.mouse.move(viewport.width-100,100);
    const styleOf=id=>sector(id).locator('.semicircle-hit').evaluate(el=>{const s=getComputedStyle(el);return{fill:s.fill,stroke:s.stroke,width:s.strokeWidth,dash:s.strokeDasharray}});
    const active=await styleOf('bar'),focusedTool=await styleOf('thin');assert.equal(active.fill,'rgb(184, 220, 224)');assert.notEqual(active.fill,focusedTool.fill);assert.equal(await sector('bar').getAttribute('aria-pressed'),'true');assert.equal(await sector('thin').getAttribute('aria-pressed'),'false');assert.equal(await sector('thin').getAttribute('data-focused'),'true');

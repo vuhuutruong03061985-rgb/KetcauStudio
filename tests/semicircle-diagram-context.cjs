@@ -20,7 +20,7 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
   const tapMain=async id=>{const q=await point(id);await p.touchscreen.tap(q.x,q.y);await settled()};
   const open=async()=>{if(!await p.evaluate(()=>leftDrawingMenu.state.open))await sector('hub').dispatchEvent('click');await settled()};
   const focus=async id=>{
-   await open();const centered=await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id);
+   await open();const category=await p.evaluate(id=>leftDrawingCategories.find(c=>c.entries.some(e=>e.id===id)).id,id);if(await p.evaluate(()=>leftCategoryId)!==category)await tapMain(category);const centered=await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.focusedId===id},id);
    if(!centered)await tapMain(id);
    else if(id==='diagram')await tapMain(id);
    else if(await p.evaluate(id=>leftDrawingMenu.state.focusedEntry?.id!==id,id)){
@@ -43,8 +43,8 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
    else await cdp.send('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',buttons:0,clickCount:1,pointerType:type});
    await cdp.detach();await settled();
   };
-  assert.deepEqual(await p.evaluate(()=>leftDrawingRings[3].entries.map(e=>e.id)),l4);
-  assert.equal(await p.evaluate(()=>leftDrawingRings[3].defaultTool),'dim');
+  assert.deepEqual(await p.evaluate(()=>leftDrawingCategories[3].entries.map(e=>e.id)),l4);
+  assert.equal(await p.evaluate(()=>leftDrawingCategories[3].defaultTool),'dim');
   assert.equal(await p.evaluate(()=>leftDiagramParent.source??null),null);
   assert.equal(await p.locator('#tools button[data-mode="diagram"]').count(),0);
   assert.equal(await p.evaluate(()=>Object.hasOwn(modes,'diagram')),false);
@@ -56,7 +56,7 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
   const geometry=await p.evaluate(()=>{
    const E=semicircleEngine,fail=[],check=(ok,label)=>{if(!ok)fail.push(label)},measurements=[];
    const disk=s=>{for(let a=0;a<2*Math.PI;a+=Math.PI/72)if(!E.hitTestRadialSector(s,s.icon.x+22*Math.cos(a),s.icon.y+22*Math.sin(a)))return false;return true};
-   for(const rings of [[{id:'one',count:1}],leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),rightCommandMenu.state.rings.map(r=>({id:r.id,count:r.entries.length}))]){
+   for(const rings of [[{id:'one',count:1}],leftDrawingCategories.map(r=>({id:r.id,count:r.entries.length})),rightCommandMenu.state.rings.map(r=>({id:r.id,count:r.entries.length}))]){
     const bounds={left:0,right:1280,top:52,bottom:784};
     for(const side of ['left','right']){
      const l=E.solveConcentricRingLayout({side,rings,bounds,fixedOuter:true}),c=l.contextRing;
@@ -76,8 +76,8 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
      if(rings.length===4)measurements.push({side,radius:l.radius,fixedTarget:Math.min(...c.sectors.map(s=>2*((s.r0+s.r1)/2)*Math.sin((s.a1-s.a0)/2))),fiveTarget:Math.min(...c.middle[5].map(s=>2*((s.r0+s.r1)/2)*Math.sin((s.a1-s.a0)/2))),thickness:c.r1-c.r0});
     }
    }
-   const compact=leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),before=compact.map(r=>r.id==='L4'?{...r,count:12}:r);
-   const old=E.solveConcentricRingLayout({rings:before,bounds:{left:0,right:1280,top:52,bottom:784},fixedOuter:true}),next=leftDrawingMenu.layout;
+   const compact=leftDrawingCategories.map(r=>({id:r.id,count:r.entries.length})),before=compact.map(r=>r.id==='annotation'?{...r,count:12}:r);
+   const old=E.solveConcentricRingLayout({rings:before,bounds:{left:0,right:1280,top:52,bottom:784},fixedOuter:true}),next=E.solveConcentricRingLayout({rings:compact,bounds:{left:0,right:1280,top:52,bottom:784},fixedOuter:true});
    check(next.radius<=old.radius,'no radius increase');check(next.rings[3].step>old.rings[3].step,'larger L4 angular targets');
    return {fail,measurements,l4StepBefore:old.rings[3].step,l4StepAfter:next.rings[3].step};
   });assert.deepEqual(geometry.fail,[]);console.log('GEOMETRY',JSON.stringify(geometry));
@@ -109,8 +109,8 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
    assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),true);assert.deepEqual(await snapshot(),before);assert.deepEqual(await p.evaluate(()=>diagramCalls),{});assert.deepEqual(await contextIds(),children);
   }
   await p.evaluate(()=>document.activeElement.blur());await shot('diagram-empty');
-  assert.equal(await root.locator('[data-roller-ring="L4"]').count(),8);
-  assert.equal(await root.locator('[data-roller-ring="L4"][data-demo-id="diagram"]').count(),1);
+  assert.equal(await root.locator('[data-roller-ring="tool"]').count(),8);
+  assert.equal(await root.locator('[data-roller-ring="tool"][data-demo-id="diagram"]').count(),1);
   for(const id of children)assert.equal(await root.locator(`[data-roller-ring][data-demo-id="${id}"]`).count(),0);
 
   // Every child uses its real source once, closes the menu, and reopens under
@@ -120,9 +120,9 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
    await activate(id,['touch','pen','mouse','Enter','Space'][index]);
    assert.equal(await p.evaluate(id=>diagramCalls[id],id),1);assert.equal(await p.evaluate(()=>mode),id);
    assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);assert.deepEqual(await documentState(),doc);
-   const remembered=await memory();await p.evaluate(()=>{const r=leftDrawingMenu.state.rings[3];r.offset=r.activeIndex=0});await open();
-   assert.equal(await p.evaluate(()=>leftDrawingMenu.state.rings[3].entries[leftDrawingMenu.state.rings[3].activeIndex].id),'diagram');
-   assert.deepEqual((await memory()).slice(0,3),remembered.slice(0,3));assert.deepEqual(await contextIds(),children);
+   const remembered=await memory();await p.evaluate(()=>{const r=leftDrawingMenu.state.rings[1];r.offset=r.activeIndex=0});await open();
+   assert.equal(await p.evaluate(()=>leftDrawingMenu.state.rings[1].entries[leftDrawingMenu.state.rings[1].activeIndex].id),'diagram');
+   assert.deepEqual((await memory()).slice(0,1),remembered.slice(0,1));assert.deepEqual(await contextIds(),children);
    assert.equal(await root.locator('[data-context-action][aria-pressed="true"]').count(),1);assert.equal(await sector(id).getAttribute('aria-pressed'),'true');
    assert((await sector('diagram').getAttribute('class')).includes('has-active-child'));
    assert(!await sector('diagram').getAttribute('aria-pressed'));assert.equal(await p.evaluate(()=>Object.hasOwn(modes,'diagram')),false);
@@ -136,18 +136,18 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
   assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),true);assert.equal(await sector('positive').getAttribute('aria-pressed'),'true');assert.equal(await sector('diagramN').getAttribute('aria-pressed'),'false');
   await p.evaluate(()=>setMode('select'));await settled();assert.equal(await root.locator('[data-context-action][aria-pressed="true"]').count(),0);assert(!(await sector('diagram').getAttribute('class')).includes('has-active-child'));
   await focus('thin');const remembered=await memory();await sector('hub').dispatchEvent('click');await open();assert.deepEqual(await memory(),remembered);
-  await tapMain('diagram');assert.deepEqual(await contextIds(),children);
+  await focus('diagram');assert.deepEqual(await contextIds(),children);
 
   // Real roller motion updates context at the detent before pointer-up, without
   // mode/source activation. Other ring memory and the outer paths remain fixed.
   const dragL4=async(steps,expected)=>{
    const saved=await snapshot(),old=await memory(),fixed=await p.evaluate(()=>leftDrawingMenu.layout.contextRing.sectors.map(s=>s.path));
-   const q=await p.evaluate(()=>{const m=leftDrawingMenu,r=m.state.rings[3],l=m.layout.rings[3],s=l.sectors[r.activeIndex];return{x:s.icon.x,y:s.icon.y,cx:m.layout.cx,cy:m.layout.cy,r:(s.r0+s.r1)/2,step:l.step}});
-   await p.mouse.move(q.x,q.y);await p.mouse.down();for(let i=1;i<=12;i++){const a=-q.step*steps*i/12;await p.mouse.move(q.cx+q.r*Math.cos(a),q.cy+q.r*Math.sin(a))}
+   const q=await p.evaluate(()=>{const m=leftDrawingMenu,r=m.state.rings[1],l=m.layout.rings[1],s=l.sectors[r.activeIndex];return{x:s.icon.x,y:s.icon.y,cx:m.layout.cx,cy:m.layout.cy,r:(s.r0+s.r1)/2,angle:(s.a0+s.a1)/2,step:l.step}});
+   await p.mouse.move(q.x,q.y);await p.mouse.down();for(let i=1;i<=12;i++){const a=q.angle+q.step*steps*i/12;await p.mouse.move(q.cx+q.r*Math.cos(a),q.cy+q.r*Math.sin(a))}
    assert.deepEqual(await contextIds(),expected);await p.mouse.up();await p.waitForTimeout(210);
-   assert.deepEqual(await snapshot(),saved);assert.deepEqual((await memory()).slice(0,3),old.slice(0,3));assert.deepEqual(await p.evaluate(()=>leftDrawingMenu.layout.contextRing.sectors.map(s=>s.path)),fixed);
+   assert.deepEqual(await snapshot(),saved);assert.deepEqual((await memory()).slice(0,1),old.slice(0,1));assert.deepEqual(await p.evaluate(()=>leftDrawingMenu.layout.contextRing.sectors.map(s=>s.path)),fixed);
   };
-  await reset();await focus('text');await dragL4(-2,children);await dragL4(4,[]);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.focusedEntry.id),'section');await shot('section-empty');assert.deepEqual(await p.evaluate(()=>diagramCalls),{});
+  await reset();await focus('text');await dragL4(6,children);await dragL4(-4,[]);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.focusedEntry.id),'section');await shot('section-empty');assert.deepEqual(await p.evaluate(()=>diagramCalls),{});
 
   await focus('diagram');const hoverDoc=await snapshot(),hoverMemory=await memory();
   for(const id of children){await sector(id).dispatchEvent('pointermove',{pointerType:'pen',pointerId:777,clientX:200,clientY:300});for(const type of ['mouse','pen','touch']){await activate(id,type,'up',true);assert.deepEqual(await snapshot(),hoverDoc,id+' '+type+' drag')}}

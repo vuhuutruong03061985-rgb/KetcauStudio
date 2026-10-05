@@ -16,7 +16,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
   const out=path.resolve('.test-tools/semicircle-outer-context');fs.mkdirSync(out,{recursive:true});const shot=name=>p.screenshot({path:path.join(out,name+'.png')});
   await reset('select');await open('left');await shot('left-idle');assert.equal(await fixed('left','commandCancel').count(),0);assert.equal(await fixed('left','commandFinish').count(),0);
   const structure=await p.evaluate(()=>{
-   const E=semicircleEngine,bounds={left:0,right:1280,top:52,bottom:784},left=E.solveConcentricRingLayout({side:'left',rings:leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}),mirror=E.mirrorSemicircleLayout(left),right=E.solveConcentricRingLayout({side:'right',rings:leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true});
+   const E=semicircleEngine,bounds={left:0,right:1280,top:52,bottom:784},left=E.solveConcentricRingLayout({side:'left',rings:leftDrawingCategories.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}),mirror=E.mirrorSemicircleLayout(left),right=E.solveConcentricRingLayout({side:'right',rings:leftDrawingCategories.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true});
    return {count:left.contextRing.sectors.length,top:left.contextRing.sectors.slice(0,2).every(s=>s.icon.y<left.cy),bottom:left.contextRing.sectors.slice(2).every(s=>s.icon.y>left.cy),middle:left.contextRing.sectors.every(s=>s.a1<0||s.a0>0),sameAnnulus:left.contextRing.sectors.every(s=>s.r0===left.contextRing.r0&&s.r1===left.contextRing.r1),separation:left.contextRing.r0>left.rings.at(-1).r1,mirror:JSON.stringify(mirror.contextRing.sectors)===JSON.stringify(right.contextRing.sectors),targets:left.contextRing.sectors.every(s=>{for(let a=0;a<2*Math.PI;a+=Math.PI/36)if(!E.hitTestRadialSector(s,s.icon.x+22*Math.cos(a),s.icon.y+22*Math.sin(a)))return false;return true})};
   });assert.equal(structure.count,4);for(const [name,value]of Object.entries(structure))if(name!=='count')assert(value,name);
   for(const side of ['left','right']){
@@ -33,7 +33,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
   for(const side of ['left','right']){
    await reset('hatch');await open(side);const paths=await fixedPaths(side),before=await snapshot();
    // Real mouse contacts move each functional ring, leaving fixed geometry unchanged.
-   for(let index=0;index<(side==='left'?4:2);index++){
+   for(let index=0;index<2;index++){
     const q=await p.evaluate(({side,index})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu,r=m.state.rings[index],s=m.layout.rings[index].sectors[r.activeIndex];return{x:s.icon.x,y:s.icon.y,cx:m.layout.cx,cy:m.layout.cy,r:(s.r0+s.r1)/2,step:m.layout.rings[index].step}}, {side,index});
     const sign=side==='left'?1:-1;await p.mouse.move(q.x,q.y);await p.mouse.down();for(let i=1;i<=8;i++){const a=-sign*q.step*i/8;await p.mouse.move(q.cx+sign*q.r*Math.cos(a),q.cy+sign*q.r*Math.sin(a))}await p.mouse.up();await p.waitForTimeout(210);assert.deepEqual(await fixedPaths(side),paths);assert.deepEqual(await snapshot(),before);
    }

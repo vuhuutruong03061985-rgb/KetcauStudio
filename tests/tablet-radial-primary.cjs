@@ -16,9 +16,9 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
     const q=await p.evaluate(({id,side})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;
      if(id==='hub')return{x:m.layout.cx+(side==='left'?13:-13),y:m.layout.cy};if(['commandCancel','commandFinish'].includes(id))return m.layout.contextRing.sectors[sharedOuterActions.findIndex(e=>e.id===id)].icon;
      if(side==='left'){
-      const aliases={geometry:'L1',connections:'L2',loads:'L3',region:'L4',dimensions:'L4',annotation:'L4',diagrams:'L4'};
-      const r=aliases[id]?m.state.rings.find(r=>r.id===aliases[id]):m.state.rings.find(r=>r.entries.some(e=>e.id===id));
-      const i=aliases[id]?(r.activeIndex+1)%r.entries.length:r.entries.findIndex(e=>e.id===id);return m.layout.rings.find(l=>l.id===r.id).sectors[i].icon;
+      const aliases={geometry:'geometry',connections:'supports',loads:'loads',region:'annotation',dimensions:'annotation',annotation:'annotation',diagrams:'annotation'};
+      const r=aliases[id]?m.state.rings[0]:m.state.rings.find(r=>r.entries.some(e=>e.id===id));
+      const i=r.entries.findIndex(e=>e.id===(aliases[id]||id));return m.layout.rings.find(l=>l.id===r.id).sectors[i].icon;
      }
      const aliases={history:'R1',edit:'R1',view:'R2',snap:'R2',settings:'R2'};const r=aliases[id]?m.state.rings.find(r=>r.id===aliases[id]):m.state.rings.find(r=>r.entries.some(e=>e.id===id));const i=aliases[id]?(r.activeIndex+1)%r.entries.length:r.entries.findIndex(e=>e.id===id);return m.layout.rings.find(l=>l.id===r.id).sectors[i].icon;
     },{id,side});await p.touchscreen.tap(q.x,q.y);
@@ -26,7 +26,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    const command=async(side,group,id)=>{
     if(side==='right'&&(group==='file'||['undo','redo','snapToggle','drawingScalesToggle'].includes(id))){await p.evaluate(()=>rightCommandMenu.close());await p.locator('#'+id).tap();return;}
     if(!await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.open,side))await tap('hub',side);
-    if(side==='left'){if(!await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side)}
+    if(side==='left'){const category=await p.evaluate(id=>leftDrawingCategories.find(c=>c.entries.some(e=>e.id===id)).id,id);if(await p.evaluate(()=>leftCategoryId)!==category){const q=await p.evaluate(id=>{const m=leftDrawingMenu;return m.layout.rings[0].sectors[m.state.rings[0].entries.findIndex(e=>e.id===id)].icon},category);await p.touchscreen.tap(q.x,q.y)}if(!await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.focusedId===id},id))await tap(id,side)}
     else if(!['undo','redo'].includes(id)&&!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side);
     await tap(id,side);
    };
@@ -51,7 +51,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
     await p.screenshot({path:`tests/task3a-${side}-open-${viewport.width}.png`});
     await tap(group,side);
     const root=p.locator(`.semicircle-${side}-menu`);
-    assert.equal(await root.locator('.selected-group').count(),side==='left'?4:2);
+    assert.equal(await root.locator('.selected-group').count(),side==='left'?1:2);
     assert.equal(await root.locator('text,button').count(),0);
     await p.screenshot({path:`tests/task3a-${side}-expanded-${viewport.width}.png`});
     await tap('hub',side);
