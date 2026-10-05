@@ -19,8 +19,8 @@ const removed=['snapToggle','drawingScalesToggle','clear','open','save','saveAs'
   let map=await mapping();assert.deepEqual(map.config,expected);assert.deepEqual(map.ids,['R1','R2']);assert.deepEqual(map.defaults,['resetView','panView']);assert(map.real&&map.snapShared);assert.deepEqual(map.entries,[expected[0],expected[1].slice(0,2)]);
   await open();assert.equal(await p.locator('.semicircle-right-menu .semicircle-roller-ring').count(),2);
   for(const id of removed)assert.equal(await sector(id).count(),0,id+' has no keyboard-reachable roller sector');
-  assert.deepEqual(await p.evaluate(()=>sharedOuterActions.map(e=>e.id)),['commandCancel','commandFinish','undo','redo']);
-  assert.deepEqual(await p.locator('#tabletTopBar button').evaluateAll(es=>es.map(e=>e.id||e.dataset.toolbarIcon)),['clear','open','save','saveAs','svg','png','insertWord']);
+  assert.deepEqual(await p.evaluate(()=>sharedOuterActions.map(e=>e.id)),['commandCancel','commandFinish']);
+  assert.deepEqual(await p.locator('#tabletTopBar button').evaluateAll(es=>es.map(e=>e.id||e.dataset.toolbarIcon)),['clear','open','save','saveAs','svg','png','insertWord','undo','redo']);
   assert.deepEqual(await p.locator('#tabletBottomZoom').evaluate(e=>[...e.children].map(c=>c.id)),['zoomOut','zoomLevel','zoomIn','fitView']);
   assert.deepEqual(await p.locator('#tabletBottomView').evaluate(e=>[...e.children].map(c=>c.id)),['gridToggle','gridSizeControl','snapToggle','drawingScalesToggle']);
   const left=await p.evaluate(()=>leftDrawingRings.map(r=>r.entries.map(e=>e.id||e.dataset.toolbarIcon)));

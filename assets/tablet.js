@@ -2117,13 +2117,13 @@ floatingToolsMedia.addEventListener('change',()=>{for(const panel of ribbonScrol
 window.addEventListener('resize',positionRibbonMenus);
 paintCommandRibbon();
 
-// Persistent radial-primary chrome uses the real file/export groups. Comment
-// anchors preserve their exact order when the fallback/desktop owns them again.
+// Persistent radial-primary chrome uses real file/export groups and history
+// buttons. Comment anchors restore each node's exact fallback/desktop home.
 const tabletTopBar=document.createElement('div');tabletTopBar.id='tabletTopBar';tabletTopBar.hidden=true;
-tabletTopBar.setAttribute('role','toolbar');tabletTopBar.setAttribute('aria-label','Tệp và xuất hình');
+tabletTopBar.setAttribute('role','toolbar');tabletTopBar.setAttribute('aria-label','Tệp, xuất hình và lịch sử');
 const tabletTopCommands=document.createElement('div');tabletTopCommands.id='tabletTopCommands';tabletTopBar.append(tabletTopCommands);
 document.querySelector('header').after(tabletTopBar);
-const tabletTopHomes=[$('fileToolbar'),$('exportToolbar')].map(group=>{
+const tabletTopHomes=[$('fileToolbar'),$('exportToolbar'),$('undo'),$('redo')].map(group=>{
  const anchor=document.createComment('tablet top bar: '+group.id);group.before(anchor);return {group,anchor};
 });
 function paintTabletTopBar(active){
@@ -2367,7 +2367,7 @@ const semicircleEngine=(()=>{
   const menuLabel=side==='right'?'Lệnh và thiết lập':'Công cụ vẽ';
   const surface=document.createElementNS(NS,'svg');surface.setAttribute('aria-label',production?menuLabel:`Demo ${side}`);host.append(surface);document.body.append(host);
   const state={side,open:false,activeGroup:null,hoveredSector:null,rings,focusedEntry:null};
-  if(outerActions&&(!multi||outerActions.length!==4))throw new RangeError('Fixed outer actions require four slots and concentric rings');
+  if(outerActions&&(!multi||outerActions.length<1||outerActions.length>4))throw new RangeError('Fixed outer actions require one to four actions and concentric rings');
   let fixedContact=null,fixedClickPointer=null;
   const contextEntries=()=>getContextEntries(state.focusedEntry,state);
   const fixedEntries=()=>[...(outerActions||[]),...contextEntries()];
@@ -2629,9 +2629,7 @@ const semicircleEngine=(()=>{
 // Task 2C: DOM controls remain authoritative for actions, state and artwork.
 const sharedOuterActions=[
  {id:'commandCancel',source:commandCancel,artwork:'M6 6L18 18M18 6L6 18',visible:()=>!commandControls.hidden&&!commandCancel.hidden},
- {id:'commandFinish',source:commandFinish,artwork:'M4 12L9 17L20 6',visible:()=>!commandControls.hidden&&!commandFinish.hidden},
- {id:'undo',source:$('undo'),icon:'undo'},
- {id:'redo',source:$('redo'),icon:'redo'}
+ {id:'commandFinish',source:commandFinish,artwork:'M4 12L9 17L20 6',visible:()=>!commandControls.hidden&&!commandFinish.hidden}
 ];
 const leftDrawingGroups=[
  {id:'geometry',label:'Thanh',icon:'bar',tools:['bar','thin','dashed','curve','extend']},

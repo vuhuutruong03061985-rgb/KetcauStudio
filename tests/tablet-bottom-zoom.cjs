@@ -53,7 +53,7 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
   };
   console.log('LANDSCAPE',JSON.stringify(await checkGeometry()));await output();await shot('landscape');await shot('zoom-100');await shot('top-and-bottom');
   const topCommands=()=>p.locator('#tabletTopCommands button:not([hidden])').evaluateAll(es=>es.map(e=>e.id||e.dataset.toolbarIcon));
-  assert.deepEqual(await topCommands(),['clear','open','save','saveAs','svg','png']);
+  assert.deepEqual(await topCommands(),['clear','open','save','saveAs','svg','png','undo','redo']);
   // The existing source handlers run once. A pending drawing point and roller
   // positions survive; strip taps never enter the canvas or synthesize Escape.
   await p.evaluate(()=>{setMode('bar');first={x:300,y:300};render()});const pending=await snapshot();
@@ -126,7 +126,7 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
   await p.setViewportSize({width:440,height:784});await ready(true);await checkGeometry();
   // RIGHT's low fixed sectors also stay clear on a narrow admitted viewport.
   await p.locator('.semicircle-right-menu [data-demo-id="hub"]').dispatchEvent('click');assert(await p.evaluate(()=>{const b=tabletBottomLeftBar.getBoundingClientRect(),controls=[...rightCommandMenu.host.querySelectorAll('.semicircle-control')].filter(e=>e.getBoundingClientRect().width);return controls.length>0&&controls.every(e=>{const r=e.getBoundingClientRect();return r.right<=b.left||r.left>=b.right||r.bottom<=b.top||r.top>=b.bottom})}));
-  assert.deepEqual(await topCommands(),['clear','open','save','saveAs','svg','png']);assert.equal(await p.evaluate(()=>Object.keys(localStorage).some(k=>k.includes('bottom-zoom'))),false);assert.deepEqual(errors,[]);
+  assert.deepEqual(await topCommands(),['clear','open','save','saveAs','svg','png','undo','redo']);assert.equal(await p.evaluate(()=>Object.keys(localStorage).some(k=>k.includes('bottom-zoom'))),false);assert.deepEqual(errors,[]);
   console.log('PASS same zoom nodes/handlers/output, live buttons/pinch/wheel/pan, touch/pen drawing, no click-through, restore/fallback, LEFT reservation and unchanged RIGHT/top bar; screenshots:',out);
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -47,7 +47,7 @@ const commands=['clear','open','save','saveAs','svg','png','insertWord'];
   };
   assert(await bar.isHidden());await identity(true);await shot('desktop');
   const beforeMedia=await snapshot();await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});await ready(true);await settled();
-  assert.deepEqual(await snapshot(),beforeMedia);await identity(false);assert.deepEqual(await visibleCommands(),commands);
+  assert.deepEqual(await snapshot(),beforeMedia);await identity(false);assert.deepEqual(await visibleCommands(),[...commands,'undo','redo']);
   assert.equal(await p.locator('#tabletTopBar #ribbonToggle').count(),0);
   assert.equal(await p.locator('#tabletTopBar #headerFileName,#tabletTopBar #fileStatus').count(),0);
   assert(await p.locator('#commandRibbon').isHidden());assert(await p.locator('#ribbonToggle').isHidden());
@@ -64,8 +64,8 @@ const commands=['clear','open','save','saveAs','svg','png','insertWord'];
    assert.deepEqual(g.menus.map(m=>m.radius),[304.04759747124507,248.81914748738225]);return g;
   };
   console.log('LANDSCAPE',JSON.stringify(await checkGeometry()));await shot('landscape');
-  await p.evaluate(()=>{wordButton.hidden=true});await settled();assert.deepEqual(await visibleCommands(),commands.slice(0,-1));const exportWidth=await p.locator('#exportToolbar').evaluate(e=>e.getBoundingClientRect().width);await shot('word-hidden');
-  await p.evaluate(()=>{wordButton.hidden=false});await settled();assert.deepEqual(await visibleCommands(),commands);assert.equal(await p.locator('#exportToolbar').evaluate(e=>e.getBoundingClientRect().width)-exportWidth,48);await shot('word-visible');
+  await p.evaluate(()=>{wordButton.hidden=true});await settled();assert.deepEqual(await visibleCommands(),[...commands.slice(0,-1),'undo','redo']);const exportWidth=await p.locator('#exportToolbar').evaluate(e=>e.getBoundingClientRect().width);await shot('word-hidden');
+  await p.evaluate(()=>{wordButton.hidden=false});await settled();assert.deepEqual(await visibleCommands(),[...commands,'undo','redo']);assert.equal(await p.locator('#exportToolbar').evaluate(e=>e.getBoundingClientRect().width)-exportWidth,48);await shot('word-visible');
 
   // File operations use actual source taps with mocked picker handles. No real
   // file is overwritten, including conflict and unsaved-document safeguards.
@@ -143,7 +143,7 @@ const commands=['clear','open','save','saveAs','svg','png','insertWord'];
   await p.setViewportSize({width:280,height:900});await ready(false);await p.evaluate(()=>{leftDrawingSafeProbe.style.paddingRight='calc(100vw - 60px)';leftDrawingMenu.refresh()});await settled();
   // A narrow admitted viewport keeps one row and every 44px source target.
   await p.setViewportSize({width:390,height:900});await p.evaluate(()=>leftDrawingSafeProbe.style.removeProperty('padding-right'));await ready(false);await identity(true);assert(await bar.isHidden());
-  await p.setViewportSize({width:440,height:900});await ready(true);await checkGeometry();assert.equal(await bar.locator('button:not([hidden])').count(),7);await identity(false);
+  await p.setViewportSize({width:440,height:900});await ready(true);await checkGeometry();assert.equal(await bar.locator('button:not([hidden])').count(),9);await identity(false);
   assert.equal(await p.evaluate(()=>Object.keys(localStorage).some(k=>k.includes('tablet-top'))),false);
   assert.deepEqual(errors,[]);console.log('PASS exact real top sources, source Save/Open/New/SVG/PNG/Word, filename/dirty, no click-through, same-node restores, collapse independence, safe chrome/fit and media; screenshots:',out);
  }finally{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}

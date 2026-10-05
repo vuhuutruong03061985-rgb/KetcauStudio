@@ -14,7 +14,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    const tap=async(id,side)=>{
     await settled();
     const q=await p.evaluate(({id,side})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;
-     if(id==='hub')return{x:m.layout.cx+(side==='left'?13:-13),y:m.layout.cy};if(['undo','redo','commandCancel','commandFinish'].includes(id))return m.layout.contextRing.sectors[sharedOuterActions.findIndex(e=>e.id===id)].icon;
+     if(id==='hub')return{x:m.layout.cx+(side==='left'?13:-13),y:m.layout.cy};if(['commandCancel','commandFinish'].includes(id))return m.layout.contextRing.sectors[sharedOuterActions.findIndex(e=>e.id===id)].icon;
      if(side==='left'){
       const aliases={geometry:'L1',connections:'L2',loads:'L3',region:'L4',dimensions:'L4',annotation:'L4',diagrams:'L4'};
       const r=aliases[id]?m.state.rings.find(r=>r.id===aliases[id]):m.state.rings.find(r=>r.entries.some(e=>e.id===id));
@@ -24,7 +24,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
     },{id,side});await p.touchscreen.tap(q.x,q.y);
    };
    const command=async(side,group,id)=>{
-    if(side==='right'&&(group==='file'||['snapToggle','drawingScalesToggle'].includes(id))){await p.evaluate(()=>rightCommandMenu.close());await p.locator('#'+id).tap();return;}
+    if(side==='right'&&(group==='file'||['undo','redo','snapToggle','drawingScalesToggle'].includes(id))){await p.evaluate(()=>rightCommandMenu.close());await p.locator('#'+id).tap();return;}
     if(!await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.open,side))await tap('hub',side);
     if(side==='left'){if(!await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side)}
     else if(!['undo','redo'].includes(id)&&!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side);
@@ -45,7 +45,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
    await p.screenshot({path:`tests/radial-primary-closed-${viewport.width}.png`});
    // Review clean canvas and each navigation level in both orientations.
-   for(const id of ['undo','redo'])assert(await p.locator('#'+id).isHidden());
+   for(const id of ['undo','redo'])assert(await p.locator('#tabletTopBar #'+id).isVisible());
    for(const [side,group]of [['left','region'],['right','view']]){
     await tap('hub',side);
     await p.screenshot({path:`tests/task3a-${side}-open-${viewport.width}.png`});
