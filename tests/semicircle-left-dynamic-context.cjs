@@ -17,7 +17,8 @@ const baseline=execFileSync('git',['show','c8e2288:assets/tablet.js'],{encoding:
   const ids=()=>root.locator('[data-fixed-action]').evaluateAll(es=>es.map(e=>e.dataset.fixedAction));
   const shot=async name=>{await settled(p);await p.screenshot({path:path.join(out,name+'.png')})};
   const shape=page=>page.evaluate(()=>leftDrawingMenu.layout.rings.map(r=>({r0:r.r0,r1:r.r1,step:r.step,sectors:r.sectors.map(s=>[s.a0,s.a1])})));
-  const right=page=>page.evaluate(()=>({layout:rightCommandMenu.layout,mapping:rightCommandMenu.state.rings.map(r=>r.entries.map(e=>e.id))}));
+  // Project only the baseline RIGHT functional sectors through its existing B1 allocator.
+  const right=page=>page.evaluate(project=>{const m=rightCommandMenu,rings=m.state.rings.map(r=>({id:r.id,count:r.entries.length}));return {layout:project?semicircleEngine.solveAdaptiveConcentricRingLayout({side:'right',rings,fullArcRings:rings,fixedOuter:true,bounds:rightCommandBounds(),getProfileBounds:profile=>rightCommandBounds(undefined,undefined,profile)}):m.layout,mapping:m.state.rings.map(r=>r.entries.map(e=>e.id))}},page!==p);
   const geometry=async expected=>{
    assert.deepEqual(await ids(),expected);
    const g=await p.evaluate(()=>{const m=leftDrawingMenu,c=m.layout.contextRing;return {radius:m.layout.radius,profile:m.layout.profile,cx:m.layout.cx,cy:m.layout.cy,tool:m.layout.rings[1].r1,c:c&&{r0:c.r0,r1:c.r1,safe:c.targets.safe,width:c.targets.minimumWidth,sectors:c.sectors.map(s=>({a0:s.a0,a1:s.a1,path:s.path,hit:document.elementFromPoint(s.icon.x,s.icon.y)?.closest('[data-fixed-action]')?.dataset.fixedAction,disk:Array.from({length:72},(_,i)=>i*Math.PI/36).every(a=>semicircleEngine.hitTestRadialSector(s,s.icon.x+21.99999*Math.cos(a),s.icon.y+21.99999*Math.sin(a))) }))},controls:m.host.querySelectorAll('[data-fixed-action]').length}});

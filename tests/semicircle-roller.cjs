@@ -36,19 +36,19 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
    {id=(side==='left'?{geometry:'bar',loads:'moment',annotation:'text',connections:'fixed'}:{edit:'delete',file:'open',view:'panView',snap:'snapToggle'})[id]||id;const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));if(r.entries[r.activeIndex].id===id)return}m.host.querySelector(`[data-demo-id="${id}"]`).dispatchEvent(new MouseEvent('click',{bubbles:true}))},{side,id});
   const drag=async(side,type,cancel=false)=>{
    const start=await p.evaluate(({side,type})=>{
-    const m=side==='left'?leftDrawingMenu:rightCommandMenu,index=m.state.roller.activeIndex,s=side==='left'?m.layout.rings[0].sectors[index]:m.layout.rings[0].sectors.find(s=>Math.abs((s.a0+s.a1)/2)<1e-8),id=61,target=index===3?2:index+1;
+    const m=side==='left'?leftDrawingMenu:rightCommandMenu,index=m.state.roller.activeIndex,s=m.layout.rings[0].sectors[index],id=61,target=index===m.state.roller.entries.length-1?index-1:index+1;
     const g=document.elementFromPoint(s.icon.x,s.icon.y),angle=Math.atan2(s.icon.y-m.layout.cy,s.icon.x-m.layout.cx),r=(s.r0+s.r1)/2;
-    window.rollerTest={m,g,id,angle,r,step:m.layout.rings[0].step,delta:side==='left'?(target-index)*Math.PI/4:null};g.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:id,pointerType:type,button:0,clientX:s.icon.x,clientY:s.icon.y}));
-    return {target,paths:side==='left'?m.layout.rings.map(r=>r.sectors.map(s=>s.path)):null,offset:m.state.roller.offset,hub:JSON.stringify(m.host.querySelector('[data-demo-id="hub"] .semicircle-hit').getAttribute('d'))};
+    window.rollerTest={m,g,id,angle,r,step:m.layout.rings[0].step,delta:(side==='left'?1:-1)*(target-index)*m.layout.rings[0].step};g.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:id,pointerType:type,button:0,clientX:s.icon.x,clientY:s.icon.y}));
+    return {target,paths:m.layout.rings.map(r=>r.sectors.map(s=>s.path)),offset:m.state.roller.offset,hub:JSON.stringify(m.host.querySelector('[data-demo-id="hub"] .semicircle-hit').getAttribute('d'))};
    },{side,type});
    await p.evaluate(({side,type,cancel})=>{
     const {m,id,angle,r,step,delta}=rollerTest,sign=side==='left'?1:-1;
-    for(let i=1;i<=8;i++){const a=angle+(side==='left'?delta:-sign*step)*i/8;m.host.querySelector('svg').dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:id,pointerType:type,clientX:m.layout.cx+r*Math.cos(a),clientY:m.layout.cy+r*Math.sin(a)}))}
+    for(let i=1;i<=8;i++){const a=angle+delta*i/8;m.host.querySelector('svg').dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:id,pointerType:type,clientX:m.layout.cx+r*Math.cos(a),clientY:m.layout.cy+r*Math.sin(a)}))}
     m.host.querySelector('svg').dispatchEvent(new PointerEvent(cancel?'pointercancel':'pointerup',{bubbles:true,pointerId:id,pointerType:type}));
    },{side,type,cancel});
    await p.waitForTimeout(210);
-   const end=await p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;return {focused:m.state.roller.focusedId,paths:side==='left'?m.layout.rings.map(r=>r.sectors.map(s=>s.path)):null,offset:m.state.roller.offset,pointer:m.state.roller.pointerId,dragging:m.state.roller.dragging,hub:JSON.stringify(m.host.querySelector('[data-demo-id="hub"] .semicircle-hit').getAttribute('d')),clicks:rollerClicks}},side);
-   if(side==='left'){assert.equal(end.offset,cancel?start.offset:start.target);assert.equal(end.focused,['geometry','supports','loads','annotation'][cancel?start.offset:start.target]);assert.deepEqual(end.paths,start.paths)}else assert.equal(end.offset,cancel?start.offset:(start.offset+1)%6);assert.equal(end.hub,start.hub);assert.equal(end.pointer,null);assert.equal(end.dragging,false);assert.equal(end.clicks,0);
+   const end=await p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;return {focused:m.state.roller.focusedId,paths:m.layout.rings.map(r=>r.sectors.map(s=>s.path)),offset:m.state.roller.offset,pointer:m.state.roller.pointerId,dragging:m.state.roller.dragging,hub:JSON.stringify(m.host.querySelector('[data-demo-id="hub"] .semicircle-hit').getAttribute('d')),clicks:rollerClicks}},side);
+   if(side==='left'){assert.equal(end.offset,cancel?start.offset:start.target);assert.equal(end.focused,['geometry','supports','loads','annotation'][cancel?start.offset:start.target]);assert.deepEqual(end.paths,start.paths)}else{assert.equal(end.offset,cancel?start.offset:start.target);assert.equal(end.focused,['resetView','editSelected','copyObjects','pasteObjects','delete','extend'][cancel?start.offset:start.target]);assert.deepEqual(end.paths,start.paths)}assert.equal(end.hub,start.hub);assert.equal(end.pointer,null);assert.equal(end.dragging,false);assert.equal(end.clicks,0);
   };
   await open('left');
   // Production LEFT has fixed full-arc sectors, including even counts: no N+1 slot

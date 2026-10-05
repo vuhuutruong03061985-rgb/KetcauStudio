@@ -19,7 +19,8 @@ const baseline=execFileSync('git',['show','c8e2288:assets/tablet.js'],{encoding:
   const focus=async id=>{await category(Object.keys(expected).find(c=>expected[c].includes(id)));if(!await p.evaluate(id=>leftDrawingMenu.state.rings[1].focusedId===id,id))await tap(id)};
   const shot=async name=>{await p.waitForTimeout(700);await settled(p);await p.screenshot({path:path.join(out,name+'.png')})};
   const context=page=>page.evaluate(()=>({radius:leftDrawingMenu.layout.radius,profile:leftDrawingMenu.layout.profile,cx:leftDrawingMenu.layout.cx,cy:leftDrawingMenu.layout.cy,bounds:leftDrawingMenu.layout.bounds,context:leftDrawingMenu.layout.contextRing}));
-  const right=page=>page.evaluate(()=>({layout:rightCommandMenu.layout,mapping:rightCommandMenu.state.rings.map(r=>r.entries.map(e=>e.id))}));
+  // Project only the baseline RIGHT functional sectors through its existing B1 allocator.
+  const right=page=>page.evaluate(project=>{const m=rightCommandMenu,rings=m.state.rings.map(r=>({id:r.id,count:r.entries.length}));return {layout:project?semicircleEngine.solveAdaptiveConcentricRingLayout({side:'right',rings,fullArcRings:rings,fixedOuter:true,bounds:rightCommandBounds(),getProfileBounds:profile=>rightCommandBounds(undefined,undefined,profile)}):m.layout,mapping:m.state.rings.map(r=>r.entries.map(e=>e.id))}},page!==p);
   const geometry=async id=>{
    const value=await p.evaluate(()=>{
     const m=leftDrawingMenu,E=semicircleEngine;

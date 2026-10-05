@@ -2214,6 +2214,20 @@ function tabletRightChromeTop(reserveBottomBar=false){
 
 // Shared Task 2B geometry/renderer; demo instances remain opt-in and session-only.
 const semicircleEngine=(()=>{
+ // A command popup may replace the release target before the compatibility click.
+ let activationClick=null,activationClickListening=false;
+ const clearActivationClick=host=>{if(!host||activationClick?.host===host)activationClick=null};
+ function listenForActivationClick(){
+  if(activationClickListening)return;activationClickListening=true;
+  // Install before either menu's capture handlers; keep geometry-only use DOM-free.
+  window.addEventListener('pointerdown',()=>clearActivationClick(),true);
+  window.addEventListener('blur',()=>clearActivationClick());
+  window.addEventListener('click',e=>{
+   if(activationClick&&e.detail>0&&e.pointerId===activationClick.pointerId){
+    activationClick=null;e.preventDefault();e.stopImmediatePropagation();
+   }
+  },true);
+ }
  // Geometry-only foundation; production rollers keep their existing allocator.
  function computeRadialSectors({itemCount,startAngle,endAngle,innerRadius,outerRadius,angularGap=0}){
   const span=endAngle-startAngle;
@@ -2389,7 +2403,8 @@ const semicircleEngine=(()=>{
  }
  // Rings navigate by default; activateCentered opts into focus-then-activate.
  // The items API keeps Task 3B semantics for legacy callers.
- function createMenu({side,items:entries=[],rings:ringConfigs=null,getBounds,centerY,onAction=()=>{},production=false,onOpen=()=>{},activateCentered=false,onGesturePointer=()=>false,outerActions=null,getContextEntries=()=>[],fullArc=false,envelopeRings=null,dynamicContext=false,onNavigate=()=>false}){
+ function createMenu({side,items:entries=[],rings:ringConfigs=null,getBounds,centerY,onAction=()=>{},production=false,onOpen=()=>{},activateCentered=false,onGesturePointer=()=>false,outerActions=null,getContextEntries=()=>[],fullArc=false,envelopeRings=null,dynamicContext=false,onNavigate=()=>false,guardActivationClick=false}){
+  listenForActivationClick();
   const multi=ringConfigs!==null,rotary=production||multi;
   if(multi&&(!Array.isArray(ringConfigs)||!ringConfigs.length||new Set(ringConfigs.map(r=>r.id)).size!==ringConfigs.length))throw new RangeError('Invalid concentric configuration');
   const rings=multi?ringConfigs.map(createRollerState):[{id:'main',entries,activeIndex:0,offset:0,pointerId:null,dragging:false,snapFrame:0,suppressClick:false,controls:new Map()}];
@@ -2440,12 +2455,14 @@ const semicircleEngine=(()=>{
    if(!multi){state.activeGroup=ring.entries[ring.activeIndex]?.id;paint()}
    else{if(fullArc){focusEntry(ring,ring.activeIndex);moveRollerRing(ring)}else{moveRollerRing(ring);focusEntry(ring,ring.activeIndex)}}
   }
-  function invokeRingEntry(index,ring){
+  function invokeRingEntry(index,ring,pointerEvent=null){
    if(fullArc&&onNavigate(ring.entries[index],ring)){paint();return}
    if(fullArc&&ring.focusedId!==ring.entries[index].id){selectGroup(index,ring);return}
    if(!activateCentered||ring.activeIndex!==index||Math.abs(ring.offset-index)>1e-8){selectGroup(index,ring);return}
    focusEntry(ring,index);if(ring.entries[index].navigationOnly){paintOuterContext();return}
+   clearActivationClick(host);
    onAction(ring.entries[index].id);state.open=false;stopRollers();paint();
+   if(guardActivationClick&&pointerEvent)activationClick={host,pointerId:pointerEvent.pointerId};
   }
   let forwardingGesture=false;
   function notifyGesture(e,ring){
@@ -2540,7 +2557,7 @@ const semicircleEngine=(()=>{
      }else if(ring.dragging){ring.offset=Math.max(ring.startOffset-ring.entries.length+1,Math.min(ring.startOffset+ring.entries.length-1,ring.offset-rollerDelta(ring.lastAngle,a,side)/ringLayout(ring).step));moveRollerRing(ring);focusEntry(ring,snapGroupIndex(ring.offset,ring.entries.length))}
      ring.lastAngle=a;
      notifyGesture(e,ring);
-    }else{const tap=!ring.dragging&&e.type==='pointerup',consumed=notifyGesture(e,ring);finishRoller(ring,e.type!=='pointerup');if(tap){ring.suppressClick=true;if(!consumed)invokeRingEntry(ring.tapIndex,ring)}}
+    }else{const tap=!ring.dragging&&e.type==='pointerup',consumed=notifyGesture(e,ring);finishRoller(ring,e.type!=='pointerup');if(tap){ring.suppressClick=true;if(!consumed)invokeRingEntry(ring.tapIndex,ring,e)}}
    }
    e.preventDefault();e.stopImmediatePropagation();
   }
@@ -2704,7 +2721,7 @@ const semicircleEngine=(()=>{
    if(state.focusedEntry?.ringId===id)state.focusedEntry=null;
    if(index>=0)focusEntry(ring,index);
    paint(); // Entry replacement is complete even when called outside category navigation.
-  },close(){stopRollers();state.open=false;if(!production)state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){stopRollers();for(const type of pointerEvents){window.removeEventListener(type,rollerPointer,true);window.removeEventListener(type,fixedPointer,true)}window.removeEventListener('click',fixedClick,true);window.removeEventListener('click',rollerClick,true);destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('blur',resize);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);if(production)queueRadialPrimaryUpdate()}};
+  },close(){clearActivationClick(host);stopRollers();state.open=false;if(!production)state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){clearActivationClick(host);stopRollers();for(const type of pointerEvents){window.removeEventListener(type,rollerPointer,true);window.removeEventListener(type,fixedPointer,true)}window.removeEventListener('click',fixedClick,true);window.removeEventListener('click',rollerClick,true);destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('blur',resize);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);if(production)queueRadialPrimaryUpdate()}};
  }
  return {computeRadialSectors,assessRadialTargets,normalizeAngle,shortestAngleDelta,snapGroupIndex,classifyTapVsDrag,rollerDelta,solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,solveConcentricRingLayout,solveLeftDynamicContextLayout,solveAdaptiveConcentricRingLayout,createRollerState,createMenu};
 })();
@@ -2902,7 +2919,7 @@ function refreshRightCommandEntries(){
   // Preserve entry identity/array ownership while optional capabilities change.
   const changed=config.entries.map(e=>e.id).join()!==entries.map(e=>e.id).join();
   config.entries.splice(0,config.entries.length,...entries);
-  if(ring&&changed){const index=config.entries.findIndex(e=>e.id===remembered);ring.offset=ring.activeIndex=index>=0?index:config.entries.findIndex(e=>e.id===config.defaultTool)}
+  if(ring&&changed){const index=config.entries.findIndex(e=>e.id===remembered);ring.offset=ring.activeIndex=index>=0?index:config.entries.findIndex(e=>e.id===config.defaultTool);ring.focusedId=ring.entries[ring.activeIndex]?.id;if(rightCommandMenu.state.focusedEntry?.ringId===ring.id)rightCommandMenu.state.focusedEntry={ringId:ring.id,id:ring.focusedId}}
  }
 }
 const rightCommandSafeProbe=document.createElement('div');rightCommandSafeProbe.className='semicircle-left-safe-probe';
@@ -2925,15 +2942,15 @@ function mountRightCommandMenu(){
  if(rightCommandMenu)return;
  refreshRightCommandEntries();document.body.append(rightCommandSafeProbe);
  let firstOpen=true;
- try{rightCommandMenu=semicircleEngine.createMenu({side:'right',production:true,rings:rightCommandRings,outerActions:sharedOuterActions,activateCentered:true,getBounds:rightCommandBounds,onOpen:()=>{
+ try{rightCommandMenu=semicircleEngine.createMenu({side:'right',production:true,rings:rightCommandRings,fullArc:true,outerActions:sharedOuterActions,activateCentered:true,guardActivationClick:true,getBounds:rightCommandBounds,onOpen:()=>{
   leftDrawingMenu?.close();
   if(firstOpen){firstOpen=false;return}
-  // Persistent source states may center only their own ring. Prefer the remembered
+  // Persistent source states may focus only their own ring. Prefer the remembered
   // toggle when Pan and Snap are both enabled; one-shot commands never synchronize.
   for(const ring of rightCommandMenu.state.rings){
    const meaningful=e=>!e.oneShot&&!e.popupOnly&&(e.source.classList.contains('active')||e.source.getAttribute('aria-pressed')==='true'||e.source.getAttribute('aria-expanded')==='true');
    if(meaningful(ring.entries[ring.activeIndex]))continue;
-   const index=ring.entries.findIndex(meaningful);if(index>=0)ring.offset=ring.activeIndex=index;
+   const index=ring.entries.findIndex(meaningful);if(index>=0){ring.offset=ring.activeIndex=index;ring.focusedId=ring.entries[index].id}
   }
  },onAction:id=>{
   const entry=rightCommandRings.flatMap(r=>r.entries).find(c=>c.id===id);
