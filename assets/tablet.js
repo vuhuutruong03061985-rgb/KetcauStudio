@@ -2214,6 +2214,33 @@ function tabletRightChromeTop(reserveBottomBar=false){
 
 // Shared Task 2B geometry/renderer; demo instances remain opt-in and session-only.
 const semicircleEngine=(()=>{
+ // Geometry-only foundation; production rollers keep their existing allocator.
+ function computeRadialSectors({itemCount,startAngle,endAngle,innerRadius,outerRadius,angularGap=0}){
+  const span=endAngle-startAngle;
+  if(!Number.isSafeInteger(itemCount)||itemCount<0||![startAngle,endAngle,innerRadius,outerRadius,angularGap,span].every(Number.isFinite)||span<=0||span>2*Math.PI||innerRadius<0||outerRadius<=innerRadius||angularGap<0)throw new RangeError('Invalid radial sector options');
+  if(!itemCount)return Object.freeze([]);
+  if((itemCount-1)*angularGap>=span)throw new RangeError('Angular gaps consume the radial arc');
+  // Shared boundaries are calculated directly, never by accumulating a step.
+  const boundaries=Array.from({length:itemCount+1},(_,i)=>i===0?startAngle:i===itemCount?endAngle:startAngle+span*i/itemCount);
+  return Object.freeze(Array.from({length:itemCount},(_,index)=>{
+   const a=index===0?startAngle:boundaries[index]+angularGap*index/itemCount;
+   const b=index===itemCount-1?endAngle:boundaries[index+1]-angularGap*(itemCount-1-index)/itemCount;
+   if(!(b>a))throw new RangeError('Radial sector exceeds angular precision');
+   return Object.freeze({index,startAngle:a,endAngle:b,centerAngle:a+(b-a)/2,innerRadius,outerRadius});
+  }));
+ }
+ function assessRadialTargets(sectors,{minimumDiameter=44}={}){
+  if(!Array.isArray(sectors)||!Number.isFinite(minimumDiameter)||minimumDiameter<=0)throw new RangeError('Invalid radial target assessment');
+  const assessed=sectors.map(s=>{
+   if(!s||![s.startAngle,s.endAngle,s.innerRadius,s.outerRadius].every(Number.isFinite)||s.innerRadius<0||s.outerRadius<=s.innerRadius)throw new RangeError('Invalid radial target geometry');
+   const alpha=s.endAngle-s.startAngle,thickness=s.outerRadius-s.innerRadius,midRadius=s.innerRadius+thickness/2;
+   if(!Number.isFinite(alpha)||alpha<=0||alpha>2*Math.PI)throw new RangeError('Invalid radial target arc');
+   // Conservative disk/chord criterion, not arc length; no geometry is resized.
+   const tangentialWidth=2*(midRadius*Math.sin(alpha/2)),minimumWidth=Math.min(thickness,tangentialWidth);
+   return Object.freeze({thickness,midRadius,alpha,tangentialWidth,minimumWidth,safe:minimumWidth>=minimumDiameter});
+  });
+  return Object.freeze({safe:assessed.every(s=>s.safe),minimumWidth:assessed.length?assessed.reduce((width,s)=>Math.min(width,s.minimumWidth),Infinity):null,sectors:Object.freeze(assessed)});
+ }
  const gap=2;let nextMenuId=0;
  const normalizeAngle=a=>((a+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;
  const shortestAngleDelta=(from,to)=>normalizeAngle(to-from);
@@ -2596,7 +2623,7 @@ const semicircleEngine=(()=>{
   const resize=()=>{stopRollers();paint()};window.addEventListener('keydown',keydown,true);window.addEventListener('blur',resize);window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);window.visualViewport?.addEventListener('scroll',resize);paint();
   return {host,state,get layout(){return layout},refresh:paint,close(){stopRollers();state.open=false;if(!production)state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){stopRollers();for(const type of pointerEvents){window.removeEventListener(type,rollerPointer,true);window.removeEventListener(type,fixedPointer,true)}window.removeEventListener('click',fixedClick,true);window.removeEventListener('click',rollerClick,true);destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('blur',resize);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);if(production)queueRadialPrimaryUpdate()}};
  }
- return {normalizeAngle,shortestAngleDelta,snapGroupIndex,classifyTapVsDrag,rollerDelta,solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,solveConcentricRingLayout,solveAdaptiveConcentricRingLayout,createRollerState,createMenu};
+ return {computeRadialSectors,assessRadialTargets,normalizeAngle,shortestAngleDelta,snapGroupIndex,classifyTapVsDrag,rollerDelta,solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,solveConcentricRingLayout,solveAdaptiveConcentricRingLayout,createRollerState,createMenu};
 })();
 
 // Task 2C: DOM controls remain authoritative for actions, state and artwork.
