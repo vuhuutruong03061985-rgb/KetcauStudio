@@ -42,18 +42,18 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   await p.evaluate(()=>cancelToSelection());
   for(const side of ['right','left']){await p.locator('.semicircle-'+side+'-menu [data-demo-id="hub"]').dispatchEvent('click');await shot(side==='right'?'12-right-radial-grid':'13-left-radial-grid');await p.evaluate(side=>(side==='right'?rightCommandMenu:leftDrawingMenu).close(),side)}
   const evidence=[];
-  for(const viewport of [{width:1280,height:800},{width:800,height:1280},{width:800,height:784},{width:800,height:783},{width:800,height:777},{width:800,height:766}]){
-   await p.setViewportSize(viewport);await ready(viewport.height!==766);await identity(viewport.height===766);
-   const sides=await p.evaluate(()=>{const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top,tabletRightChromeTop(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>semicircleEngine.solveConcentricRingLayout({side:m.state.side,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits)});
-   assert.deepEqual(sides,viewport.height===766?[false,true]:[true,true]);assert(await p.evaluate(()=>gridVisible));
+  for(const viewport of [{width:1280,height:800},{width:800,height:1280},{width:800,height:784},{width:800,height:783},{width:800,height:777},{width:800,height:568}]){
+   await p.setViewportSize(viewport);await ready(viewport.height!==568);await identity(viewport.height===568);
+   const sides=await p.evaluate(()=>{const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top,tabletRightChromeTop(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>semicircleEngine.solveAdaptiveConcentricRingLayout({side:m.state.side,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits)});
+   assert.deepEqual(sides,viewport.height===568?[false,true]:[true,true]);assert(await p.evaluate(()=>gridVisible));
    evidence.push({viewport,left:sides[0],right:sides[1],joint:sides.every(Boolean)});
-   if(viewport.height===766){if(!(await p.locator('#gridToggle').isVisible()))await tap('#ribbonToggle');await shot('14-tablet-fallback');await tap('#gridToggle');assert(!(await p.evaluate(()=>gridVisible)));await tap('#gridToggle')}
+   if(viewport.height===568){if(!(await p.locator('#gridToggle').isVisible()))await tap('#ribbonToggle');await shot('14-tablet-fallback');await tap('#gridToggle');assert(!(await p.evaluate(()=>gridVisible)));await tap('#gridToggle')}
   }
   await p.setViewportSize({width:1280,height:800});await ready(true);await identity(false);assert.deepEqual(await geometry(),measured);
   await p.evaluate(()=>{Object.defineProperty(floatingToolsMedia,'matches',{configurable:true,value:false});floatingToolsMedia.dispatchEvent(new MediaQueryListEvent('change',{matches:false,media:floatingToolsMedia.media}))});await ready(false);await identity(true);assert(await p.evaluate(()=>gridVisible));
   if(!(await p.locator('#gridToggle').isVisible()))await p.locator('#ribbonToggle').click();await p.locator('#gridToggle').click();assert(!(await p.evaluate(()=>gridVisible)));await p.locator('#gridToggle').click();await shot('18-desktop-grid-on');
   assert.equal(await p.evaluate(()=>gridCanvasDowns),0);assert.deepEqual(await p.evaluate(()=>gridCommandKeys),[]);assert.deepEqual(await p.evaluate(()=>rightCommandRings.map(r=>r.ids)),mapping);assert.deepEqual(errors,[]);
-  const report={measured,before:[96,48],jointMinimum:767,viewports:evidence,screenshots:fs.readdirSync(out).filter(n=>n.endsWith('.png')),input:'Edge headless, CDP touch emulation; no physical Android evidence'};
+  const report={measured,before:[96,48],jointMinimum:582,viewports:evidence,screenshots:fs.readdirSync(out).filter(n=>n.endsWith('.png')),input:'Edge headless, CDP touch emulation; no physical Android evidence'};
   fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify(report,null,2));console.log('PASS Grid same-source ownership/handler, 208x48 strip, touch isolation, pending Bar, restored state, unchanged radii/bounds and joint threshold',JSON.stringify(report));
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

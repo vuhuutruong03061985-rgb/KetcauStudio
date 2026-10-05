@@ -29,7 +29,7 @@ async function run(){const browser=await chromium.launch({channel:'msedge',headl
   await p.locator('#toggleTools').tap();assert(await p.locator('#toolPanel').isVisible());assert.equal(await p.locator('#toolPanel').evaluate(e=>e.inert),false);
   await p.evaluate(side=>{(side==='left'?leftDrawingSafeProbe:rightCommandSafeProbe).style.removeProperty('padding-right');leftDrawingMenu.refresh();rightCommandMenu.refresh()},side);await ownership(p,true);assert.deepEqual(await state(),before);
  }
- for(const [width,height]of [[390,800],[1376,1032],[1032,1376],[1280,800],[800,1280],[431,800],[432,800],[800,776],[800,767],[800,766],[1280,800]]){await p.setViewportSize({width,height});await ownership(p,width>=432&&height>=767);assert.deepEqual(await state(),before)}
+ for(const [width,height]of [[390,800],[1376,1032],[1032,1376],[1280,800],[800,1280],[431,800],[432,800],[800,776],[800,767],[800,568],[1280,800]]){await p.setViewportSize({width,height});await ownership(p,width>=432&&height>=582);assert.deepEqual(await state(),before)}
  await p.evaluate(()=>toolboxHandle.focus());assert.notEqual(await p.evaluate(()=>document.activeElement.id),'toggleTools');
  for(const side of ['left','right']){const q=await p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;return {x:m.layout.cx+(side==='left'?13:-13),y:m.layout.cy}},side);await p.touchscreen.tap(q.x,q.y);assert(await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.open,side));await p.touchscreen.tap(q.x,q.y);assert.deepEqual(await state(),before)}
  // Keyboard fallback preserves the first point and numeric session identity.

@@ -2263,24 +2263,31 @@ const semicircleEngine=(()=>{
   return {...layout,side,cx,inner:layout.inner?.map(mirror),outer:layout.outer?.map(mirror),...(layout.rings?{rings:layout.rings.map(r=>({...r,side,cx,sectors:r.sectors.map(mirror)}))}:{}),...(layout.contextRing?{contextRing:{...layout.contextRing,sectors:layout.contextRing.sectors.map(mirror),middle:layout.contextRing.middle.map(slots=>slots.map(mirror))}}:{}),bounds:{...layout.bounds}};
  }
  // General envelope depends only on ring counts/targets, never their UI offsets.
- function solveConcentricRingLayout({side='left',rings,bounds,centerY,minTarget=44,fixedOuter=false}){
+ function solveConcentricRingLayout({side='left',rings,bounds,centerY,minTarget=44,fixedOuter=false,profile='normal'}){
+  if(!['normal','compact'].includes(profile))throw new RangeError('Invalid concentric profile');
+  // Keep the existing angular clearance for 3px keyboard-focus outlines.
+  const compact=profile==='compact',thickness=compact?minTarget:minTarget+4,radialGap=compact?1:3,halfGap=1.5;
   const base=solveSemicircleLayout({side,innerCount:0,outerCount:0,bounds,centerY,minTarget,refined:true});
   if(!Array.isArray(rings)||!rings.length||new Set(rings.map(r=>r.id)).size!==rings.length)throw new RangeError('Invalid concentric rings');
   let radius=base.hubRadius;
   const solved=rings.map(r=>{
    if(typeof r.id!=='string'||!r.id||!Number.isInteger(r.count)||r.count<1||r.count>12)throw new RangeError('Invalid roller ring');
-   const slots=r.count%2?r.count:r.count+1,step=Math.min(Math.PI/4,Math.PI/slots),thickness=minTarget+4;
-   const mid=Math.max(radius+3+thickness/2,(minTarget/2+1.5)/Math.sin(step/2));
+   const slots=r.count%2?r.count:r.count+1,maxStep=Math.min(Math.PI/4,Math.PI/slots);
+   const mid=Math.max(radius+radialGap+thickness/2,(minTarget/2+halfGap)/Math.sin(maxStep/2));
+   // A smaller angular pitch removes unused space without shrinking the 44px
+   // inscribed touch disk. Keep the same entries, detents and upright artwork.
+   const step=compact?Math.min(maxStep,2*Math.asin((minTarget/2+halfGap)/mid)):maxStep;
    const ring={id:r.id,side,cx:base.cx,r0:mid-thickness/2,r1:mid+thickness/2,step,count:r.count};radius=ring.r1;return ring;
   });
   // Reserve five middle targets structurally, even while context is empty.
-  const contextMid=Math.max(radius+3+(minTarget+4)/2,(minTarget/2+1.5)/Math.sin(Math.PI/30));
-  const contextR0=fixedOuter?contextMid-(minTarget+4)/2:radius+3;
-  if(fixedOuter)radius=contextR0+minTarget+4;
+  const contextMid=Math.max(radius+radialGap+thickness/2,(minTarget/2+halfGap)/Math.sin(compact?Math.PI/18:Math.PI/30));
+  const contextStep=2*Math.asin((minTarget/2+halfGap)/contextMid);
+  const contextR0=fixedOuter?contextMid-thickness/2:radius+radialGap;
+  if(fixedOuter)radius=contextR0+thickness;
   const fits=radius<=bounds.right-bounds.left&&2*radius<=bounds.bottom-bounds.top;
   const cy=fits?Math.max(bounds.top+radius,Math.min(centerY??(bounds.top+bounds.bottom)/2,bounds.bottom-radius)):(bounds.top+bounds.bottom)/2;
   for(const ring of solved){
-   ring.cy=cy;const half=ring.step/2-Math.asin(1.5/((ring.r0+ring.r1)/2));
+   ring.cy=cy;const half=ring.step/2-Math.asin(halfGap/((ring.r0+ring.r1)/2));
    ring.sectors=Array.from({length:ring.count},(_,index)=>{
     const a=(index-(ring.count-1)/2)*ring.step,s={side,cx:base.cx,cy,r0:ring.r0,r1:ring.r1,a0:a-half,a1:a+half,index};
     return {...s,icon:sectorIconPosition(s),path:solveRadialSectorPath(s)};
@@ -2289,16 +2296,32 @@ const semicircleEngine=(()=>{
   // One fixed annulus: narrower top/bottom targets free the middle for 0–5.
   // Its envelope never depends on source availability or roller offsets.
   const contextRing=fixedOuter?{r0:contextR0,r1:radius,sectors:[-2,-1,1,2].map((slot,index)=>{
-   const angle=slot*Math.PI/5,half=Math.asin((minTarget/2+1.5)/contextMid);
+   // Reserve nine targets: two above, five contextual, two below. Even empty
+   // context keeps these positions, so focusing a function cannot move the hub.
+   const angle=compact?(slot<0?slot-2:slot+2)*contextStep:slot*Math.PI/5,half=compact?contextStep/2-Math.asin(halfGap/contextMid):Math.asin((minTarget/2+1.5)/contextMid);
    const s={side,cx:base.cx,cy,r0:contextR0,r1:radius,a0:angle-half,a1:angle+half,index};
    return {...s,icon:sectorIconPosition(s),path:solveRadialSectorPath(s)};
   })}:null;
   if(contextRing)contextRing.middle=[[],...[1,2,3,4,5].map(count=>Array.from({length:count},(_,index)=>{
-   const step=Math.max(Math.PI/5,count*Math.PI/15)/count,angle=(index-(count-1)/2)*step,half=step/2-Math.asin(1.5/contextMid);
+   const step=compact?contextStep:Math.max(Math.PI/5,count*Math.PI/15)/count,angle=(index-(count-1)/2)*step,half=step/2-Math.asin(halfGap/contextMid);
    const s={side,cx:base.cx,cy,r0:contextR0,r1:radius,a0:angle-half,a1:angle+half,index};
    return {...s,icon:sectorIconPosition(s),path:solveRadialSectorPath(s)};
   }))];
-  return {...base,cy,radius,fits,rings:solved,...(contextRing?{contextRing}:{})};
+  // Bound every fractional roller offset, not only the centered detent. The
+  // compressed outer rings occupy an arc shorter than a full semicircle.
+  const ringExtent=ring=>ring.r1*Math.sin(Math.min(Math.PI/2,ring.count/2*ring.step+ring.step/2-Math.asin(halfGap/((ring.r0+ring.r1)/2))));
+  const contextExtent=contextRing?Math.max(...[...contextRing.sectors,...contextRing.middle.flat()].flatMap(s=>[Math.abs(Math.sin(s.a0))*s.r1,Math.abs(Math.sin(s.a1))*s.r1])):0;
+  const verticalExtent=Math.max(base.hubRadius,...solved.map(ringExtent),contextExtent);
+  return {...base,cy,radius,fits,profile,verticalExtent,rings:solved,...(contextRing?{contextRing}:{})};
+ }
+ function solveAdaptiveConcentricRingLayout(options){
+  const solve=profile=>{
+   const bounds=options.getProfileBounds?.(profile)??options.bounds;
+   const layout=solveConcentricRingLayout({...options,bounds,profile});
+   return solveConcentricRingLayout({...options,profile,bounds:fitTabletRadialBounds({...bounds},layout)});
+  };
+  const normal=solve('normal');if(normal.fits)return normal;
+  const compact=solve('compact');return compact.fits?compact:normal;
  }
  function createRollerState({id,entries,activeIndex=0}){
   if(typeof id!=='string'||!id||!Array.isArray(entries)||!entries.length||entries.length>12||!Number.isInteger(activeIndex)||new Set(entries.map(e=>e.id)).size!==entries.length)throw new RangeError('Invalid roller configuration');
@@ -2517,7 +2540,7 @@ const semicircleEngine=(()=>{
    const focused=host.contains(document.activeElement)?{id:document.activeElement.getAttribute('data-demo-id'),ring:document.activeElement.dataset.rollerRing}:null;
    const group=entries.find(entry=>entry.id===state.activeGroup),children=group?.children||[];
    // Reserve the largest group while closed too: opening cannot move the hub.
-   const reserve=multi?solveConcentricRingLayout({side,rings:rings.map(r=>({id:r.id,count:r.entries.length})),bounds:getBounds(),centerY,fixedOuter:!!outerActions}):solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:Math.max(0,...entries.map(e=>e.children?.length||0)),bounds:getBounds(),centerY,refined:production});
+   const reserve=multi?(production&&outerActions?solveAdaptiveConcentricRingLayout:solveConcentricRingLayout)({side,rings:rings.map(r=>({id:r.id,count:r.entries.length})),bounds:getBounds(),getProfileBounds:profile=>getBounds(undefined,undefined,profile),centerY,fixedOuter:!!outerActions}):solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:Math.max(0,...entries.map(e=>e.children?.length||0)),bounds:getBounds(),centerY,refined:production});
    const parent=reserve.inner[entries.indexOf(group)],outerAnchor=production?0:parent?(parent.a0+parent.a1)/2:0;
    layout=multi?reserve:solveSemicircleLayout({side,innerCount:production?slotCount:entries.length,outerCount:state.open?children.length:0,bounds:getBounds(),centerY:reserve.cy,refined:production,outerAnchor});
    if(production&&!multi)layout.inner=layout.inner.slice(0,entries.length);
@@ -2573,7 +2596,7 @@ const semicircleEngine=(()=>{
   const resize=()=>{stopRollers();paint()};window.addEventListener('keydown',keydown,true);window.addEventListener('blur',resize);window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);window.visualViewport?.addEventListener('scroll',resize);paint();
   return {host,state,get layout(){return layout},refresh:paint,close(){stopRollers();state.open=false;if(!production)state.activeGroup=null;state.hoveredSector=null;paint()},setState(id,{isActive,isPressed}){if(isActive!==undefined)active.set(id,!!isActive);if(isPressed!==undefined)pressed.set(id,!!isPressed);paint()},destroy(){stopRollers();for(const type of pointerEvents){window.removeEventListener(type,rollerPointer,true);window.removeEventListener(type,fixedPointer,true)}window.removeEventListener('click',fixedClick,true);window.removeEventListener('click',rollerClick,true);destroyed=true;host.remove();window.removeEventListener('keydown',keydown,true);window.removeEventListener('blur',resize);window.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('resize',resize);window.visualViewport?.removeEventListener('scroll',resize);if(production)queueRadialPrimaryUpdate()}};
  }
- return {normalizeAngle,shortestAngleDelta,snapGroupIndex,classifyTapVsDrag,rollerDelta,solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,solveConcentricRingLayout,createRollerState,createMenu};
+ return {normalizeAngle,shortestAngleDelta,snapGroupIndex,classifyTapVsDrag,rollerDelta,solveSemicircleLayout,solveRadialSectorPath,sectorIconPosition,mirrorSemicircleLayout,hitTestRadialSector,solveConcentricRingLayout,solveAdaptiveConcentricRingLayout,createRollerState,createMenu};
 })();
 
 // Task 2C: DOM controls remain authoritative for actions, state and artwork.
@@ -2622,15 +2645,16 @@ const leftDrawingSafeProbe=document.createElement('div');leftDrawingSafeProbe.cl
 function fitTabletRadialBounds(bounds,layout){
  if(!layout.contextRing||2*layout.radius<=bounds.bottom-bounds.top)return bounds;
  const sectors=[...layout.contextRing.sectors,...layout.contextRing.middle.flat()];
- const extent=Math.max(layout.hubRadius,...layout.rings.map(r=>r.r1),...sectors.flatMap(s=>[Math.abs(Math.sin(s.a0))*s.r1,Math.abs(Math.sin(s.a1))*s.r1]))+3;
+ const extent=(layout.profile==='compact'?layout.verticalExtent:Math.max(layout.hubRadius,...layout.rings.map(r=>r.r1),...sectors.flatMap(s=>[Math.abs(Math.sin(s.a0))*s.r1,Math.abs(Math.sin(s.a1))*s.r1])))+3;
  if(2*extent<=bounds.bottom-bounds.top){const spare=Math.max(0,layout.radius-extent);bounds.top-=spare;bounds.bottom+=spare}
  return bounds;
 }
-function leftDrawingBounds(chromeBottom=tabletChromeBottom(true),leftChromeTop=tabletLeftChromeTop(true)){
+function leftDrawingBounds(chromeBottom=tabletChromeBottom(true),leftChromeTop=tabletLeftChromeTop(true),profile='normal'){
  const vv=window.visualViewport,s=getComputedStyle(leftDrawingSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
  const bounds={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),chromeBottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
  bounds.bottom=Math.min(bounds.bottom,leftChromeTop-8);
- const layout=leftDrawingMenu?.layout??semicircleEngine.solveConcentricRingLayout({side:'left',rings:leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),bounds,fixedOuter:true}),reach=layout.radius;
+ // Test an obstacle against the candidate profile, never the previous radius.
+ const reach=semicircleEngine.solveConcentricRingLayout({side:'left',rings:leftDrawingRings.map(r=>({id:r.id,count:r.entries.length})),bounds:{...bounds,right:Math.max(bounds.left+1,bounds.right),bottom:Math.max(bounds.top+1,bounds.bottom)},fixedOuter:true,profile}).radius;
  // Use a free vertical interval when input/contextual controls occupy the left edge.
  // The engine keeps minimum targets and falls back to the old palette if it cannot fit.
  for(const id of ['dynamicInput']){
@@ -2642,7 +2666,8 @@ function leftDrawingBounds(chromeBottom=tabletChromeBottom(true),leftChromeTop=t
   }
  }
  bounds.bottom=Math.max(bounds.top+1,bounds.bottom);bounds.right=Math.max(bounds.left+1,bounds.right);
- return fitTabletRadialBounds(bounds,layout);
+ // Always start admission from physical bounds, not the previous profile envelope.
+ return bounds;
 }
 function mountLeftDrawingMenu(){
  if(!floatingToolsMedia.matches){leftDrawingMenu?.destroy();leftDrawingMenu=null;leftDrawingSafeProbe.remove();return}
@@ -2761,11 +2786,11 @@ function refreshRightCommandEntries(){
  }
 }
 const rightCommandSafeProbe=document.createElement('div');rightCommandSafeProbe.className='semicircle-left-safe-probe';
-function rightCommandBounds(chromeBottom=tabletChromeBottom(true),rightChromeTop=tabletRightChromeTop(true)){
+function rightCommandBounds(chromeBottom=tabletChromeBottom(true),rightChromeTop=tabletRightChromeTop(true),profile='normal'){
  const vv=window.visualViewport,s=getComputedStyle(rightCommandSafeProbe),left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
  const b={left:left+parseFloat(s.paddingLeft),right:left+(vv?.width||innerWidth)-parseFloat(s.paddingRight),top:Math.max(top+parseFloat(s.paddingTop),chromeBottom+8),bottom:top+(vv?.height||innerHeight)-Math.max(16,parseFloat(s.paddingBottom))};
  if(Number.isFinite(rightChromeTop))b.bottom=Math.min(b.bottom,rightChromeTop-8);
- const layout=rightCommandMenu?.layout??semicircleEngine.solveConcentricRingLayout({side:'right',rings:rightCommandRings.map(r=>({id:r.id,count:r.entries.length})),bounds:b,fixedOuter:true}),reach=layout.radius;
+ const reach=semicircleEngine.solveConcentricRingLayout({side:'right',rings:rightCommandRings.map(r=>({id:r.id,count:r.entries.length})),bounds:{...b,right:Math.max(b.left+1,b.right),bottom:Math.max(b.top+1,b.bottom)},fixedOuter:true,profile}).radius;
  for(const id of ['dynamicInput']){
   const control=$(id);if(!control||control.hidden)continue;
   const r=control.getBoundingClientRect();
@@ -2773,7 +2798,7 @@ function rightCommandBounds(chromeBottom=tabletChromeBottom(true),rightChromeTop
    if(r.top-b.top>=b.bottom-r.bottom)b.bottom=Math.min(b.bottom,r.top-8);else b.top=Math.max(b.top,r.bottom+8);
   }
  }
- b.bottom=Math.max(b.top+1,b.bottom);b.right=Math.max(b.left+1,b.right);return fitTabletRadialBounds(b,layout);
+ b.bottom=Math.max(b.top+1,b.bottom);b.right=Math.max(b.left+1,b.right);return b;
 }
 function mountRightCommandMenu(){
  if(!floatingToolsMedia.matches){rightCommandMenu?.destroy();rightCommandMenu=null;rightCommandSafeProbe.remove();return}
@@ -2859,9 +2884,13 @@ function syncRadialPrimaryPresentation(){
   return !!r&&[r.left,r.top,r.width,r.height].every(Number.isFinite)&&r.width>=24&&r.height>=48;
  };
  const chromeBottom=tabletChromeBottom(true);
- const fitsChrome=(menu,bounds)=>!!menu?.layout&&menu.layout.radius<=bounds.right-bounds.left&&2*menu.layout.radius<=bounds.bottom-bounds.top;
+ const fitsChrome=(menu,bounds)=>{
+  if(!menu?.layout)return false;
+  const fitted=fitTabletRadialBounds({...bounds},menu.layout);
+  return menu.layout.radius<=fitted.right-fitted.left&&2*menu.layout.radius<=fitted.bottom-fitted.top;
+ };
  const fitted=floatingToolsMedia.matches&&tabletBottomChromeFits()&&usable(leftDrawingMenu)&&usable(rightCommandMenu)&&
-  fitsChrome(leftDrawingMenu,leftDrawingBounds(chromeBottom,tabletLeftChromeTop(true)))&&fitsChrome(rightCommandMenu,rightCommandBounds(chromeBottom,tabletRightChromeTop(true)));
+  fitsChrome(leftDrawingMenu,leftDrawingBounds(chromeBottom,tabletLeftChromeTop(true),leftDrawingMenu?.layout.profile))&&fitsChrome(rightCommandMenu,rightCommandBounds(chromeBottom,tabletRightChromeTop(true),rightCommandMenu?.layout.profile));
  const value=String(!!fitted),changed=document.body.dataset.radialPrimary!==value;
  const context=String(fitted&&[leftDrawingMenu,rightCommandMenu].some(menu=>menu.state.open&&menu.layout.contextRing));
  if(document.body.dataset.radialContext!==context)document.body.dataset.radialContext=context;
