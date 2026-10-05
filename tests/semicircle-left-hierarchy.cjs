@@ -2,7 +2,7 @@ const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{execFileSync}=require('node:child_process'),{pathToFileURL}=require('node:url');
 const {ownership,settled}=require('./tablet-radial-ownership.cjs');
 const expected={geometry:['bar','thin','dashed','curve'],supports:['hinge','linkBar','weld','pin','roller','fixed'],loads:['force','moment','udl'],annotation:['dim','text','person','section','rigidRegion','hatch','joint','diagram']};
-const baseline=execFileSync('git',['show','59fd5f2:assets/tablet.js'],{encoding:'utf8'});
+const baseline=execFileSync('git',['show','c8e2288:assets/tablet.js'],{encoding:'utf8'});
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -34,7 +34,7 @@ const baseline=execFileSync('git',['show','59fd5f2:assets/tablet.js'],{encoding:
   for(const [width,height,active]of [[1376,1032,true],[1280,800,true],[1152,720,true],[1152,584,true],[1032,1376,true],[800,1280,true],[800,776,true],[800,600,true],[800,390,false],[432,800,true],[431,800,false],[390,800,false]]){
    await p.evaluate(()=>leftDrawingMenu.close());
    for(const page of [p,reference]){await page.setViewportSize({width,height});await ownership(page,active)}
-   assert.deepEqual(await context(p),await context(reference),'exact baseline context including paths, slots and annulus');
+   const current=await context(p),old=await context(reference);assert(current.radius<old.radius,'LEFT reservation removed');assert.equal(current.context,null);assert.equal(current.radius,await p.evaluate(()=>leftDrawingMenu.layout.rings[1].r1));
    assert.deepEqual(await right(p),await right(reference),'RIGHT geometry/mapping unchanged');
    if([584,800,1032,390].includes(height)&&[1152,1280,1376,800].includes(width))await shot(width+'x'+height+'-closed');
    if(active){
@@ -92,10 +92,12 @@ const baseline=execFileSync('git',['show','59fd5f2:assets/tablet.js'],{encoding:
   assert.deepEqual(await p.evaluate(()=>barNumericSession.state.distance),{mode:'locked',value:5.5});
   const locked=await state();
   for(const id of Object.keys(expected)){await category(id);assert.deepEqual(await state(),locked);assert(await p.evaluate(()=>first===savedFirst&&dynamicNumericCapture===savedCapture))}
-  // Actual Cancel/Finish paths are still baseline paths while command UI is available.
+  // Actual Cancel/Finish remain safe full-arc actions while command UI is available.
   for(const page of [p,reference]){await page.setViewportSize({width:1280,height:800});await page.evaluate(()=>{document.activeElement?.blur();cancelToSelection();setMode('hatch');hatchPoints=[{x:400,y:300},{x:600,y:300},{x:500,y:450}];render();updateCommandControls();leftDrawingMenu.close();leftDrawingMenu.host.querySelector('[data-demo-id="hub"]').dispatchEvent(new MouseEvent('click',{bubbles:true}))});await settled(page)}
-  for(const id of ['commandCancel','commandFinish'])assert.equal(await p.locator('.semicircle-left-menu [data-demo-id="'+id+'"] .semicircle-hit').getAttribute('d'),await reference.locator('.semicircle-left-menu [data-demo-id="'+id+'"] .semicircle-hit').getAttribute('d'));
+  assert.deepEqual(await p.locator('.semicircle-left-menu [data-fixed-action]').evaluateAll(es=>es.map(e=>e.dataset.fixedAction)),['commandCancel','commandFinish']);
+  const commands=await p.evaluate(()=>leftDrawingMenu.layout.contextRing);assert.equal(commands.sectors.length,2);assert.equal(commands.sectors[0].a0,-Math.PI/2);assert.equal(commands.sectors[1].a1,Math.PI/2);assert(commands.targets.safe);
+
   assert.deepEqual(errors,[]);fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify(evidence,null,2));
-  console.log('PASS LEFT full-arc hierarchy, ordered categories/tools, exact closure/44px disks, same sources, no category side effects, session/active focus, numeric capture, baseline context and RIGHT parity; screenshots:',out);
+  console.log('PASS LEFT full-arc hierarchy, ordered categories/tools, exact closure/44px disks, same sources, no category side effects, session/active focus, numeric capture, dynamic context and RIGHT parity; screenshots:',out);
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -28,7 +28,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   const geometry=()=>p.evaluate(()=>({bar:[tabletBottomRightBar.offsetWidth,tabletBottomRightBar.offsetHeight],
    controls:[gridButton,gridSizeControl,gridSizeInput,snapButton,drawingScalesButton].map(e=>[e.offsetWidth,e.offsetHeight]),
    bottoms:[leftDrawingBounds().bottom,rightCommandBounds().bottom],radii:[leftDrawingMenu.layout.radius,rightCommandMenu.layout.radius]}));
-  const measured=await geometry();assert.deepEqual(measured,{bar:[208,48],controls:[[44,44],[60,44],[60,44],[44,44],[44,44]],bottoms:[732,732],radii:[304.04759747124507,248.81914748738225]});
+  const measured=await geometry();assert.deepEqual(measured,{bar:[208,48],controls:[[44,44],[60,44],[60,44],[44,44],[44,44]],bottoms:[732,732],radii:[151.04759747124507,248.81914748738225]});
   const state=()=>p.evaluate(()=>({drawing:JSON.stringify(captureDrawing()),doc:documentText(),saved:savedDocument,title:document.title,mode,camera:JSON.stringify(camera),panEnabled,gridVisible,snapEnabled,snap:JSON.stringify(snapOptions),scaleOpen:!drawingScales.hidden,
    rings:[leftDrawingMenu,rightCommandMenu].map(m=>m.state.rings.map(r=>({id:r.id,index:r.activeIndex,offset:r.offset,pointer:r.pointerId,dragging:r.dragging})))}));
   const original=await state();await tap('#gridSize');await edit(50);assert.deepEqual(await state(),original);await input.blur();await shot('01-grid-50-landscape');
@@ -56,14 +56,14 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   await edit(25);await input.blur();await p.evaluate(()=>{camera={x:0,y:0,w:1100,h:720};applyCamera()});
   for(const side of ['right','left']){await p.locator('.semicircle-'+side+'-menu [data-demo-id="hub"]').dispatchEvent('click');await shot(side==='right'?'11-right-radial':'12-left-radial');await tap('#gridSize');assert.equal(await p.evaluate(()=>gridSize),25);await input.blur()}
   const evidence=[];
-  for(const viewport of [{width:1280,height:800},{width:800,height:1280},{width:800,height:784},{width:800,height:783},{width:800,height:777},{width:800,height:568},{width:390,height:800},{width:431,height:800},{width:432,height:800},{width:440,height:800}]){
-   const admitted=viewport.height!==568&&viewport.width>=432;await p.setViewportSize(viewport);await ready(admitted);await identity(!admitted);assert.equal(await input.inputValue(),'25');
+  for(const viewport of [{width:1280,height:800},{width:800,height:1280},{width:800,height:784},{width:800,height:783},{width:800,height:777},{width:800,height:557},{width:390,height:800},{width:431,height:800},{width:432,height:800},{width:440,height:800}]){
+   const admitted=viewport.height!==557&&viewport.width>=432;await p.setViewportSize(viewport);await ready(admitted);await identity(!admitted);assert.equal(await input.inputValue(),'25');
    for(let i=0;i<3;i++){await p.evaluate(()=>{leftDrawingMenu.refresh();rightCommandMenu.refresh()});await settle();assert.equal(await p.evaluate(()=>document.body.dataset.radialPrimary),String(admitted))}
    const bars=await p.evaluate(()=>[tabletBottomLeftBar,tabletBottomRightBar].map(e=>e.getBoundingClientRect().toJSON()));
    if(admitted)assert(bars[0].right<=bars[1].left);else assert(bars.every(r=>r.width===0&&r.height===0));
    evidence.push({viewport,admitted,bars});
    if(viewport.width===431||viewport.width===432)await shot(viewport.width===431?'19-narrow-431-fallback':'20-narrow-432-admitted');
-   if(viewport.height===568){if(!(await input.isVisible()))await tap('#ribbonToggle');await tap('#gridSize');await shot('13-tablet-fallback');await edit(50);await edit(25);await input.blur()}
+   if(viewport.height===557){if(!(await input.isVisible()))await tap('#ribbonToggle');await tap('#gridSize');await shot('13-tablet-fallback');await edit(50);await edit(25);await input.blur()}
   }
   await p.setViewportSize({width:1280,height:800});await ready(true);assert.deepEqual(await geometry(),measured);
   await edit(1000);await shot('17-max-value-focused');await edit(25);await input.blur();

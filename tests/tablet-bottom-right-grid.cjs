@@ -26,7 +26,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   const geometry=()=>p.evaluate(()=>({size:[tabletBottomRightBar.getBoundingClientRect().width,tabletBottomRightBar.getBoundingClientRect().height],
    targets:[gridButton,snapButton,drawingScalesButton].map(e=>[e.getBoundingClientRect().width,e.getBoundingClientRect().height]),
    bottoms:[leftDrawingBounds().bottom,rightCommandBounds().bottom],radii:[leftDrawingMenu.layout.radius,rightCommandMenu.layout.radius]}));
-  const measured=await geometry();assert.deepEqual(measured,{size:[208,48],targets:[[44,44],[44,44],[44,44]],bottoms:[732,732],radii:[304.04759747124507,248.81914748738225]});
+  const measured=await geometry();assert.deepEqual(measured,{size:[208,48],targets:[[44,44],[44,44],[44,44]],bottoms:[732,732],radii:[151.04759747124507,248.81914748738225]});
   const mapping=await p.evaluate(()=>rightCommandRings.map(r=>r.ids));assert.deepEqual(mapping,[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['panView','snapOptions','openCalculator']]);
   await shot('01-grid-off-landscape');await tap('#gridToggle');assert(await p.evaluate(()=>gridVisible));await shot('02-grid-on-landscape');await shot('11-three-bottom-right-controls');
   await p.setViewportSize({width:800,height:1280});await ready(true);await shot('03-grid-on-portrait');await p.setViewportSize({width:1280,height:800});await ready(true);
@@ -42,18 +42,18 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   await p.evaluate(()=>cancelToSelection());
   for(const side of ['right','left']){await p.locator('.semicircle-'+side+'-menu [data-demo-id="hub"]').dispatchEvent('click');await shot(side==='right'?'12-right-radial-grid':'13-left-radial-grid');await p.evaluate(side=>(side==='right'?rightCommandMenu:leftDrawingMenu).close(),side)}
   const evidence=[];
-  for(const viewport of [{width:1280,height:800},{width:800,height:1280},{width:800,height:784},{width:800,height:783},{width:800,height:777},{width:800,height:568}]){
-   await p.setViewportSize(viewport);await ready(viewport.height!==568);await identity(viewport.height===568);
-   const sides=await p.evaluate(()=>{const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top,tabletRightChromeTop(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>semicircleEngine.solveAdaptiveConcentricRingLayout({side:m.state.side,rings:i===0?[4,6,3,8].map((count,j)=>({id:'L'+(j+1),count})):m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits)});
-   assert.deepEqual(sides,viewport.height===568?[false,true]:[true,true]);assert(await p.evaluate(()=>gridVisible));
+  for(const viewport of [{width:1280,height:800},{width:800,height:1280},{width:800,height:784},{width:800,height:783},{width:800,height:777},{width:800,height:557}]){
+   await p.setViewportSize(viewport);await ready(viewport.height!==557);await identity(viewport.height===557);
+   const sides=await p.evaluate(()=>{const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top,tabletRightChromeTop(true))];return [leftDrawingMenu,rightCommandMenu].map((m,i)=>semicircleEngine.solveAdaptiveConcentricRingLayout({side:m.state.side,dynamicContext:i===0,contextCount:0,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits)});
+   assert.deepEqual(sides,viewport.height===557?[true,false]:[true,true]);assert(await p.evaluate(()=>gridVisible));
    evidence.push({viewport,left:sides[0],right:sides[1],joint:sides.every(Boolean)});
-   if(viewport.height===568){if(!(await p.locator('#gridToggle').isVisible()))await tap('#ribbonToggle');await shot('14-tablet-fallback');await tap('#gridToggle');assert(!(await p.evaluate(()=>gridVisible)));await tap('#gridToggle')}
+   if(viewport.height===557){if(!(await p.locator('#gridToggle').isVisible()))await tap('#ribbonToggle');await shot('14-tablet-fallback');await tap('#gridToggle');assert(!(await p.evaluate(()=>gridVisible)));await tap('#gridToggle')}
   }
   await p.setViewportSize({width:1280,height:800});await ready(true);await identity(false);assert.deepEqual(await geometry(),measured);
   await p.evaluate(()=>{Object.defineProperty(floatingToolsMedia,'matches',{configurable:true,value:false});floatingToolsMedia.dispatchEvent(new MediaQueryListEvent('change',{matches:false,media:floatingToolsMedia.media}))});await ready(false);await identity(true);assert(await p.evaluate(()=>gridVisible));
   if(!(await p.locator('#gridToggle').isVisible()))await p.locator('#ribbonToggle').click();await p.locator('#gridToggle').click();assert(!(await p.evaluate(()=>gridVisible)));await p.locator('#gridToggle').click();await shot('18-desktop-grid-on');
   assert.equal(await p.evaluate(()=>gridCanvasDowns),0);assert.deepEqual(await p.evaluate(()=>gridCommandKeys),[]);assert.deepEqual(await p.evaluate(()=>rightCommandRings.map(r=>r.ids)),mapping);assert.deepEqual(errors,[]);
-  const report={measured,before:[96,48],jointMinimum:582,viewports:evidence,screenshots:fs.readdirSync(out).filter(n=>n.endsWith('.png')),input:'Edge headless, CDP touch emulation; no physical Android evidence'};
+  const report={measured,before:[96,48],jointMinimum:558,viewports:evidence,screenshots:fs.readdirSync(out).filter(n=>n.endsWith('.png')),input:'Edge headless, CDP touch emulation; no physical Android evidence'};
   fs.writeFileSync(path.join(out,'evidence.json'),JSON.stringify(report,null,2));console.log('PASS Grid same-source ownership/handler, 208x48 strip, touch isolation, pending Bar, restored state, unchanged radii/bounds and joint threshold',JSON.stringify(report));
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

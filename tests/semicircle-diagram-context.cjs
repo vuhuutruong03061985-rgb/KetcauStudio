@@ -32,7 +32,7 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
   const out=path.resolve('.test-tools/semicircle-diagram-context');fs.mkdirSync(out,{recursive:true});
   const shot=async name=>{await p.waitForTimeout(600);await settled();await p.screenshot({path:path.join(out,name+'.png')})};
   const activate=async(id,type='touch',ending='up',drag=false)=>{
-   const q=await p.evaluate(id=>{const entries=leftContextEntries(leftDrawingMenu.state.focusedEntry);return leftDrawingMenu.layout.contextRing.middle[entries.length][entries.findIndex(e=>e.id===id)].icon},id);
+   const q=await p.evaluate(id=>{const entries=leftContextEntries(leftDrawingMenu.state.focusedEntry);return leftDrawingMenu.layout.contextRing.sectors[[...leftDrawingMenu.host.querySelectorAll('[data-fixed-action]')].findIndex(e=>e.dataset.fixedAction===id)].icon},id);
    if(type==='Enter'||type==='Space'){await sector(id).focus();await p.keyboard.press(type);await settled();return}
    const cdp=await p.context().newCDPSession(p);let {x,y}=q;
    if(type==='touch')await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
@@ -141,11 +141,11 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
   // Real roller motion updates context at the detent before pointer-up, without
   // mode/source activation. Other ring memory and the outer paths remain fixed.
   const dragL4=async(steps,expected)=>{
-   const saved=await snapshot(),old=await memory(),fixed=await p.evaluate(()=>leftDrawingMenu.layout.contextRing.sectors.map(s=>s.path));
+   const saved=await snapshot(),old=await memory(),fixed=await p.evaluate(()=>leftDrawingMenu.layout.rings.map(r=>r.sectors.map(s=>s.path)));
    const q=await p.evaluate(()=>{const m=leftDrawingMenu,r=m.state.rings[1],l=m.layout.rings[1],s=l.sectors[r.activeIndex];return{x:s.icon.x,y:s.icon.y,cx:m.layout.cx,cy:m.layout.cy,r:(s.r0+s.r1)/2,angle:(s.a0+s.a1)/2,step:l.step}});
    await p.mouse.move(q.x,q.y);await p.mouse.down();for(let i=1;i<=12;i++){const a=q.angle+q.step*steps*i/12;await p.mouse.move(q.cx+q.r*Math.cos(a),q.cy+q.r*Math.sin(a))}
    assert.deepEqual(await contextIds(),expected);await p.mouse.up();await p.waitForTimeout(210);
-   assert.deepEqual(await snapshot(),saved);assert.deepEqual((await memory()).slice(0,1),old.slice(0,1));assert.deepEqual(await p.evaluate(()=>leftDrawingMenu.layout.contextRing.sectors.map(s=>s.path)),fixed);
+   assert.deepEqual(await snapshot(),saved);assert.deepEqual((await memory()).slice(0,1),old.slice(0,1));assert.deepEqual(await p.evaluate(()=>leftDrawingMenu.layout.rings.map(r=>r.sectors.map(s=>s.path))),fixed);
   };
   await reset();await focus('text');await dragL4(6,children);await dragL4(-4,[]);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.focusedEntry.id),'section');await shot('section-empty');assert.deepEqual(await p.evaluate(()=>diagramCalls),{});
 
@@ -163,10 +163,10 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
 
   const bounds=()=>p.evaluate(()=>[leftDrawingMenu,rightCommandMenu].map(m=>({side:m.state.side,radius:m.layout.radius,fits:m.layout.fits,bounds:m.layout.bounds})));
   await reset();await focus('diagram');await shot('left-landscape');const landscape=await bounds();
-  assert.deepEqual(landscape.map(g=>g.radius),[304.04759747124507,248.81914748738225]);
+  assert.deepEqual(landscape.map(g=>g.radius),[202.04759747124507,248.81914748738225]);
   await p.setViewportSize({width:800,height:1280});await settled();await open();assert.deepEqual((await bounds()).map(g=>g.radius),landscape.map(g=>g.radius));await shot('left-portrait');
   await p.setViewportSize({width:800,height:784});await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom===716&&document.body.dataset.radialPrimary==='true');await open();await shot('boundary-fit');console.log('BOUNDARY FIT',JSON.stringify(await bounds()));
-  await p.setViewportSize({width:800,height:568});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');await p.evaluate(()=>{leftDrawingMenu.close();rightCommandMenu.close()});
+  await p.setViewportSize({width:800,height:557});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='false');await p.evaluate(()=>{leftDrawingMenu.close();rightCommandMenu.close()});
   for(const id of children){const source=p.locator(`#tools button[data-mode="${id}"]`);if(!await source.isVisible())await p.locator('#toggleTools').tap();await source.tap();assert.equal(await p.evaluate(()=>mode),id)}
   // Keep all original options accessible in the fallback palette.
   if(!await p.locator('#toolPanel').isVisible())await p.locator('#toggleTools').tap();await p.locator('#tools button[data-mode="diagramM"]').scrollIntoViewIfNeeded();await shot('fallback');console.log('BOUNDARY FALLBACK',JSON.stringify(await bounds()));

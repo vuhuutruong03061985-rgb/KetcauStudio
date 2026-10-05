@@ -67,7 +67,7 @@ const baseline=execFileSync('git',['show','aa815c4:assets/tablet.js'],{encoding:
    for(const page of [p,reference]){await seed(page);await page.setViewportSize({width,height});await settled(page)}await ownership(p,true);await identity(true);
    evidence.push({width,height,fit:await fit()});if(height===584||width===1280)await p.screenshot({path:path.join(out,width+'x'+height+'-closed.png')});
    for(const side of ['left','right']){
-    assert.deepEqual(await context(p,side),await context(reference,side),'Cancel/Finish and context geometry unchanged');await fit();
+    const current=await context(p,side),old=await context(reference,side);if(side==='right')assert.deepEqual(current,old,'RIGHT context geometry unchanged');else{assert.deepEqual(current.mapping,old.mapping);assert(current.radius<old.radius);assert.equal(current.context.sectors.length,2);assert.equal(current.context.sectors[0].a0,-Math.PI/2);assert.equal(current.context.sectors[1].a1,Math.PI/2);assert(current.context.targets.safe);assert(current.paths.every(Boolean))}await fit();
     const empty=await p.evaluate(side=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;return m.layout.contextRing.sectors.slice(2).every(s=>!document.elementFromPoint(s.icon.x,s.icon.y)?.closest('[data-fixed-action]'))},side);assert(empty,'former history slots have no action hit targets');
     if(height===584)await p.screenshot({path:path.join(out,'1152x584-'+side+'-context.png')});
    }

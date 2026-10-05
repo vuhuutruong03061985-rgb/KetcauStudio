@@ -49,7 +49,7 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
    assert.equal(g.topHeight,48);assert(g.controls.every(c=>c.width>=44&&c.height>=44&&c.top>=g.bar.top&&c.bottom<=g.bar.bottom));
    assert.equal(g.menus[0].bounds.bottom,g.bar.top-8);assert.equal(g.menus[1].bounds.bottom,await p.evaluate(()=>tabletBottomRightBar.getBoundingClientRect().top-8));
    assert(g.menus.every(m=>m.fits&&m.top>=100));assert(g.menus[0].bottom<=g.bar.top-8);
-   assert.deepEqual(g.menus.map(m=>m.radius),[304.04759747124507,248.81914748738225]);return g;
+   assert.deepEqual(g.menus.map(m=>m.radius),await p.evaluate(()=>[leftDrawingMenu.layout.contextRing?(leftDrawingMenu.layout.profile==='compact'?188.04759747124507:202.04759747124507):(leftDrawingMenu.layout.profile==='compact'?143.04759747124507:151.04759747124507),rightCommandMenu.layout.profile==='compact'?217.60804137472095:248.81914748738225]));return g;
   };
   console.log('LANDSCAPE',JSON.stringify(await checkGeometry()));await output();await shot('landscape');await shot('zoom-100');await shot('top-and-bottom');
   const topCommands=()=>p.locator('#tabletTopCommands button:not([hidden])').evaluateAll(es=>es.map(e=>e.id||e.dataset.toolbarIcon));
@@ -97,7 +97,7 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
   // Separate projected fan thresholds from joint admission. In fallback both
   // bars hide; hypothetical DOM measurements keep admission stable and truthful.
   const thresholds={left:null,right:null};
-  for(let height=500;height<=790;height++){
+  for(let height=400;height<=790;height++){
    await p.setViewportSize({width:800,height});await settled();
    // Independent viewport/chrome oracle, including the profile's enclosing
    // circle expansion. Constants are fixed geometry references, not live layout.
@@ -106,14 +106,14 @@ const ids=['zoomOut','zoomLevel','zoomIn','fitView'];
    await p.waitForFunction(bottom=>Math.abs(rightCommandMenu.layout.bounds.bottom-bottom)<1e-8,expectedBottom);
    const projected=await p.evaluate(()=>{
     const top=tabletChromeBottom(true),bounds=[leftDrawingBounds(top,tabletLeftChromeTop(true)),rightCommandBounds(top,tabletRightChromeTop(true))];
-    return [leftDrawingMenu,rightCommandMenu].map((m,i)=>semicircleEngine.solveAdaptiveConcentricRingLayout({side:m.state.side,rings:i===0?[4,6,3,8].map((count,j)=>({id:'L'+(j+1),count})):m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits);
+    return [leftDrawingMenu,rightCommandMenu].map((m,i)=>semicircleEngine.solveAdaptiveConcentricRingLayout({side:m.state.side,dynamicContext:i===0,contextCount:0,rings:m.state.rings.map(r=>({id:r.id,count:r.entries.length})),bounds:bounds[i],fixedOuter:true}).fits);
    });
    for(const [i,side]of ['left','right'].entries())if(projected[i]&&thresholds[side]===null)thresholds[side]=height;
    await ready(projected.every(Boolean));
   }
-  assert.deepEqual(thresholds,{left:582,right:558});console.log('PROJECTED THRESHOLDS',JSON.stringify(thresholds));
+  assert.deepEqual(thresholds,{left:455,right:558});console.log('PROJECTED THRESHOLDS',JSON.stringify(thresholds));
   await p.setViewportSize({width:800,height:784});await ready(true);await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom===716);await p.locator('.semicircle-left-menu [data-demo-id="hub"]').dispatchEvent('click');console.log('JOINT BOUNDARY FIT',JSON.stringify(await checkGeometry()));await shot('boundary-fit');
-  const stable=await snapshot(),stableCamera=await view();await p.setViewportSize({width:800,height:568});await ready(false);await identity(true);assert(await bar.isHidden());assert(await p.locator('#tabletTopBar').isHidden());assert.equal(await p.evaluate(()=>leftDrawingBounds().bottom),500);assert.equal(await p.evaluate(()=>rightCommandBounds().bottom),500);
+  const stable=await snapshot(),stableCamera=await view();await p.setViewportSize({width:800,height:557});await ready(false);await identity(true);assert(await bar.isHidden());assert(await p.locator('#tabletTopBar').isHidden());assert.equal(await p.evaluate(()=>leftDrawingBounds().bottom),489);assert.equal(await p.evaluate(()=>rightCommandBounds().bottom),489);
   for(let i=0;i<6;i++){await p.evaluate(()=>{leftDrawingMenu.refresh();rightCommandMenu.refresh()});await settled();assert.equal(await p.evaluate(()=>document.body.dataset.radialPrimary),'false')}
   await tap(p.locator('#ribbonToggle'));assert(await p.locator('#zoomIn').isVisible());assert(await p.locator('#zoomOut').isVisible());assert(await p.locator('#zoomLevel').isVisible());await p.locator('#zoomIn').scrollIntoViewIfNeeded();await shot('fallback-ribbon');
   const fallbackWidth=(await view()).w;await tap(p.locator('#zoomIn'));assert.equal((await view()).w,fallbackWidth/1.25);await output();await tap(p.locator('#zoomOut'));assert.equal((await view()).w,fallbackWidth);

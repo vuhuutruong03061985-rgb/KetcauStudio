@@ -4,7 +4,7 @@ const {pathToFileURL}=require('node:url');
 const {ownership,settled}=require('./tablet-radial-ownership.cjs');
 const left=[['bar','thin','dashed','curve'],['hinge','linkBar','weld','pin','roller','fixed'],['force','moment','udl'],['dim','text','person','section','rigidRegion','hatch','joint','diagram']];
 const right=[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['panView','snapOptions']];
-const normal=[304.04759747124507,248.81914748738225],compact=[278.04759747124507,217.60804137472095];
+const normal=[151.04759747124507,248.81914748738225],compact=[143.04759747124507,217.60804137472095];
 
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
@@ -31,8 +31,8 @@ const normal=[304.04759747124507,248.81914748738225],compact=[278.04759747124507
       m.state.rings.forEach((r,i)=>{const nodes=[...m.host.querySelectorAll('[data-roller-ring="'+r.id+'"]')];if(nodes.length!==expected[i]||nodes.some(g=>getComputedStyle(g).visibility!=='visible'||getComputedStyle(g).display==='none'))failures.push({type:'hidden-tools',side:index,ring:r.id})});
       if([...m.host.querySelectorAll('.semicircle-icon[transform],.roller-artwork')].some(g=>g.getAttribute('transform')?.includes('rotate')))failures.push({type:'rotated-artwork',side:index});
      }
-     if(m.layout.contextRing.sectors.length!==4||m.layout.contextRing.middle[5].length!==5)failures.push({type:'context-reserve',side:index});
-     const all=[...m.layout.rings.flatMap(r=>r.sectors),...m.layout.contextRing.sectors,...m.layout.contextRing.middle.flat()];
+     if(index===1&&(m.layout.contextRing.sectors.length!==4||m.layout.contextRing.middle[5].length!==5))failures.push({type:'context-reserve',side:index});
+     const all=[...m.layout.rings.flatMap(r=>r.sectors),...(m.layout.contextRing?.sectors||[]),...(m.layout.contextRing?.middle?.flat()||[])];
      for(const s of all){
       const mid=(s.r0+s.r1)/2,tangent=mid*Math.sin((s.a1-s.a0)/2);
       if(s.r1-s.r0<44-1e-8||tangent<22-1e-8)failures.push({type:'target',side:index,width:s.r1-s.r0,tangent});
@@ -58,12 +58,12 @@ const normal=[304.04759747124507,248.81914748738225],compact=[278.04759747124507
    assert.deepEqual(result.sizes,[[200,48],[208,48],[60,44],[44,44],[44,44],[44,44]]);
   };
   await p.evaluate(()=>saveDraft());const initial=await state(),rows=[];
-  const viewports=[[1376,1032,true],[1280,800,true],[1152,720,true],[1152,700,true],[1152,680,true],[1152,620,true],[1152,584,true],[1032,1376,true],[800,1280,true],[800,776,true],[800,766,true],[800,600,true],[800,390,false],[432,800,true],[431,800,false],[390,800,false],[800,582,true],[800,581,false]];
+  const viewports=[[1376,1032,true],[1280,800,true],[1152,720,true],[1152,700,true],[1152,680,true],[1152,620,true],[1152,584,true],[1032,1376,true],[800,1280,true],[800,776,true],[800,766,true],[800,600,true],[800,390,false],[432,800,true],[431,800,false],[390,800,false],[800,582,true],[800,558,true],[800,557,false],[800,581,true]];
   for(const [width,height,active]of viewports){
    await p.evaluate(()=>{leftDrawingMenu.close();rightCommandMenu.close()});await p.setViewportSize({width,height});await ownership(p,active);
    const layout=await profiles();
    if(active){
-    const expected=height>=767?['normal','normal']:height>=661?['compact','normal']:['compact','compact'];
+    const expected=height>=661?['normal','normal']:['normal','compact'];
     assert.deepEqual(layout.map(m=>m.profile),expected);
     assert.deepEqual(layout.map((m,i)=>m.radius),expected.map((s,i)=>s==='normal'?normal[i]:compact[i]));
     for(const side of ['left','right']){
@@ -109,7 +109,7 @@ const normal=[304.04759747124507,248.81914748738225],compact=[278.04759747124507
    if(active){await toggle('left');await geometry();await toggle('left')}assert.deepEqual(await state(),pending);
   }
   await p.evaluate(()=>{delete visualViewport.height;visualViewport.dispatchEvent(new Event('resize'))});await p.setViewportSize({width:1152,height:584});await ownership(p,true);
-  await p.evaluate(()=>{leftDrawingSafeProbe.style.paddingTop='120px';leftDrawingMenu.refresh()});await ownership(p,false);assert.deepEqual(await state(),pending);
+  await p.evaluate(()=>{leftDrawingSafeProbe.style.paddingTop='240px';leftDrawingMenu.refresh()});await ownership(p,false);assert.deepEqual(await state(),pending);
   await p.evaluate(()=>{leftDrawingSafeProbe.style.removeProperty('padding-top');leftDrawingMenu.refresh()});await ownership(p,true);assert.deepEqual(await state(),pending);
   // An actual numeric capture survives normal/compact/fallback ownership moves.
   await p.evaluate(()=>{beginBarNumericInput({clientX:550,clientY:400,pointerType:'touch'});window.compactCapture=dynamicNumericCapture;window.compactFirst=first});
@@ -121,9 +121,9 @@ const normal=[304.04759747124507,248.81914748738225],compact=[278.04759747124507
   // A panel intersects normal's radius but not compact's. Profile-specific
   // physical bounds must be stable regardless of the previous menu geometry.
   await p.setViewportSize({width:1280,height:800});
-  await p.evaluate(()=>{Object.defineProperty(dynamicInput,'getBoundingClientRect',{configurable:true,value:()=>({left:290,right:390,top:200,bottom:300,width:100,height:100})});leftDrawingMenu.refresh();rightCommandMenu.refresh()});
+  await p.evaluate(()=>{Object.defineProperty(dynamicInput,'getBoundingClientRect',{configurable:true,value:()=>({left:148,right:248,top:200,bottom:450,width:100,height:250})});leftDrawingMenu.refresh();rightCommandMenu.refresh()});
   await ownership(p,true);assert.equal((await profiles())[0].profile,'compact');
-  assert.deepEqual(await p.evaluate(()=>[leftDrawingBounds(undefined,undefined,'normal').top,leftDrawingBounds(undefined,undefined,'compact').top]),[308,100]);
+  assert.deepEqual(await p.evaluate(()=>[leftDrawingBounds(undefined,undefined,'normal').top,leftDrawingBounds(undefined,undefined,'compact').top]),[458,100]);
   for(let i=0;i<4;i++){await p.evaluate(()=>{leftDrawingMenu.refresh();rightCommandMenu.refresh()});await ownership(p,true);assert.equal((await profiles())[0].profile,'compact')}
   assert.deepEqual(await state(),numericBefore);assert(await p.evaluate(()=>dynamicNumericCapture===compactCapture&&first===compactFirst));
   await p.evaluate(()=>{delete dynamicInput.getBoundingClientRect;leftDrawingMenu.refresh();rightCommandMenu.refresh()});await ownership(p,true);assert.equal((await profiles())[0].profile,'normal');

@@ -58,7 +58,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
   for(const id of ['thin','fixed','moment','text']){await focus(id);await shot('focused-'+id)}
   await shot('landscape');await p.setViewportSize({width:800,height:1280});await open();await shot('portrait');
   await p.setViewportSize({width:800,height:680});await open();assert.equal(await p.evaluate(()=>leftDrawingMenu.layout.fits),true);await shot('boundary-safe-fit');
-  await p.setViewportSize({width:800,height:540});await p.waitForFunction(()=>!leftDrawingMenu.layout.fits);const failed=await p.evaluate(()=>({viewport:[innerWidth,innerHeight],bounds:leftDrawingMenu.layout.bounds,radius:leftDrawingMenu.layout.radius,fits:leftDrawingMenu.layout.fits}));assert.equal(failed.fits,false);assert(await p.locator('#toggleTools').isVisible());assert(await p.locator('#commandRibbon').isVisible());console.log('EXPECTED fallback geometry',failed);
+  await p.setViewportSize({width:800,height:440});await p.waitForFunction(()=>!leftDrawingMenu.layout.fits);const failed=await p.evaluate(()=>({viewport:[innerWidth,innerHeight],bounds:leftDrawingMenu.layout.bounds,radius:leftDrawingMenu.layout.radius,fits:leftDrawingMenu.layout.fits}));assert.equal(failed.fits,false);assert(await p.locator('#toggleTools').isVisible());assert(await p.locator('#commandRibbon').isVisible());console.log('EXPECTED fallback geometry',failed);
   await p.setViewportSize({width:1280,height:800});await p.waitForFunction(()=>document.body.dataset.radialPrimary==='true');
   await p.locator('.semicircle-right-menu [data-demo-id="hub"]').dispatchEvent('click');await shot('right-compact');
   assert.equal(await p.locator('.semicircle-right-menu .semicircle-roller-ring').count(),2);assert.deepEqual(errors,[]);

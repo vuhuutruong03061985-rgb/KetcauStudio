@@ -61,7 +61,7 @@ const commands=['clear','open','save','saveAs','svg','png','insertWord'];
    const g=await geometry();assert.equal(g.primary,'true');assert.equal(g.height,48);assert.equal(g.headerBottom,g.topBarBottom-g.height);assert(g.canvasTop>=g.topBarBottom);assert(!g.overflow);
    assert(g.targets.every(t=>t.w>=44&&t.h>=44&&t.top>=g.headerBottom&&t.bottom<=g.topBarBottom));
    assert(g.menus.every(m=>m.fits&&m.bounds.top>=g.topBarBottom+8&&m.top>=g.topBarBottom+8));
-   assert.deepEqual(g.menus.map(m=>m.radius),[304.04759747124507,248.81914748738225]);return g;
+   assert.deepEqual(g.menus.map(m=>m.radius),await p.evaluate(()=>[leftDrawingMenu.layout.contextRing?(leftDrawingMenu.layout.profile==='compact'?188.04759747124507:202.04759747124507):(leftDrawingMenu.layout.profile==='compact'?143.04759747124507:151.04759747124507),rightCommandMenu.layout.profile==='compact'?217.60804137472095:248.81914748738225]));return g;
   };
   console.log('LANDSCAPE',JSON.stringify(await checkGeometry()));await shot('landscape');
   await p.evaluate(()=>{wordButton.hidden=true});await settled();assert.deepEqual(await visibleCommands(),[...commands.slice(0,-1),'undo','redo']);const exportWidth=await p.locator('#exportToolbar').evaluate(e=>e.getBoundingClientRect().width);await shot('word-hidden');
@@ -137,7 +137,7 @@ const commands=['clear','open','save','saveAs','svg','png','insertWord'];
   assert.deepEqual(await p.evaluate(()=>rightCommandRings[1].entries.map(e=>e.id)),['panView','snapOptions']);
   await p.evaluate(()=>{leftDrawingMenu.close();rightCommandMenu.close()});await p.setViewportSize({width:800,height:1280});await ready(true);await checkGeometry();await shot('portrait');
   await p.setViewportSize({width:800,height:784});await ready(true);await p.waitForFunction(()=>rightCommandMenu.layout.bounds.bottom===716);console.log('BOUNDARY FIT',JSON.stringify(await checkGeometry()));await p.locator('.semicircle-right-menu [data-demo-id="hub"]').dispatchEvent('click');await shot('boundary-fit');
-  await p.setViewportSize({width:800,height:568});await ready(false);await identity(true);assert(await bar.isHidden());await tap(p.locator('#ribbonToggle'));assert(await source('save').isVisible());await shot('fallback-ribbon');
+  await p.setViewportSize({width:800,height:557});await ready(false);await identity(true);assert(await bar.isHidden());await tap(p.locator('#ribbonToggle'));assert(await source('save').isVisible());await shot('fallback-ribbon');
   for(let i=0;i<6;i++){await p.evaluate(()=>{leftDrawingMenu.refresh();rightCommandMenu.refresh()});await settled();assert.equal(await p.evaluate(()=>document.body.dataset.radialPrimary),'false')}
   await p.setViewportSize({width:800,height:540});await ready(false);await settled();assert(await bar.isHidden());assert.equal(await p.evaluate(()=>rightCommandBounds().top),100);console.log('SHORT 540 FALLBACK',JSON.stringify(await geometry()));
   await p.setViewportSize({width:280,height:900});await ready(false);await p.evaluate(()=>{leftDrawingSafeProbe.style.paddingRight='calc(100vw - 60px)';leftDrawingMenu.refresh()});await settled();
