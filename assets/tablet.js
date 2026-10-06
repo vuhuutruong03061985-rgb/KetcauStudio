@@ -1959,13 +1959,23 @@ window.addEventListener('keydown',e=>{
 
 // Shared command actions: native editors/Dynamic Input retain their own key lifecycle.
 function finishActiveCommand(){
- if(mode==='section'&&!sectionPending)finishSection();
+ if(canFinishLockedBar()){
+  const session=barNumericSession;
+  if(!dynamicInputUI.confirmPending())return;
+  commitBarCandidate(null,{clientX:session.capture.clientX,clientY:session.capture.clientY});
+ }
+ else if(mode==='section'&&!sectionPending)finishSection();
  else if(mode==='rigidRegion')finishRigidRegion();
  else if(mode==='hatch')finishHatchCommand();
  else if(mirrorSelecting)startMirrorAxis();
  updateCommandControls();
 }
 function cancelActiveCommand(){cancelToSelection();updateCommandControls()}
+// Two locked values fully determine a Bar in model space, without a hover candidate.
+function canFinishLockedBar(){
+ return mode==='bar'&&!!first&&barNumericSession?.first===first&&
+  barNumericSession.state.distance.mode==='locked'&&barNumericSession.state.angle.mode==='locked'&&!!barNumericSession.endpoint;
+}
 const commandControls=document.createElement('div');commandControls.id='commandControls';commandControls.hidden=true;
 const commandCancel=document.createElement('button'),commandFinish=document.createElement('button');
 commandCancel.id='commandCancel';commandFinish.id='commandFinish';
@@ -1978,8 +1988,9 @@ function updateCommandControls(){
  const touch=matchMedia('(any-pointer: coarse)').matches;
  const editing=inlineEditor||document.querySelector('dialog[open]')||document.activeElement?.matches('input,textarea,select')||document.activeElement?.isContentEditable;
  const active=mode!=='select'||mirrorSelecting;
- const finish=mode==='section'&&!sectionPending&&sectionPoints.length>=2||mode==='rigidRegion'&&rigidPoints.length>=3||mode==='hatch'&&hatchPoints.length>=3||mirrorSelecting&&selectedObjectIds().size>0;
- commandControls.hidden=!touch||!!editing||!active;
+ const lockedBar=canFinishLockedBar();
+ const finish=lockedBar||mode==='section'&&!sectionPending&&sectionPoints.length>=2||mode==='rigidRegion'&&rigidPoints.length>=3||mode==='hatch'&&hatchPoints.length>=3||mirrorSelecting&&selectedObjectIds().size>0;
+ commandControls.hidden=(!touch&&!lockedBar)||!!editing||!active;
  commandFinish.hidden=!finish;
  // Keep clear of the existing numeric editor; do not create a second confirmation UI.
  const input=$('dynamicInput');
