@@ -1,6 +1,7 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{execFileSync}=require('node:child_process'),{pathToFileURL}=require('node:url');
 const {ownership,settled}=require('./tablet-radial-ownership.cjs');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 const expected={geometry:['bar','thin','dashed','curve'],supports:['hinge','linkBar','weld','pin','roller','fixed'],loads:['force','moment','udl'],annotation:['dim','text','person','section','rigidRegion','hatch','joint','diagram']};
 const baseline=execFileSync('git',['show','c8e2288:assets/tablet.js'],{encoding:'utf8'});
 (async()=>{
@@ -16,7 +17,7 @@ const baseline=execFileSync('git',['show','c8e2288:assets/tablet.js'],{encoding:
   const open=async()=>{if(!await p.evaluate(()=>leftDrawingMenu.state.open))await p.locator('.semicircle-left-menu [data-demo-id="hub"]').dispatchEvent('click');await settled(p)};
   const tap=async id=>{const q=await p.evaluate(id=>{const m=leftDrawingMenu,r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));return m.layout.rings.find(l=>l.id===r.id).sectors[r.entries.findIndex(e=>e.id===id)].icon},id);await p.touchscreen.tap(q.x,q.y);await settled(p)};
   const category=async id=>{await open();await tap(id);assert.equal(await p.evaluate(()=>leftCategoryId),id)};
-  const focus=async id=>{await category(Object.keys(expected).find(c=>expected[c].includes(id)));if(!await p.evaluate(id=>leftDrawingMenu.state.rings[1].focusedId===id,id))await tap(id)};
+  const focus=async id=>{await category(Object.keys(expected).find(c=>expected[c].includes(id)));await focusRadialEntry(p,'left',id)};
   const shot=async name=>{await p.waitForTimeout(700);await settled(p);await p.screenshot({path:path.join(out,name+'.png')})};
   const context=page=>page.evaluate(()=>({radius:leftDrawingMenu.layout.radius,profile:leftDrawingMenu.layout.profile,cx:leftDrawingMenu.layout.cx,cy:leftDrawingMenu.layout.cy,bounds:leftDrawingMenu.layout.bounds,context:leftDrawingMenu.layout.contextRing}));
   // Project only the baseline RIGHT functional sectors through its existing B1 allocator.
@@ -53,8 +54,8 @@ const baseline=execFileSync('git',['show','c8e2288:assets/tablet.js'],{encoding:
   await category('annotation');await p.evaluate(()=>leftDrawingMenu.close());await open();assert.equal(await p.evaluate(()=>leftCategoryId),'annotation');
   for(const [mode,cat,tool]of [['bar','geometry','bar'],['force','loads','force'],['diagramQ','annotation','diagram']]){await p.evaluate(mode=>{setMode(mode);leftDrawingMenu.close()},mode);await open();assert.equal(await p.evaluate(()=>leftCategoryId),cat);assert.equal(await p.evaluate(()=>leftDrawingMenu.state.rings[1].focusedId),tool)}
   await p.evaluate(()=>{cancelToSelection();leftDrawingMenu.close();leftCategoryId=null});await open();assert.equal(await p.evaluate(()=>leftCategoryId),'geometry');
-  // First contact focuses, second contact invokes the existing real source once.
-  await category('supports');await tap('hinge');assert.deepEqual(await p.evaluate(()=>calls),{});await tap('hinge');assert.deepEqual(await p.evaluate(()=>calls),{hinge:1});assert.equal(await p.evaluate(()=>mode),'hinge');
+  // One intentional contact focuses and invokes the existing real source once.
+  await category('supports');assert.deepEqual(await p.evaluate(()=>calls),{});await tap('hinge');assert.deepEqual(await p.evaluate(()=>calls),{hinge:1});assert.equal(await p.evaluate(()=>mode),'hinge');
   await p.evaluate(()=>{cancelToSelection();calls={}});await focus('moment');await shot('1152x584-moment-context');assert.equal(await p.locator('.semicircle-left-menu [data-context-action]').count(),2);
   await focus('diagram');await shot('1152x584-diagram-context');assert.deepEqual(await p.locator('.semicircle-left-menu [data-context-action]').evaluateAll(es=>es.map(e=>e.dataset.contextAction)),['diagramM','diagramQ','diagramN','positive','negative']);
   await category('geometry');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.focusedEntry),null);assert.equal(await p.locator('.semicircle-left-menu [data-context-action]').count(),0);

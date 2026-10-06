@@ -2,6 +2,7 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{execFileSync}=require('node:child_process'),{pathToFileURL}=require('node:url');
 const {ownership,settled}=require('./tablet-radial-ownership.cjs');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 const baseline=execFileSync('git',['show','13a3f73:assets/tablet.js'],{encoding:'utf8'});
 const R1=['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],R2=['panView','snapOptions'];
 const near=(a,b)=>assert(Math.abs(a-b)<1e-10,`${a} != ${b}`);
@@ -17,7 +18,7 @@ const near=(a,b)=>assert(Math.abs(a-b)<1e-10,`${a} != ${b}`);
   const reset=async(page=p)=>{await page.evaluate(()=>{document.activeElement?.blur();cancelToSelection();window.b4id=0;crypto.randomUUID=()=> 'b4-'+(++b4id);items=[make('bar',100,200,500,200)];past=[];future=[];selected=null;multiSelection.clear();panEnabled=false;panButton.classList.remove('active');panButton.setAttribute('aria-pressed','false');snapEnabled=false;updateSnapControls();snapPanel.open=false;leftDrawingMenu.close();rightCommandMenu.close();window.b4calls={};render();updateCommandControls()});await settled(page)};
   const open=async()=>{if(!await p.evaluate(()=>rightCommandMenu.state.open))await root.locator('[data-demo-id="hub"]').dispatchEvent('click');await settled(p)};
   const point=id=>p.evaluate(id=>{const m=rightCommandMenu,r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));return m.layout.rings.find(l=>l.id===r.id).sectors[r.entries.findIndex(e=>e.id===id)].icon},id);
-  const focus=async id=>{await open();if(!await p.evaluate(id=>rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id)).focusedId===id,id)){const q=await point(id);await p.touchscreen.tap(q.x,q.y);await settled(p)}};
+  const focus=async id=>{await open();await focusRadialEntry(p,'right',id)};
   const snapshot=page=>page.evaluate(()=>({doc:documentText(),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,first,second,selected,multi:[...multiSelection],camera,panEnabled,snapEnabled,snapOptions,gridVisible,gridSize,dynamic:dynamicInput.hidden,fields:barNumericSession?.state}));
   const left=page=>page.evaluate(()=>({layout:leftDrawingMenu.layout,mapping:leftDrawingMenu.state.rings.map(r=>r.entries.map(e=>e.id)),categories:leftDrawingCategories.map(c=>c.entries.map(e=>e.id)),category:leftCategoryId}));
   const rightEnvelope=page=>page.evaluate(()=>{const l=rightCommandMenu.layout;return {radius:l.radius,profile:l.profile,cx:l.cx,cy:l.cy,bounds:l.bounds,fits:l.fits,context:l.contextRing,rings:l.rings.map(r=>({id:r.id,r0:r.r0,r1:r.r1}))}});

@@ -1,5 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),{pathToFileURL}=require('node:url');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 const expected=[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['panView','snapOptions']];
 const leftExpected=[['bar','thin','dashed','curve'],['hinge','linkBar','weld','pin','roller','fixed'],['force','moment','udl'],['dim','text','person','section','rigidRegion','hatch','joint','diagram']];
 (async()=>{
@@ -10,7 +11,7 @@ const leftExpected=[['bar','thin','dashed','curve'],['hinge','linkBar','weld','p
   const rings=(side='right')=>p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.rings.map(r=>({id:r.id,index:r.activeIndex,offset:r.offset,focused:r.entries[r.activeIndex].id,pointer:r.pointerId,dragging:r.dragging})),side);
   const tap=async id=>{const q=await p.evaluate(id=>{const m=rightCommandMenu;if(id==='hub')return{x:m.layout.cx-13,y:m.layout.cy};const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));return m.layout.rings.find(l=>l.id===r.id).sectors[r.entries.findIndex(e=>e.id===id)].icon},id);await p.touchscreen.tap(q.x,q.y)};
   const open=async()=>{if(!await p.evaluate(()=>rightCommandMenu.state.open))await tap('hub')};
-  const focus=async id=>{await open();if(!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id)};
+  const focus=async id=>{await open();await focusRadialEntry(p,'right',id)};
   const reset=()=>p.evaluate(()=>{rightCommandMenu.close();cancelToSelection();panEnabled=false;panButton.classList.remove('active');panButton.setAttribute('aria-pressed','false');snapEnabled=false;updateSnapControls();snapPanel.open=false;for(const [i,index]of [0,0].entries()){const r=rightCommandMenu.state.rings[i];r.offset=r.activeIndex=index;r.focusedId=r.entries[index].id}rightCommandMenu.state.focusedEntry=null;rightCalls={}});
   const mapping=await p.evaluate(()=>{const want=rightCommandRings.map(r=>r.ids.filter(id=>{const s=rightCommandSource(id);return s&&!s.hidden}));return{actual:rightCommandRings.map(r=>r.entries.map(e=>e.id)),want,real:rightCommandRings.flatMap(r=>r.entries).every(e=>e.source===rightCommandSource(e.id))}});
   assert.deepEqual(mapping.actual,mapping.want);assert(mapping.real);for(let i=0;i<2;i++)assert.deepEqual(mapping.actual[i].filter(id=>!['openCalculator'].includes(id)),expected[i]);

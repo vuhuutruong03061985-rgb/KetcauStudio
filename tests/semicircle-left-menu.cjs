@@ -1,5 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 const expected={geometry:['bar','thin','dashed','curve'],supports:['hinge','linkBar','weld','pin','roller','fixed'],loads:['force','moment','udl'],annotation:['dim','text','person','section','rigidRegion','hatch','joint','diagram']};
 const diagramChildren=['diagramM','diagramQ','diagramN','positive','negative'];
 const sourceExpected={...expected,annotation:[...expected.annotation.slice(0,-1),...diagramChildren]};
@@ -18,7 +19,7 @@ const sourceExpected={...expected,annotation:[...expected.annotation.slice(0,-1)
    assert.equal(await p.evaluate(()=>leftDrawingCategories.map(g=>g.label).join('|')),'Vẽ|Liên kết|Tải trọng|Chú thích / biểu diễn');
    assert.deepEqual(await p.evaluate(()=>Object.fromEntries(leftDrawingCategories.map(g=>[g.id,g.entries.map(c=>c.id)]))),expected);
    const point=id=>p.evaluate(id=>{const m=leftDrawingMenu;if(id==='hub')return{x:m.layout.cx+13,y:m.layout.cy};const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));return m.layout.rings.find(l=>l.id===r.id).sectors[r.entries.findIndex(e=>e.id===id)].icon},id);
-   const focusTool=async(id,pointer='touch')=>{const cat=await p.evaluate(id=>leftDrawingCategories.find(c=>c.entries.some(e=>e.id===id)).id,id);if(await p.evaluate(()=>leftCategoryId)!==cat){const q=await point(cat);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)}const centered=await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.focusedId===id},id);if(!centered){const q=await point(id);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)}};
+   const focusTool=async(id,pointer='touch')=>{const cat=await p.evaluate(id=>leftDrawingCategories.find(c=>c.entries.some(e=>e.id===id)).id,id);if(await p.evaluate(()=>leftCategoryId)!==cat){const q=await point(cat);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)}await focusRadialEntry(p,'left',id)};
    const activate=async(id,pointer='touch')=>{
     if(id==='region'||id==='connections'){await focusTool(id==='region'?'text':'fixed',pointer);return}
     if(diagramChildren.includes(id)){await focusTool('diagram',pointer);const q=await p.evaluate(id=>{const entries=leftContextEntries(leftDrawingMenu.state.focusedEntry);return leftDrawingMenu.layout.contextRing.sectors[[...leftDrawingMenu.host.querySelectorAll('[data-fixed-action]')].findIndex(e=>e.dataset.fixedAction===id)].icon},id);if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y);return}
@@ -58,7 +59,7 @@ const sourceExpected={...expected,annotation:[...expected.annotation.slice(0,-1)
    await p.evaluate(()=>{document.querySelector('button[data-mode=force]').disabled=true});
    assert.equal(await sector('force').getAttribute('aria-disabled'),'true');assert.equal(await sector('force').getAttribute('tabindex'),'-1');await activate('force');assert.equal(await p.evaluate(()=>mode),'moment');
    await p.evaluate(()=>{document.querySelector('button[data-mode=force]').disabled=false});
-   await sector('force').focus();await p.keyboard.press('Enter');await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>mode),'force');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
+   await sector('force').focus();await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>mode),'force');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
    // An in-progress drawing survives menu navigation and outside dismissal exactly.
    await reset();await p.evaluate(()=>{setMode('bar');first={x:300,y:300};selected=items[0].id;multiSelection=new Set([selected]);saveDraft()});
    const snapshot=()=>p.evaluate(()=>({doc:documentText(),items:JSON.stringify(items),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,first,selected,selection:[...multiSelection],geometryScale,internalForceScale,storage:JSON.stringify(localStorage)}));

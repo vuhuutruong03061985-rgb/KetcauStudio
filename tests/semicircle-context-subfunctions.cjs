@@ -1,5 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),{pathToFileURL}=require('node:url');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -10,7 +11,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
   const open=async()=>{if(!await p.evaluate(()=>leftDrawingMenu.state.open))await root.locator('[data-demo-id="hub"]').dispatchEvent('click');await settled()};
   const point=id=>p.evaluate(id=>{const m=leftDrawingMenu,r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));return m.layout.rings.find(l=>l.id===r.id).sectors[r.entries.findIndex(e=>e.id===id)].icon},id);
   const tapMain=async id=>{const q=await point(id);await p.touchscreen.tap(q.x,q.y);await settled()};
-  const focus=async id=>{await open();const category=await p.evaluate(id=>leftDrawingCategories.find(c=>c.entries.some(e=>e.id===id)).id,id);if(await p.evaluate(()=>leftCategoryId)!==category)await tapMain(category);const r=await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return {centered:r.focusedId===id,focused:leftDrawingMenu.state.focusedEntry?.id===id,next:r.entries[(r.activeIndex+1)%r.entries.length].id}},id);if(r.centered&&!r.focused)await tapMain(r.next);if(!r.centered||!r.focused)await tapMain(id)};
+  const focus=async id=>{await open();const category=await p.evaluate(id=>leftDrawingCategories.find(c=>c.entries.some(e=>e.id===id)).id,id);if(await p.evaluate(()=>leftCategoryId)!==category)await tapMain(category);await focusRadialEntry(p,'left',id)};
   const contextIds=()=>root.locator('[data-context-action]').evaluateAll(es=>es.map(e=>e.dataset.contextAction));
   const doc=()=>p.evaluate(()=>({doc:documentText(),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,dirty:documentText()!==savedDocument}));
   const state=()=>p.evaluate(()=>({mode,support:$('support').value,rotation:currentMomentRotation,first,second}));

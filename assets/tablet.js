@@ -2412,7 +2412,7 @@ const semicircleEngine=(()=>{
   const index=snapGroupIndex(activeIndex,entries.length);
   return {id,entries,activeIndex:index,offset:index,pointerId:null,dragging:false,snapFrame:0,suppressClick:false,controls:new Map()};
  }
- // Rings navigate by default; activateCentered opts into focus-then-activate.
+ // Rings navigate by default; full-arc activation focuses and invokes in one tap.
  // The items API keeps Task 3B semantics for legacy callers.
  function createMenu({side,items:entries=[],rings:ringConfigs=null,getBounds,centerY,onAction=()=>{},production=false,onOpen=()=>{},activateCentered=false,onGesturePointer=()=>false,outerActions=null,getContextEntries=()=>[],fullArc=false,envelopeRings=null,dynamicContext=false,onNavigate=()=>false,guardActivationClick=false}){
   listenForActivationClick();
@@ -2468,7 +2468,8 @@ const semicircleEngine=(()=>{
   }
   function invokeRingEntry(index,ring,pointerEvent=null){
    if(fullArc&&onNavigate(ring.entries[index],ring)){paint();return}
-   if(fullArc&&ring.focusedId!==ring.entries[index].id){selectGroup(index,ring);return}
+   if(fullArc&&activateCentered)selectGroup(index,ring);
+   else if(fullArc&&ring.focusedId!==ring.entries[index].id){selectGroup(index,ring);return}
    if(!activateCentered||ring.activeIndex!==index||Math.abs(ring.offset-index)>1e-8){selectGroup(index,ring);return}
    focusEntry(ring,index);if(ring.entries[index].navigationOnly){paintOuterContext();return}
    clearActivationClick(host);

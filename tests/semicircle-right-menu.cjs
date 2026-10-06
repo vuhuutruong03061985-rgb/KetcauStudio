@@ -1,5 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 const legacyExpected={file:['clear','open','save','saveAs','svg','png'],history:['undo','redo'],edit:['copyObjects','pasteObjects','editSelected','delete'],view:['resetView','panView','zoomOut','zoomIn'],snap:['snapToggle','snapOptions'],settings:['drawingScalesToggle']};
 const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],R2:['panView','snapOptions']};
 (async()=>{
@@ -16,7 +17,7 @@ const expected={R1:['resetView','editSelected','copyObjects','pasteObjects','del
     if(pointer==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y);
    };
    const openGroup=async group=>{if(!await p.evaluate(()=>rightCommandMenu.state.open))await activate('hub')};
-   const focus=async id=>{await openGroup();if(['undo','redo'].includes(id))return;if(!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await activate(id)};
+   const focus=async id=>{await openGroup();if(['undo','redo'].includes(id))return;await focusRadialEntry(p,'right',id)};
    const command=async(group,id)=>{if(['undo','redo','clear','open','save','saveAs','svg','png','insertWord','zoomIn','zoomOut','snapToggle','drawingScalesToggle'].includes(id)){await p.evaluate(()=>rightCommandMenu.close());await p.locator(id==='insertWord'?'#tabletTopBar [data-toolbar-icon=insertWord]':'#'+id).tap();return;}await focus(id);await activate(id);assert.equal(await p.evaluate(()=>rightCommandMenu.state.open),['undo','redo'].includes(id),id+' menu state')};
    const snapshot=()=>p.evaluate(()=>({doc:documentText(),past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,first,second,selected,multi:[...multiSelection],geometryScale,internalForceScale,camera:JSON.stringify(camera),handle:documentHandle?.name,name:documentName}));
    assert.equal(await root.count(),1);assert.equal(await p.locator('.semicircle-prototype').count(),0);

@@ -1,5 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{pathToFileURL}=require('node:url');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -13,6 +14,11 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    const settled=()=>p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const tap=async(id,side)=>{
     await settled();
+    const browseRing={history:'R1',edit:'R1',view:'R2',snap:'R2',settings:'R2'};
+    if(side==='right'&&browseRing[id]){
+     const next=await p.evaluate(ringId=>{const ring=rightCommandMenu.state.rings.find(r=>r.id===ringId);return ring.entries[(ring.activeIndex+1)%ring.entries.length].id},browseRing[id]);
+     await focusRadialEntry(p,'right',next);return;
+    }
     const q=await p.evaluate(({id,side})=>{const m=side==='left'?leftDrawingMenu:rightCommandMenu;
      if(id==='hub')return{x:m.layout.cx+(side==='left'?13:-13),y:m.layout.cy};if(['commandCancel','commandFinish'].includes(id))return m.layout.contextRing.sectors[sharedOuterActions.findIndex(e=>e.id===id)].icon;
      if(side==='left'){
@@ -26,8 +32,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
    const command=async(side,group,id)=>{
     if(side==='right'&&(group==='file'||['undo','redo','snapToggle','drawingScalesToggle'].includes(id))){await p.evaluate(()=>rightCommandMenu.close());await p.locator('#'+id).tap();return;}
     if(!await p.evaluate(side=>(side==='left'?leftDrawingMenu:rightCommandMenu).state.open,side))await tap('hub',side);
-    if(side==='left'){const category=await p.evaluate(id=>leftDrawingCategories.find(c=>c.entries.some(e=>e.id===id)).id,id);if(await p.evaluate(()=>leftCategoryId)!==category){const q=await p.evaluate(id=>{const m=leftDrawingMenu;return m.layout.rings[0].sectors[m.state.rings[0].entries.findIndex(e=>e.id===id)].icon},category);await p.touchscreen.tap(q.x,q.y)}if(!await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.focusedId===id},id))await tap(id,side)}
-    else if(!['undo','redo'].includes(id)&&!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await tap(id,side);
+    if(side==='left'){const category=await p.evaluate(id=>leftDrawingCategories.find(c=>c.entries.some(e=>e.id===id)).id,id);if(await p.evaluate(()=>leftCategoryId)!==category){const q=await p.evaluate(id=>{const m=leftDrawingMenu;return m.layout.rings[0].sectors[m.state.rings[0].entries.findIndex(e=>e.id===id)].icon},category);await p.touchscreen.tap(q.x,q.y)}}
     await tap(id,side);
    };
    const snapshot=()=>p.evaluate(()=>({doc:documentText(),items:JSON.stringify(items),dirty:documentText()!==savedDocument,past:JSON.stringify(past),future:JSON.stringify(future),saved:savedDocument,mode,selected,multi:[...multiSelection],geometryScale,internalForceScale,snap:JSON.stringify(snapOptions),snapEnabled,name:documentName,handle:documentHandle?.name,storage:JSON.stringify(localStorage)}));

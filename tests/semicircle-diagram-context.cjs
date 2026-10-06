@@ -1,5 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),{pathToFileURL}=require('node:url');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 const children=['diagramM','diagramQ','diagramN','positive','negative'];
 const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram'];
 (async()=>{
@@ -20,13 +21,8 @@ const l4=['dim','text','person','section','rigidRegion','hatch','joint','diagram
   const tapMain=async id=>{const q=await point(id);await p.touchscreen.tap(q.x,q.y);await settled()};
   const open=async()=>{if(!await p.evaluate(()=>leftDrawingMenu.state.open))await sector('hub').dispatchEvent('click');await settled()};
   const focus=async id=>{
-   await open();const category=await p.evaluate(id=>leftDrawingCategories.find(c=>c.entries.some(e=>e.id===id)).id,id);if(await p.evaluate(()=>leftCategoryId)!==category)await tapMain(category);const centered=await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.focusedId===id},id);
-   if(!centered)await tapMain(id);
-   else if(id==='diagram')await tapMain(id);
-   else if(await p.evaluate(id=>leftDrawingMenu.state.focusedEntry?.id!==id,id)){
-    const next=await p.evaluate(id=>{const r=leftDrawingMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[(r.activeIndex+1)%r.entries.length].id},id);
-    await tapMain(next);await tapMain(id);
-   }
+   await open();const category=await p.evaluate(id=>leftDrawingCategories.find(c=>c.entries.some(e=>e.id===id)).id,id);if(await p.evaluate(()=>leftCategoryId)!==category)await tapMain(category);
+   await focusRadialEntry(p,'left',id);
   };
   const reset=async()=>{await p.evaluate(()=>{document.activeElement?.blur();cancelToSelection();selected=null;multiSelection.clear();closeSecondaryTools();closeMomentPalette();leftDrawingMenu.close();rightCommandMenu.close();window.diagramCalls={}});await settled()};
   const out=path.resolve('.test-tools/semicircle-diagram-context');fs.mkdirSync(out,{recursive:true});

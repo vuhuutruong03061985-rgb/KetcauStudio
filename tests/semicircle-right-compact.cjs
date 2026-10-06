@@ -1,5 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{pathToFileURL}=require('node:url');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 const expected=[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['panView','snapOptions','openCalculator']];
 const removed=['snapToggle','drawingScalesToggle','clear','open','save','saveAs','svg','png','insertWord','zoomOut','zoomIn','fitView','undo','redo'];
 (async()=>{
@@ -12,7 +13,7 @@ const removed=['snapToggle','drawingScalesToggle','clear','open','save','saveAs'
   const shot=async name=>{await settled();await p.screenshot({path:path.join(out,name+'.png')})};
   const open=async()=>{if(!await p.evaluate(()=>rightCommandMenu.state.open))await p.locator('.semicircle-right-menu [data-demo-id="hub"]').dispatchEvent('click');await settled()};
   const sector=id=>p.locator('.semicircle-right-menu [data-roller-ring][data-demo-id="'+id+'"]');
-  const focus=async id=>{await open();if(!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await sector(id).dispatchEvent('click');await settled()};
+  const focus=async id=>{await open();await focusRadialEntry(p,'right',id)};
   const memory=()=>p.evaluate(()=>rightCommandMenu.state.rings.map(r=>({id:r.id,focus:r.entries[r.activeIndex].id,offset:r.offset,index:r.activeIndex})));
   const snapshot=()=>p.evaluate(()=>({doc:documentText(),saved:savedDocument,past:JSON.stringify(past),future:JSON.stringify(future),scales:[geometryScale,internalForceScale],mode,snapEnabled,panEnabled}));
   const mapping=()=>p.evaluate(()=>({config:rightCommandRings.map(r=>r.ids),ids:rightCommandMenu.state.rings.map(r=>r.id),entries:rightCommandMenu.state.rings.map(r=>r.entries.map(e=>e.id||e.dataset.toolbarIcon)),real:rightCommandRings.flatMap(r=>r.entries).every(e=>e.source===rightCommandSource(e.id)),defaults:rightCommandRings.map(r=>r.defaultTool),snapShared:rightCommandRings[1].entries.find(e=>e.id==='snapOptions').source===snapButton}));

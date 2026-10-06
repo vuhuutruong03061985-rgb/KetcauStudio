@@ -1,5 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{pathToFileURL}=require('node:url');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 const expected=[['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],['panView','snapOptions','openCalculator']];
 const removed=['snapToggle','drawingScalesToggle','clear','open','save','saveAs','svg','png','insertWord','zoomOut','zoomIn','fitView','undo','redo'];
 (async()=>{
@@ -14,7 +15,7 @@ const removed=['snapToggle','drawingScalesToggle','clear','open','save','saveAs'
   const tap=async locator=>{const b=await locator.boundingBox();assert(b);await touch(b.x+b.width/2,b.y+b.height/2)};
   const ringTap=async id=>{const q=await p.evaluate(id=>{const m=rightCommandMenu,r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));return m.layout.rings.find(l=>l.id===r.id).sectors[r.entries.findIndex(e=>e.id===id)].icon},id);await touch(q.x,q.y)};
   const open=async()=>{if(!await p.evaluate(()=>rightCommandMenu.state.open))await p.locator('.semicircle-right-menu [data-demo-id="hub"]').dispatchEvent('click');await settled()};
-  const focus=async id=>{await open();if(!await p.evaluate(id=>{const r=rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id));return r.entries[r.activeIndex].id===id},id))await ringTap(id)};
+  const focus=async id=>{await open();await focusRadialEntry(p,'right',id)};
   const sector=id=>p.locator('.semicircle-right-menu [data-roller-ring][data-demo-id="'+id+'"]');
   const snapshot=()=>p.evaluate(()=>({doc:documentText(),saved:savedDocument,past:JSON.stringify(past),future:JSON.stringify(future),mode,first,second,scales:[geometryScale,internalForceScale],camera:JSON.stringify(camera)}));
   const mapping=()=>p.evaluate(()=>rightCommandMenu.state.rings.map(r=>r.entries.map(e=>e.id)));

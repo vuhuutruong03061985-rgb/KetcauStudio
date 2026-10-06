@@ -1,5 +1,6 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),{pathToFileURL}=require('node:url');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -14,7 +15,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
   const point=id=>p.evaluate(id=>{const m=leftDrawingMenu;if(id==='hub')return{x:m.layout.cx+13,y:m.layout.cy};const r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));return m.layout.rings.find(l=>l.id===r.id).sectors[r.entries.findIndex(e=>e.id===id)].icon},id);
   const tap=async(id,type='touch')=>{const q=await point(id);if(type==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
   const open=async()=>{if(!await p.evaluate(()=>leftDrawingMenu.state.open))await tap('hub')};
-  const focus=async id=>{await open();const category=Object.keys(expected).find(c=>expected[c].includes(id));if(await p.evaluate(()=>leftCategoryId)!==category)await tap(category);if(!await p.evaluate(id=>leftDrawingMenu.state.rings[1].focusedId===id,id))await tap(id)};
+  const focus=async id=>{await open();const category=Object.keys(expected).find(c=>expected[c].includes(id));if(await p.evaluate(()=>leftCategoryId)!==category)await tap(category);await focusRadialEntry(p,'left',id)};
   const before=await snapshot();await open();assert.deepEqual((await rings()).map(r=>r.focused),['geometry','bar']);
   const hub=await p.locator('.semicircle-left-menu [data-demo-id="hub"] .semicircle-hit').getAttribute('d');
   for(const id of ['thin','fixed','moment','text'])await focus(id);
@@ -22,7 +23,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),fs=require(
   const remembered=await rings();await tap('hub');await open();assert.deepEqual(await rings(),remembered);
   await p.evaluate(()=>setMode('force'));await tap('hub');await open();assert.deepEqual((await rings()).map(r=>r.focused),['loads','force']);
   await p.evaluate(()=>{cancelToSelection();leftDrawingMenu.close();leftCalls={}});await open();await tap('geometry');
-  const navigation=await snapshot();await tap('thin');assert.equal((await rings())[1].focused,'thin');assert.deepEqual(await p.evaluate(()=>leftCalls),{});assert.deepEqual(await snapshot(),navigation);
+  const navigation=await snapshot();await focus('thin');assert.equal((await rings())[1].focused,'thin');assert.deepEqual(await p.evaluate(()=>leftCalls),{});assert.deepEqual(await snapshot(),navigation);
   await tap('thin');assert.equal(await p.evaluate(()=>leftCalls.thin),1);assert.equal(await p.evaluate(()=>mode),'thin');assert.equal(await p.evaluate(()=>leftDrawingMenu.state.open),false);
   await open();await focus('bar');assert.equal(await p.locator('.semicircle-left-menu [data-demo-id="thin"]').getAttribute('aria-pressed'),'true');assert.equal(await p.locator('.semicircle-left-menu [data-demo-id="bar"]').getAttribute('aria-pressed'),'false');assert.equal(await p.locator('.semicircle-left-menu [data-demo-id="bar"]').getAttribute('data-focused'),'true');
   const toolState=await snapshot();await focus('moment');assert.deepEqual(await snapshot(),toolState);assert.equal(await p.evaluate(()=>leftCalls.moment||0),0);await tap('moment');assert.equal(await p.evaluate(()=>leftCalls.moment),1);assert.equal(await p.evaluate(()=>mode),'moment');assert.equal(await p.evaluate(()=>currentMomentRotation),toolState.rotation);

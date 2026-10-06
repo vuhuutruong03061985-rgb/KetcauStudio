@@ -2,6 +2,7 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
 const {ownership,settled}=require('./tablet-radial-ownership.cjs');
+const {focusRadialEntry}=require('./radial-focus.cjs');
 
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
@@ -23,9 +24,7 @@ const {ownership,settled}=require('./tablet-radial-ownership.cjs');
   const focus=async id=>{
    if(!await p.evaluate(()=>rightCommandMenu.state.open))await p.locator('.semicircle-right-menu [data-demo-id="hub"]').dispatchEvent('click');
    await settled(p);
-   if(!await p.evaluate(id=>rightCommandMenu.state.rings.find(r=>r.entries.some(e=>e.id===id)).focusedId===id,id)){
-    await p.locator(`.semicircle-right-menu [data-demo-id="${id}"]`).dispatchEvent('click');await settled(p);
-   }
+   await focusRadialEntry(p,'right',id);
   };
   const point=id=>p.evaluate(id=>{
    const m=rightCommandMenu,r=m.state.rings.find(r=>r.entries.some(e=>e.id===id));
