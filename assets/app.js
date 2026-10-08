@@ -852,11 +852,17 @@ function personPlacementAt(e){
  return placement;
 }
 function personTransform(o){return `translate(${o.x} ${o.y}) rotate(${o.angle}) scale(${o.size})`}
-function clearPersonPreview(){svg.querySelector('[data-person-preview]')?.remove()}
-function paintPersonPreview(e){
- clearPersonPreview();const placement=personPlacementAt(e);if(!placement)return;
+function clearPersonPreview(force=false){
+ // Pointer leave and camera cleanup must preserve a pen pose awaiting confirmation.
+ if(force!==true&&penConnectionPlacement?.type==='person'&&penConnectionPlacement.state!=='tracking')return;
+ svg.querySelector('[data-person-preview]')?.remove();
+}
+function paintPersonPreview(e,placement){
+ clearPersonPreview(true);
+ if(placement===undefined)placement=penConnectionPlacement?.type==='person'&&penConnectionPlacement.state!=='tracking'?penConnectionPlacement.lockedCandidate:personPlacementAt(e);
+ if(!placement)return;
  if(!svg.querySelector('#personSymbol'))definePersonSymbol(svg.querySelector('defs'));
- el('use',{href:'#personSymbol',transform:personTransform({...placement,size:PERSON_DEFAULT_SIZE}),opacity:.45,'pointer-events':'none','data-person-preview':'true'});
+ el('use',{href:'#personSymbol',transform:personTransform({size:PERSON_DEFAULT_SIZE,...placement}),opacity:.45,'pointer-events':'none','data-person-preview':'true'});
 }
 function validatePerson(o){
  if(!Number.isFinite(o.x)||!Number.isFinite(o.y)||Math.abs(o.x)>10000||Math.abs(o.y)>10000||!Number.isFinite(o.angle)||!Number.isFinite(o.size)||o.size<=0)throw Error('Invalid person');
@@ -866,7 +872,7 @@ function definePersonSymbol(defs){
  el('circle',{cx:0,cy:0,r:PERSON_HEAD_RADIUS},symbol);
  for(const [x1,y1,x2,y2]of [[0,2,0,12],[0,5,-5,9],[0,5,5,9],[0,12,-5,20],[0,12,5,20]])line(symbol,x1,y1,x2,y2);
 }
-// Pen placement is transient and deliberately limited to the two one-point connections.
+// Transient pen lock-confirm UI for Hinge, Weld and the existing Person placement solver.
 let penConnectionPlacement=null;
 const penConnectionBubble=document.createElement('div');
 penConnectionBubble.id='penConnectionBubble';penConnectionBubble.hidden=true;
@@ -894,7 +900,7 @@ function activatePenConnectionButton(action,e){
  if(!placement||placement.type!==mode||placement.state!=='confirming'||penConnectionPlacementBlocked(e))return;
  const {type,lockedCandidate:candidate}=placement;
  clearPenConnectionPlacement(); // Retire first: duplicate activation cannot place twice.
- checkpoint();items.push(make(type,candidate.x,candidate.y));selected=items.at(-1).id;
+ checkpoint();items.push(type==='person'?make(type,candidate.x,candidate.y,undefined,undefined,{angle:candidate.angle,size:candidate.size}):make(type,candidate.x,candidate.y));selected=items.at(-1).id;
  render();msg('Đã thêm đối tượng.');
 }
 for(const [action,label,symbol]of [['confirm','Xác nhận đặt liên kết','✓'],['cancel','Hủy điểm đặt','×']]){
@@ -944,16 +950,22 @@ function positionPenConnectionBubble(){
  penConnectionBubble.style.left=Math.max(left+margin,Math.min(bx,right-width-margin))+'px';
  penConnectionBubble.style.top=Math.max(top+margin,Math.min(by,bottom-height-margin))+'px';
 }
-function clearPenConnectionPlacement(){penConnectionPlacement=null;penConnectionBubble.hidden=true;penConnectionLockHalo.hidden=true;svg.querySelector('[data-pen-connection-preview]')?.remove()}
+function clearPenConnectionPlacement(){
+ if(penConnectionPlacement?.type==='person')clearPersonPreview(true);
+ penConnectionPlacement=null;penConnectionBubble.hidden=true;penConnectionLockHalo.hidden=true;svg.querySelector('[data-pen-connection-preview]')?.remove();
+}
 function paintPenConnectionPreview(){
  updatePenConnectionLockHalo();
  svg.querySelector('[data-pen-connection-preview]')?.remove();
  if(!penConnectionPlacement||penConnectionPlacement.type!==mode)return;
  const {type,state,hoverCandidate,lockedCandidate}=penConnectionPlacement;
  const {x,y}=state==='tracking'?hoverCandidate:lockedCandidate;
- const g=el('g',{'data-pen-connection-preview':type,'pointer-events':'none',stroke:'#087d95','stroke-width':1.8,opacity:.6});
- if(type==='hinge')el('circle',{cx:x,cy:y,r:6,fill:'white'},g);
- else el('rect',{x:x-6,y:y-6,width:12,height:12,fill:'#087d95',stroke:'none'},g);
+ if(type==='person')paintPersonPreview(null,state==='tracking'?hoverCandidate:lockedCandidate);
+ else{
+  const g=el('g',{'data-pen-connection-preview':type,'pointer-events':'none',stroke:'#087d95','stroke-width':1.8,opacity:.6});
+  if(type==='hinge')el('circle',{cx:x,cy:y,r:6,fill:'white'},g);
+  else el('rect',{x:x-6,y:y-6,width:12,height:12,fill:'#087d95',stroke:'none'},g);
+ }
  penConnectionBubble.hidden=state!=='confirming';
 }
 function penConnectionPlacementBlocked(e){
@@ -961,7 +973,7 @@ function penConnectionPlacementBlocked(e){
   (typeof panEnabled!=='undefined'&&panEnabled)||(typeof gesture!=='undefined'&&gesture)||e.ctrlKey&&e.altKey;
 }
 function handlePenConnectionPlacement(e){
- if(!['hinge','weld'].includes(mode))return false;
+ if(!['hinge','weld','person'].includes(mode))return false;
  if(e.pointerType!=='pen'){
   if(e.type==='pointerdown'&&e.button===0)clearPenConnectionPlacement();
   return false;
@@ -970,8 +982,12 @@ function handlePenConnectionPlacement(e){
  if(penConnectionPlacementBlocked(e))return true;
  // Tracking only acquires drawing points, including when implicit capture targets SVG over UI.
  if(!svg.contains(document.elementFromPoint(e.clientX,e.clientY)))return true;
- const candidate=drawingPoint(e);
- if(![candidate.x,candidate.y].every(Number.isFinite))return true;
+ const acquired=mode==='person'?personPlacementAt(e):drawingPoint(e);
+ if(!acquired||![acquired.x,acquired.y].every(Number.isFinite)){
+  if(mode==='person'){clearPenConnectionPlacement();clearPersonPreview(true)}
+  return true;
+ }
+ const candidate=mode==='person'?{...acquired,size:PERSON_DEFAULT_SIZE}:acquired;
  // Canvas contact locks the down-event snap; only the explicit confirm button creates.
  penConnectionPlacement=e.type==='pointerdown'&&e.button===0&&(e.buttons&1)!==0?
   {type:mode,state:'position-locked',lockedCandidate:Object.freeze({...candidate}),lockedPointerId:e.pointerId}:
