@@ -107,6 +107,15 @@ button.icon-button.active,button.icon-button[aria-pressed="true"]{background:#cc
 #dynamicInput input{width:100px;min-width:0;min-height:44px;flex:0 1 100px;margin:0;font-size:16px}
 #dynamicInputSuffix{min-width:0;overflow-wrap:anywhere;font-size:13px}
 #dynamicInput button{flex:0 0 44px;min-width:44px;min-height:44px;margin:0;padding:6px;font-size:18px}
+#penConnectionBubble{position:fixed;z-index:2400;display:flex;gap:6px;padding:6px;background:#edf5f6;border:1px solid #b9d5da;border-radius:6px;box-shadow:0 2px 8px #183e5526}
+#penConnectionBubble[hidden]{display:none}
+#penConnectionBubble button{width:48px;height:48px;min-width:48px;min-height:48px;margin:0;padding:6px;font-size:24px;touch-action:none}
+#penConnectionBubble [data-pen-connection-action="confirm"]{color:#087d95}
+#penConnectionBubble [data-pen-connection-action="cancel"]{color:#ad3333}
+#penConnectionLockHalo{position:fixed;z-index:2390;width:30px;height:30px;transform:translate(-50%,-50%);pointer-events:none}
+#penConnectionLockHalo::before{content:"";position:absolute;inset:0;border:2px solid #087d95;border-radius:50%;pointer-events:none;animation:pen-connection-lock-pulse .8s ease-in-out infinite}
+@keyframes pen-connection-lock-pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.15)}}
+@media(prefers-reduced-motion:reduce){#penConnectionLockHalo::before{animation:none;opacity:.7;transform:none}}
 #dynamicInput input[aria-invalid="true"]{border-color:#ad3333}
 #dynamicInput.dynamic-pair{flex-wrap:wrap}
 #dynamicInput.dynamic-pair input{width:84px;flex:0 1 84px}

@@ -866,6 +866,119 @@ function definePersonSymbol(defs){
  el('circle',{cx:0,cy:0,r:PERSON_HEAD_RADIUS},symbol);
  for(const [x1,y1,x2,y2]of [[0,2,0,12],[0,5,-5,9],[0,5,5,9],[0,12,-5,20],[0,12,5,20]])line(symbol,x1,y1,x2,y2);
 }
+// Pen placement is transient and deliberately limited to the two one-point connections.
+let penConnectionPlacement=null;
+const penConnectionBubble=document.createElement('div');
+penConnectionBubble.id='penConnectionBubble';penConnectionBubble.hidden=true;
+penConnectionBubble.setAttribute('role','group');penConnectionBubble.setAttribute('aria-label','Đặt liên kết bằng bút');
+const penConnectionLockHalo=document.createElement('div');
+penConnectionLockHalo.id='penConnectionLockHalo';penConnectionLockHalo.hidden=true;penConnectionLockHalo.setAttribute('aria-hidden','true');
+document.body.append(penConnectionLockHalo);
+function updatePenConnectionLockHalo(){
+ const placement=penConnectionPlacement;
+ penConnectionLockHalo.hidden=!placement||placement.type!==mode||!['position-locked','confirming'].includes(placement.state);
+ if(penConnectionLockHalo.hidden)return;
+ const matrix=svg.getScreenCTM();if(!matrix){penConnectionLockHalo.hidden=true;return}
+ const {x,y}=placement.lockedCandidate,p=new DOMPoint(x,y).matrixTransform(matrix);
+ penConnectionLockHalo.style.left=p.x+'px';penConnectionLockHalo.style.top=p.y+'px';
+}
+window.addEventListener('resize',updatePenConnectionLockHalo);
+window.addEventListener('scroll',updatePenConnectionLockHalo,true);
+window.visualViewport?.addEventListener('resize',updatePenConnectionLockHalo);
+window.visualViewport?.addEventListener('scroll',updatePenConnectionLockHalo);
+let penConnectionButtonPointerId=null,penConnectionSuppressClick=false;
+function activatePenConnectionButton(action,e){
+ if(penConnectionBubble.hidden)return;
+ if(action==='cancel'){clearPenConnectionPlacement();return}
+ const placement=penConnectionPlacement;
+ if(!placement||placement.type!==mode||placement.state!=='confirming'||penConnectionPlacementBlocked(e))return;
+ const {type,lockedCandidate:candidate}=placement;
+ clearPenConnectionPlacement(); // Retire first: duplicate activation cannot place twice.
+ checkpoint();items.push(make(type,candidate.x,candidate.y));selected=items.at(-1).id;
+ render();msg('Đã thêm đối tượng.');
+}
+for(const [action,label,symbol]of [['confirm','Xác nhận đặt liên kết','✓'],['cancel','Hủy điểm đặt','×']]){
+ const button=document.createElement('button');button.type='button';button.dataset.penConnectionAction=action;
+ button.textContent=symbol;button.title=label;button.setAttribute('aria-label',label);penConnectionBubble.append(button);
+ button.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')penConnectionSuppressClick=false});
+ button.addEventListener('click',e=>{
+  e.preventDefault();e.stopPropagation();
+  // Pen already acted on pointerdown; legacy compatibility clicks may omit pointerType.
+  if(e.pointerType==='pen'||penConnectionSuppressClick)return;
+  activatePenConnectionButton(action,e);
+ });
+}
+for(const event of ['pointerdown','pointermove','pointerup','pointercancel'])penConnectionBubble.addEventListener(event,e=>{
+ e.stopPropagation();
+ if(e.pointerType!=='pen'){if(e.type==='pointerdown')penConnectionSuppressClick=false;return}
+ e.preventDefault();
+ if(e.type!=='pointerdown'||e.button!==0||penConnectionButtonPointerId!==null||penConnectionBubble.hidden)return;
+ const button=e.target.closest('[data-pen-connection-action]');if(!button)return;
+ penConnectionButtonPointerId=e.pointerId;penConnectionSuppressClick=true;
+ activatePenConnectionButton(button.dataset.penConnectionAction,e);
+});
+// Hiding the bubble changes the release target. Retire ownership even outside the UI,
+// but retain click suppression until a fresh mouse/touch press or keyboard command.
+for(const event of ['pointerup','pointercancel'])window.addEventListener(event,e=>{
+ if(e.pointerType==='pen'&&e.pointerId===penConnectionButtonPointerId){
+  penConnectionButtonPointerId=null;e.preventDefault();e.stopImmediatePropagation();
+  return;
+ }
+ const placement=penConnectionPlacement;
+ if(e.pointerType!=='pen'||!placement||placement.state!=='position-locked'||placement.lockedPointerId!==e.pointerId)return;
+ if(e.type==='pointercancel'){clearPenConnectionPlacement();return}
+ placement.state='confirming';placement.lockedPointerId=null;
+ paintPenConnectionPreview();positionPenConnectionBubble();
+},true);
+document.body.append(penConnectionBubble);
+function positionPenConnectionBubble(){
+ if(penConnectionBubble.hidden||penConnectionPlacement?.state!=='confirming')return;
+ const matrix=svg.getScreenCTM();if(!matrix)return;
+ const {x,y}=penConnectionPlacement.lockedCandidate,p=new DOMPoint(x,y).matrixTransform(matrix);
+ const viewport=window.visualViewport,left=viewport?.offsetLeft||0,top=viewport?.offsetTop||0;
+ const right=left+(viewport?.width||document.documentElement.clientWidth),bottom=top+(viewport?.height||innerHeight);
+ const {width,height}=penConnectionBubble.getBoundingClientRect(),gap=60,margin=8;
+ let bx=p.x+gap,by=p.y-height-margin;
+ if(bx+width>right-margin)bx=p.x-gap-width;
+ if(by<top+margin)by=p.y+margin;
+ penConnectionBubble.style.left=Math.max(left+margin,Math.min(bx,right-width-margin))+'px';
+ penConnectionBubble.style.top=Math.max(top+margin,Math.min(by,bottom-height-margin))+'px';
+}
+function clearPenConnectionPlacement(){penConnectionPlacement=null;penConnectionBubble.hidden=true;penConnectionLockHalo.hidden=true;svg.querySelector('[data-pen-connection-preview]')?.remove()}
+function paintPenConnectionPreview(){
+ updatePenConnectionLockHalo();
+ svg.querySelector('[data-pen-connection-preview]')?.remove();
+ if(!penConnectionPlacement||penConnectionPlacement.type!==mode)return;
+ const {type,state,hoverCandidate,lockedCandidate}=penConnectionPlacement;
+ const {x,y}=state==='tracking'?hoverCandidate:lockedCandidate;
+ const g=el('g',{'data-pen-connection-preview':type,'pointer-events':'none',stroke:'#087d95','stroke-width':1.8,opacity:.6});
+ if(type==='hinge')el('circle',{cx:x,cy:y,r:6,fill:'white'},g);
+ else el('rect',{x:x-6,y:y-6,width:12,height:12,fill:'#087d95',stroke:'none'},g);
+ penConnectionBubble.hidden=state!=='confirming';
+}
+function penConnectionPlacementBlocked(e){
+ return drag||groupDrag||rigidDrag||(typeof jointDrag!=='undefined'&&jointDrag)||
+  (typeof panEnabled!=='undefined'&&panEnabled)||(typeof gesture!=='undefined'&&gesture)||e.ctrlKey&&e.altKey;
+}
+function handlePenConnectionPlacement(e){
+ if(!['hinge','weld'].includes(mode))return false;
+ if(e.pointerType!=='pen'){
+  if(e.type==='pointerdown'&&e.button===0)clearPenConnectionPlacement();
+  return false;
+ }
+ if(penConnectionButtonPointerId!==null||penConnectionPlacement&&penConnectionPlacement.state!=='tracking')return true;
+ if(penConnectionPlacementBlocked(e))return true;
+ // Tracking only acquires drawing points, including when implicit capture targets SVG over UI.
+ if(!svg.contains(document.elementFromPoint(e.clientX,e.clientY)))return true;
+ const candidate=drawingPoint(e);
+ if(![candidate.x,candidate.y].every(Number.isFinite))return true;
+ // Canvas contact locks the down-event snap; only the explicit confirm button creates.
+ penConnectionPlacement=e.type==='pointerdown'&&e.button===0&&(e.buttons&1)!==0?
+  {type:mode,state:'position-locked',lockedCandidate:Object.freeze({...candidate}),lockedPointerId:e.pointerId}:
+  {type:mode,state:'tracking',hoverCandidate:candidate};
+ paintPenConnectionPreview();
+ return true;
+}
 function render(clean=false){
  // A settings redraw must not preserve a Grid marker from an earlier spacing or disabled option.
  if(rigidSnapHint?.kind==='grid'&&(rigidSnapGridSize!==gridSize||!gridSnap(rigidSnapHint.point)))rigidSnapHint=null;
@@ -1036,6 +1149,7 @@ if(!clean&&mode==='select'&&selectedObjectIds().size<2){
  if(!clean&&first&&hover&&['dashed','udl','linkBar'].includes(mode)){const g=el('g',{'pointer-events':'none',stroke:'#087d95','stroke-dasharray':'5 4'});line(g,first.x,first.y,hover.x,hover.y);}
  if(!clean&&mode==='joint'&&typeof drawJointHandles==='function')drawJointHandles();
  if(!clean)renderRigidControls();
+ if(!clean)paintPenConnectionPreview();
 }
 // Capture visible geometry once per rectangle, independently of selection/hit overlays.
 const selectionGeometry=(()=>{
@@ -1186,7 +1300,7 @@ function finishMulti(e){
 svg.addEventListener('pointerup',finishMulti,true);
 svg.addEventListener('pointercancel',finishMulti,true);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){extendBoundary=null;multiSelection.clear();boxSelect=null;groupDrag=null;render()}});
-function setMode(m){clearSupportPlacement();if(m!=='select')rememberCancelSelection();else cancelSelection=null;cancelConnectionDrag();cancelRigidDrag();rigidPoints=[];if(typeof mirrorSelecting!=='undefined')mirrorSelecting=false;if(typeof cancelLoadPlacement==='function')cancelLoadPlacement();hatchPoints=[];extendBoundary=null;multiSelection.clear();mode=m;first=null;second=null;hover=null;for(const b of document.querySelectorAll('button[data-mode]')){const active=b.dataset.mode===m;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}if($('delete')){$('delete').classList.toggle('active',m==='erase');$('delete').setAttribute('aria-pressed',String(m==='erase'))}svg.classList.toggle('erase-cursor',m==='erase');svg.style.cursor='';$('help').textContent=m==='curve'?'Chọn điểm đầu, điểm đi qua, rồi điểm cuối.':m==='erase'?'Bấm trực tiếp vào đối tượng để xóa. Esc để thoát; Hoàn tác để khôi phục.':m==='hatch'?'Bấm các điểm bao vùng biểu đồ. Enter để hoàn tất; Esc để hủy.':m==='extend'?'Chọn đường biên, rồi bấm gần đầu nét cần kéo dài. Shift + bấm để đổi biên.':m==='dim'?'Chọn hai điểm trên thanh, sau đó bấm vị trí đặt đường kích thước.':m==='select'?'Bấm chọn hoặc kéo đối tượng.':['bar','udl','dim','thin','dashed'].includes(m)?'Bấm hai điểm để tạo đối tượng.':'';$('help').hidden=!$('help').textContent;render()}
+function setMode(m){clearPenConnectionPlacement();clearSupportPlacement();if(m!=='select')rememberCancelSelection();else cancelSelection=null;cancelConnectionDrag();cancelRigidDrag();rigidPoints=[];if(typeof mirrorSelecting!=='undefined')mirrorSelecting=false;if(typeof cancelLoadPlacement==='function')cancelLoadPlacement();hatchPoints=[];extendBoundary=null;multiSelection.clear();mode=m;first=null;second=null;hover=null;for(const b of document.querySelectorAll('button[data-mode]')){const active=b.dataset.mode===m;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}if($('delete')){$('delete').classList.toggle('active',m==='erase');$('delete').setAttribute('aria-pressed',String(m==='erase'))}svg.classList.toggle('erase-cursor',m==='erase');svg.style.cursor='';$('help').textContent=m==='curve'?'Chọn điểm đầu, điểm đi qua, rồi điểm cuối.':m==='erase'?'Bấm trực tiếp vào đối tượng để xóa. Esc để thoát; Hoàn tác để khôi phục.':m==='hatch'?'Bấm các điểm bao vùng biểu đồ. Enter để hoàn tất; Esc để hủy.':m==='extend'?'Chọn đường biên, rồi bấm gần đầu nét cần kéo dài. Shift + bấm để đổi biên.':m==='dim'?'Chọn hai điểm trên thanh, sau đó bấm vị trí đặt đường kích thước.':m==='select'?'Bấm chọn hoặc kéo đối tượng.':['bar','udl','dim','thin','dashed'].includes(m)?'Bấm hai điểm để tạo đối tượng.':'';$('help').hidden=!$('help').textContent;render()}
 for(const [m,title]of Object.entries(modes)){const b=document.createElement('button');b.textContent=title;b.dataset.mode=m;b.onclick=()=>chooseToolOptions(m);$('tools').append(b)}
 function props(){return Object.fromEntries(['label','support','direction','rotation'].map(k=>[k,$(k).value]))}
 function make(type,x,y,x2,y2,p={}){if(type==='person')return {id:newId(),type,x,y,angle:p.angle??0,size:p.size??PERSON_DEFAULT_SIZE};return {id:newId(),type,x,y,...(x2===undefined?{}:{x2,y2}),...props(),label:({force:'P',moment:'M',udl:'q',dim:'L',text:'A',diagramM:'kN.m',diagramQ:'kN',diagramN:'kN'})[type]||'',...p}}
@@ -1281,7 +1395,7 @@ function commitThinCandidate(candidate,anchor){
  if(typeof beginThinNumericInput==='function')beginThinNumericInput(anchor);
  selected=items.at(-1).id;render();msg('Đã thêm đối tượng.');return true;
 }
-svg.onpointerdown=e=>{if(e.button!==0||mode==='labelEdit')return;
+svg.onpointerdown=e=>{if(handlePenConnectionPlacement(e))return;if(e.button!==0||mode==='labelEdit')return;
 if(consumeThinReferenceOverride(e))return;
 if(mode==='curve'){
  const p=snapToBar(rawPoint(e))||point(e);
@@ -1347,7 +1461,7 @@ if(mode==='select'){selected=e.target.closest('[data-id]')?.dataset.id||null;con
  checkpoint();items.push(make('dim',first.x,first.y,second.x,second.y,{offset:snapDimensionOffset(first,second,offsetAt(first,second,point(e)))}));
  first=null;second=null;hover=null;selected=items.at(-1).id;render();msg('Đã tạo kích thước.');return;
  }if(mode==='linkBar'){if(!first){first=p;render();return}if(Math.hypot(p.x-first.x,p.y-first.y)<1)return;const o=make('linkBar',first.x,first.y,p.x,p.y);try{validateConnection(o)}catch{return}checkpoint();items.push(o);first=null;hover=null;selected=o.id;render();return}if(['bar','udl','thin','dashed'].includes(mode)){if(!first){first=p;if(mode==='bar'&&typeof beginBarNumericInput==='function')beginBarNumericInput(e);if(mode==='thin'){beginThinReferenceSession();if(typeof beginThinNumericInput==='function')beginThinNumericInput(e)}render();msg('Bấm điểm thứ hai.');return}if(first.x===p.x&&first.y===p.y)return;checkpoint();items.push(make(mode,first.x,first.y,p.x,p.y));first={...p};hover=null}else{checkpoint();items.push(make(mode,p.x,p.y))}selected=items.at(-1).id;render();msg('Đã thêm đối tượng.');if(mode==='text'){e.preventDefault();editObjectLabel(items.at(-1))}};
-svg.onpointermove=e=>{if(mode==='support'&&supportPlacementSession&&!drag){updateSupportOrientation(e);if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);render();return}if(mode==='thin'&&!drag)updateThinReferenceSession(e);if(mode==='person'&&!drag){paintPersonPreview(e);return}if(!drag){if(first&&['bar','thin','dashed','udl','linkBar'].includes(mode)){hover=drawingPoint(e);render();return;}if(mode==='dim'||mode==='moment'){hover=second?point(e):(snapToBar(rawPoint(e))||point(e));render()}return;}const o=items.find(o=>o.id===selected);if(!o)return;
+svg.onpointermove=e=>{if(handlePenConnectionPlacement(e))return;if(mode==='support'&&supportPlacementSession&&!drag){updateSupportOrientation(e);if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);render();return}if(mode==='thin'&&!drag)updateThinReferenceSession(e);if(mode==='person'&&!drag){paintPersonPreview(e);return}if(!drag){if(first&&['bar','thin','dashed','udl','linkBar'].includes(mode)){hover=drawingPoint(e);render();return;}if(mode==='dim'||mode==='moment'){hover=second?point(e):(snapToBar(rawPoint(e))||point(e));render()}return;}const o=items.find(o=>o.id===selected);if(!o)return;
 if(o.type==='person'){
  const p=rawPoint(e),x=drag.o.x+p.x-drag.p.x,y=drag.o.y+p.y-drag.p.y;
  try{validatePerson({...o,x,y})}catch{return}

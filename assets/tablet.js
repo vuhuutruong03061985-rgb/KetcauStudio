@@ -134,6 +134,7 @@ svg.addEventListener('pointerleave',()=>{svg.querySelector('[data-extra-snap-hin
 function applyCamera(){
  clearPersonPreview();
  svg.setAttribute('viewBox',`${camera.x} ${camera.y} ${camera.w} ${camera.h}`);
+ updatePenConnectionLockHalo();
  $('zoomLevel').textContent=Math.round(1100/camera.w*100)+'%';
  if(['support','force','udl'].includes(mode))renderReferenceAnglePreview();
 }
