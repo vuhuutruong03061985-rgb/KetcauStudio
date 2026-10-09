@@ -1729,6 +1729,7 @@ function editLabel(o,target){
  fullLabel.style.cssText='position:fixed;z-index:1001;padding:8px 10px;background:#edf5f6;border:1px solid #b9d5da;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;font:16px system-ui;max-height:30vh;overflow:auto;pointer-events:none';
  document.body.append(fullLabel);
  let finished=false,calculation=null,liveCalculation=null,positionFrame=0,lastTargetRect=box;
+ let releaseTabletKeypad=()=>{};
  const editorViewport=window.visualViewport;
  function positionInlineEditor(){
   if(finished||!input.isConnected)return;
@@ -1818,7 +1819,7 @@ function editLabel(o,target){
   if(positionFrame)cancelAnimationFrame(positionFrame);positionFrame=0;
   let value=input.value.trim();
   if(save&&liveCalculation&&!calculation){calculation=liveCalculation;value=liveCalculation.value}
-  input.remove();fullLabel.remove();inlineEditor=null;
+  releaseTabletKeypad();input.remove();fullLabel.remove();inlineEditor=null;
   if(save&&(value!==initialValue||calculation)){
    if(value.length>100&&!calculation){msg('Nhãn tối đa 100 ký tự. Hãy tính biểu thức trước.');return}
    checkpoint();
@@ -1866,7 +1867,9 @@ function editLabel(o,target){
   }catch(error){msg('Không tính được: '+error.message);input.focus()}
  },true);
  input.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter'){e.preventDefault();finish(true)}if(e.key==='Escape'){e.preventDefault();finish(false);if(mode==='labelEdit')setMode('select')}};
- input.onblur=()=>finish(true);input.focus();input.select();scheduleEditorPosition();
+ input.onblur=()=>finish(true);
+ if(typeof attachTabletTextKeypad==='function')releaseTabletKeypad=attachTabletTextKeypad(input,()=>finish(true));
+ input.focus();input.select();scheduleEditorPosition();
 }
 svg.addEventListener('dblclick',e=>{if(mode==='erase')return;
  const text=e.target.closest('text');if(!text)return;

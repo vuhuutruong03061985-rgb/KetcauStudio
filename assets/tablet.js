@@ -1503,9 +1503,23 @@ colorInput.addEventListener('keydown',e=>{
 syncObjectColorControls();
 
 // Generic input-method adapter: the owning editor supplies its field and validation callback.
-function createTabletNumericKeypad(){
+function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stuvwxyzαβγδεθλμνπρστφψω','=_^\\+-*/()[]{}∑√≈≠≤≥<>|']){
  const panel=document.createElement('div');panel.id='tabletNumericKeypad';panel.hidden=true;
  panel.setAttribute('role','group');panel.setAttribute('aria-label','Bàn phím số');document.body.append(panel);
+ const rollers=document.createElement('div');rollers.className='tablet-text-rollers';rollers.hidden=true;
+ const numbers=document.createElement('div');numbers.className='tablet-number-keys';panel.append(rollers,numbers);
+ let caps=true;
+ function updateCaps(){
+  for(const button of rollers.querySelectorAll('[data-text-character]'))button.textContent=caps?button.dataset.textCharacter.toUpperCase():button.dataset.textCharacter;
+  capsButton.setAttribute('aria-pressed',String(caps));
+ }
+ for(const characters of characterGroups){
+  const roller=document.createElement('div');roller.className='tablet-text-roller';rollers.append(roller);
+  for(const char of characters){
+   const button=document.createElement('button');button.type='button';button.dataset.textCharacter=char;button.textContent=char;
+   button.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();if(owner?.text)insertText(button.textContent)});roller.append(button);
+  }
+ }
  let owner=null,previousInputMode=null,viewport=null;
  // Recheck only overlay visibility transitions, never canvas/camera movement.
  const overlayObserver=new MutationObserver(()=>position());
@@ -1515,13 +1529,14 @@ function createTabletNumericKeypad(){
   const width=vv?.width||document.documentElement.clientWidth,height=vv?.height||innerHeight,gap=8;
   panel.style.maxWidth=Math.max(44,width-2*gap)+'px';panel.style.maxHeight=Math.max(44,height-2*gap)+'px';
   const rect=panel.getBoundingClientRect(),right=left+width-gap-rect.width,bottom=top+height-gap-rect.height;
-  const obstacles=[owner.input.closest('#dynamicInput'),...(owner.avoid?.()||[])].filter(el=>el&&!el.hidden).map(el=>el.getBoundingClientRect());
+  const obstacles=[owner.input.closest('#dynamicInput')||owner.input,...(owner.avoid?.()||[])].filter(el=>el&&!el.hidden).map(el=>el.getBoundingClientRect());
   const candidates=[[right,bottom],[left+gap,bottom],[right,top+gap],[left+gap,top+gap]];
   const overlap=([x,y])=>obstacles.reduce((sum,r)=>sum+Math.max(0,Math.min(x+rect.width,r.right+gap)-Math.max(x,r.left-gap))*Math.max(0,Math.min(y+rect.height,r.bottom+gap)-Math.max(y,r.top-gap)),0);
   candidates.sort((a,b)=>overlap(a)-overlap(b));
   panel.style.left=Math.max(left+gap,candidates[0][0])+'px';panel.style.top=Math.max(top+gap,candidates[0][1])+'px';
  }
- function hide(){
+ function hide(input){
+  if(input&&owner?.input!==input)return;
   if(owner){if(previousInputMode===null)owner.input.removeAttribute('inputmode');else owner.input.setAttribute('inputmode',previousInputMode)}
   owner=null;panel.hidden=true;
   overlayObserver.disconnect();
@@ -1529,16 +1544,37 @@ function createTabletNumericKeypad(){
   viewport?.removeEventListener('resize',position);viewport?.removeEventListener('scroll',position);viewport=null;
  }
  function show(adapter){
-  if(owner?.input===adapter.input){owner=adapter;return}
+  if(owner?.input===adapter.input&&owner.text===adapter.text){owner=adapter;return}
   hide();owner=adapter;previousInputMode=owner.input.getAttribute('inputmode');owner.input.inputMode='none';panel.hidden=false;
+  panel.classList.toggle('tablet-text-mode',!!owner.text);rollers.hidden=capsButton.hidden=!owner.text;
+  panel.setAttribute('aria-label',owner.text?'Bàn phím chữ và số':'Bàn phím số');
+  if(owner.text){caps=true;updateCaps();for(const roller of rollers.children)roller.scrollTop=0}
   for(const el of owner.avoid?.()||[])if(el)overlayObserver.observe(el,{attributes:true,attributeFilter:['hidden']});
   viewport=window.visualViewport;window.addEventListener('resize',position);window.addEventListener('scroll',position);
   viewport?.addEventListener('resize',position);viewport?.addEventListener('scroll',position);position();
  }
+ function insertText(text){
+  if(!owner)return;
+  const input=owner.input,start=input.selectionStart??input.value.length,end=input.selectionEnd??start;
+  if(input.maxLength>=0&&input.value.length-(end-start)+text.length>input.maxLength)return;
+  input.setRangeText(text,start,end,'end');input.dispatchEvent(new Event('input',{bubbles:true}));
+ }
  function press(key){
   if(!owner)return;
   if(key==='confirm'){owner.confirm();return}
+  if(key==='caps'){caps=!caps;updateCaps();return}
   const input=owner.input;let value=input.value;
+  if(owner.text){
+   const start=input.selectionStart??value.length,end=input.selectionEnd??start;
+   if(key==='clear')input.setSelectionRange(0,value.length);
+   if(key==='backspace'&&start===end)input.setSelectionRange(start-(Array.from(value.slice(0,start)).at(-1)?.length||0),end);
+   if(key==='sign'){
+    const remove=value.startsWith('-'),offset=remove?-1:1;
+    input.value=remove?value.slice(1):'-'+value;input.setSelectionRange(Math.max(0,start+offset),Math.max(0,end+offset));
+    input.dispatchEvent(new Event('input',{bubbles:true}));return;
+   }
+   insertText(['clear','backspace'].includes(key)?'':key);return;
+  }
   if(key==='clear')value='';
   else if(key==='backspace')value=value.slice(0,-1);
   else if(key==='sign')value=value.startsWith('-')?value.slice(1):'-'+value;
@@ -1552,11 +1588,22 @@ function createTabletNumericKeypad(){
  const keys=[['7','7'],['8','8'],['9','9'],['backspace','⌫','Xóa ký tự cuối'],['4','4'],['5','5'],['6','6'],['sign','±','Đổi dấu'],['1','1'],['2','2'],['3','3'],['.','.'],['0','0'],['clear','C','Xóa giá trị'],['confirm','✓','Xác nhận giá trị']];
  for(const [key,label,title=label]of keys){
   const button=document.createElement('button');button.type='button';button.dataset.numericKey=key;button.textContent=label;
-  button.title=title;button.setAttribute('aria-label',title);button.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();press(key)});panel.append(button);
+  button.title=title;button.setAttribute('aria-label',title);button.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();press(key)});numbers.append(button);
  }
+ const capsButton=document.createElement('button');capsButton.type='button';capsButton.dataset.numericKey='caps';capsButton.textContent='⇪';capsButton.title='Caps Lock';capsButton.setAttribute('aria-label','Caps Lock');capsButton.hidden=true;
+ capsButton.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();press('caps')});numbers.insertBefore(capsButton,numbers.querySelector('[data-numeric-key="clear"]'));
  // Native clicks activate once; pressing a key must not focus it or reach the canvas.
  for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])panel.addEventListener(type,e=>{e.stopPropagation();if(type==='pointerdown')e.preventDefault()});
+ // A drag can end with a compatibility click on the roller container rather than a key.
+ panel.addEventListener('click',e=>{e.preventDefault();e.stopPropagation()});
  return {show,hide,position};
+}
+const tabletInputKeypad=createTabletNumericKeypad();
+// The editor owns its value, selection and save/cancel lifecycle; the keypad only supplies input.
+function attachTabletTextKeypad(input,confirm){
+ const sync=()=>{if(floatingToolsMedia.matches)tabletInputKeypad.show({input,confirm,text:true});else tabletInputKeypad.hide(input)};
+ sync();floatingToolsMedia.addEventListener('change',sync);
+ return ()=>{floatingToolsMedia.removeEventListener('change',sync);tabletInputKeypad.hide(input)};
 }
 
 // Transient numeric-entry UI. Positions are CSS client coordinates, never model coordinates.
@@ -1571,11 +1618,11 @@ const dynamicInputUI=(()=>{
  const secondary=document.createElement('input');secondary.id='dynamicInputSecondary';secondary.type='text';secondary.inputMode='decimal';secondary.enterKeyHint='done';secondary.autocomplete='off';secondary.hidden=true;
  const secondarySuffix=document.createElement('span');secondarySuffix.hidden=true;
  panel.insertBefore(secondary,confirmButton);panel.insertBefore(secondarySuffix,confirmButton);
- const keypad=createTabletNumericKeypad();let keypadEnabled=false,keypadAvoid=null;
+ const keypad=tabletInputKeypad;let keypadEnabled=false,keypadAvoid=null;
  let fields=null,activeIndex=0;
  function syncKeypad(){
   if(keypadEnabled&&!panel.hidden&&floatingToolsMedia.matches)keypad.show({input:activeInput(),confirm,avoid:keypadAvoid});
-  else keypad.hide();
+  else keypad.hide(activeInput());
  }
  floatingToolsMedia.addEventListener('change',syncKeypad);
  const fieldInputs=[input,secondary];
@@ -1683,7 +1730,7 @@ const dynamicInputUI=(()=>{
  }
  function hide(){
   const restore=panel.contains(document.activeElement);
-  panel.hidden=true;keypadEnabled=false;keypad.hide();
+  panel.hidden=true;keypadEnabled=false;keypad.hide(activeInput());
   window.removeEventListener('keydown',keyboard,true);
   onConfirm=null;onCancel=null;validateValue=null;clearError();
   fields=null;for(const el of fieldInputs)delete el.dataset.editing;
