@@ -1889,7 +1889,7 @@ function lockLoadNumericAngle(value){
  const session=loadNumericSession.session;
  let angle=value%360;if(angle<=-180)angle+=360;if(angle>180)angle-=360;
  loadReferenceFrame();session.uiAngle.mode='locked';session.uiAngle.value=angle===0?0:angle;
- resolveLoadUserAngle();paintLoadPreview();
+ resolveLoadUserAngle();if(lockedPenForcePlacement())freezePenForceAngle();paintLoadPreview();
 }
 function readLoadNumericEdit(){
  if(!loadNumericSession||!$('dynamicInputValue').dataset.editing)return;
@@ -1903,10 +1903,17 @@ function beginLoadNumericInput(e){
  armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onCancel:cancelToSelection});
  loadNumericSession={session,capture:dynamicNumericCapture,touch:e.pointerType==='touch',initialAnchor:{clientX:e.clientX,clientY:e.clientY},cursorAnchor:{clientX:e.clientX,clientY:e.clientY}};
  showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onConfirm:dynamicNumericCapture.confirm,onCancel:dynamicNumericCapture.cancel,
-  fields:{label:'G\u00f3c',values:[session.uiAngle],validate:()=>true,onConfirm:(_,value)=>lockLoadNumericAngle(value),onKeyboardCommit:placeLoadObject}});
+  tabletKeypad:mode==='force',keypadAvoid:()=>[penConnectionBubble],
+  fields:{label:'G\u00f3c',values:[session.uiAngle],validate:()=>true,onConfirm:(_,value)=>{
+   lockLoadNumericAngle(value);if(!loadNumericSession?.deferPenConfirmation)confirmPenForceAngle();
+  },onKeyboardCommit:()=>{if(!confirmPenForceAngle())placeLoadObject()}}});
 
 }
-function confirmLoadNumericInput(){return !loadNumericSession||dynamicInputUI.confirmPending()}
+function confirmLoadNumericInput(deferPenConfirmation=false){
+ const numeric=loadNumericSession;if(!numeric)return true;
+ numeric.deferPenConfirmation=deferPenConfirmation;
+ try{return dynamicInputUI.confirmPending()}finally{delete numeric.deferPenConfirmation}
+}
 function updateLoadNumericInput(e){
  if(!loadNumericSession)return;
  if(['force','udl'].includes(mode)&&updateReferenceAngleInputAnchor(activeReferenceAnglePreview(),e))return;

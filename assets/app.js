@@ -888,7 +888,25 @@ function lockedPenSupportPlacement(){
  return placement?.type==='support'&&['position-locked','angle-confirming'].includes(placement.state)?placement.lockedCandidate:null;
 }
 function penConnectionConfirming(placement=penConnectionPlacement){
- return placement?.type==='support'?['anchor-confirming','angle-confirming'].includes(placement.state):placement?.state==='confirming';
+ return ['support','force'].includes(placement?.type)?['anchor-confirming','angle-confirming'].includes(placement.state):placement?.state==='confirming';
+}
+function lockedPenForcePlacement(){
+ const placement=penConnectionPlacement;
+ return placement?.type==='force'&&['position-locked','angle-confirming'].includes(placement.state)?placement.lockedCandidate:null;
+}
+function freezePenForceAngle(){
+ const placement=penConnectionPlacement,session=loadPlacement;
+ const frame=loadReferenceFrame();
+ placement.lockedCandidate=Object.freeze({...placement.lockedAnchor,loadAngle:session.angle,rotation:session.rotation,globalPlacementAngle:session.globalPlacementAngle});
+ placement.lockedReferenceFrame=frame?copy(frame):null;
+}
+function confirmPenForceAngle(){
+ const placement=penConnectionPlacement;
+ if(placement?.type!=='force'||!['angle-tracking','position-locked','angle-confirming'].includes(placement.state))return false;
+ const alreadyConfirming=placement.state==='angle-confirming';
+ freezePenForceAngle();placement.state='angle-confirming';placement.lockedPointerId=null;
+ render();if(!alreadyConfirming)positionPenConnectionBubble();
+ return true;
 }
 function freezePenSupportAngle(angle){
  const placement=penConnectionPlacement,session=supportPlacementSession;
@@ -915,7 +933,7 @@ penConnectionLockHalo.id='penConnectionLockHalo';penConnectionLockHalo.hidden=tr
 document.body.append(penConnectionLockHalo);
 function updatePenConnectionLockHalo(){
  const placement=penConnectionPlacement;
- penConnectionLockHalo.hidden=!placement||placement.type!==mode||!['position-locked','confirming',...(placement.type==='support'?['anchor-locked','anchor-confirming','angle-tracking','angle-confirming']:[])].includes(placement.state);
+ penConnectionLockHalo.hidden=!placement||placement.type!==mode||!['position-locked','confirming',...(['support','force'].includes(placement.type)?['anchor-locked','anchor-confirming','angle-tracking','angle-confirming']:[])].includes(placement.state);
  if(penConnectionLockHalo.hidden)return;
  const matrix=svg.getScreenCTM();if(!matrix){penConnectionLockHalo.hidden=true;return}
  const {x,y}=placement.lockedCandidate,p=new DOMPoint(x,y).matrixTransform(matrix);
@@ -929,6 +947,21 @@ let penConnectionButtonPointerId=null,penConnectionSuppressClick=false;
 function activatePenConnectionButton(action,e){
  if(penConnectionBubble.hidden)return;
  const placement=penConnectionPlacement;
+ if(placement?.type==='force'){
+  if(placement.type!==mode||!penConnectionConfirming(placement)||penConnectionPlacementBlocked(e))return;
+  if(action==='cancel'&&placement.state==='anchor-confirming'){clearPenConnectionPlacement();return}
+  if(placement.state==='anchor-confirming'||action==='cancel'){
+   const retryAngle=placement.state==='angle-confirming';
+   placement.state='angle-tracking';placement.lockedPointerId=null;placement.lockedCandidate=placement.lockedAnchor;
+   delete placement.lockedReferenceFrame;penConnectionBubble.hidden=true;
+   if(retryAngle)loadPlacement.uiAngle.mode='live';
+   beginLoadNumericInput(e);render();return;
+  }
+  if(!confirmLoadNumericInput(true))return;
+  const draft=placement.lockedCandidate;
+  loadPlacement.a=placement.lockedAnchor;loadPlacement.angle=draft.loadAngle;loadPlacement.rotation=draft.rotation;
+  clearPenConnectionPlacement(true);placeLoadObject();return;
+ }
  if(placement?.type==='support'){
   if(placement.type!==mode||!penConnectionConfirming(placement)||penConnectionPlacementBlocked(e))return;
   if(action==='cancel'&&placement.state==='anchor-confirming'){clearPenConnectionPlacement();return}
@@ -985,18 +1018,18 @@ for(const event of ['pointerup','pointercancel'])window.addEventListener(event,e
   return;
  }
  const placement=penConnectionPlacement;
- if(e.pointerType==='pen'&&placement?.type==='support'&&e.type==='pointercancel'){
+ if(e.pointerType==='pen'&&['support','force'].includes(placement?.type)&&e.type==='pointercancel'){
   if(placement.state!=='angle-confirming'&&(placement.lockedPointerId==null||placement.lockedPointerId===e.pointerId)){clearPenConnectionPlacement();render()}
   e.stopImmediatePropagation(); // Do not let the legacy canvas cancel erase another pointer's lock.
   return;
  }
- if(e.pointerType==='pen'&&placement?.type==='support'&&placement.state==='anchor-locked'&&placement.lockedPointerId===e.pointerId){
+ if(e.pointerType==='pen'&&['support','force'].includes(placement?.type)&&placement.state==='anchor-locked'&&placement.lockedPointerId===e.pointerId){
   placement.state='anchor-confirming';placement.lockedPointerId=null;
   paintPenConnectionPreview();positionPenConnectionBubble();return;
  }
  if(e.pointerType!=='pen'||!placement||placement.state!=='position-locked'||placement.lockedPointerId!==e.pointerId)return;
  if(e.type==='pointercancel'){clearPenConnectionPlacement();return}
- placement.state=placement.type==='support'?'angle-confirming':'confirming';placement.lockedPointerId=null;
+ placement.state=['support','force'].includes(placement.type)?'angle-confirming':'confirming';placement.lockedPointerId=null;
  paintPenConnectionPreview();positionPenConnectionBubble();
 },true);
 document.body.append(penConnectionBubble);
@@ -1013,11 +1046,13 @@ function positionPenConnectionBubble(){
  penConnectionBubble.style.left=Math.max(left+margin,Math.min(bx,right-width-margin))+'px';
  penConnectionBubble.style.top=Math.max(top+margin,Math.min(by,bottom-height-margin))+'px';
 }
-function clearPenConnectionPlacement(preserveSupportSession=false){
+function clearPenConnectionPlacement(preservePlacementSession=false){
  const support=penConnectionPlacement?.type==='support';
+ const force=penConnectionPlacement?.type==='force';
  if(penConnectionPlacement?.type==='person')clearPersonPreview(true);
  penConnectionPlacement=null;penConnectionBubble.hidden=true;penConnectionLockHalo.hidden=true;svg.querySelector('[data-pen-connection-preview]')?.remove();
- if(support&&!preserveSupportSession)clearSupportPlacement();
+ if(support&&!preservePlacementSession)clearSupportPlacement();
+ if(force&&!preservePlacementSession)cancelLoadPlacement();
 }
 function paintPenConnectionPreview(){
  updatePenConnectionLockHalo();
@@ -1030,7 +1065,8 @@ function paintPenConnectionPreview(){
    const g=el('g',{'data-support-preview':'true','pointer-events':'none',stroke:'#087d95',fill:'none',opacity:0.7});
    drawSupport(g,{x,y,support:penConnectionPlacement.supportSubtype,direction:penConnectionPlacement.direction});
   }
- }else if(type==='person')paintPersonPreview(null,state==='tracking'?hoverCandidate:lockedCandidate);
+ }else if(type==='force')paintLoadPreview();
+ else if(type==='person')paintPersonPreview(null,state==='tracking'?hoverCandidate:lockedCandidate);
  else{
   const g=el('g',{'data-pen-connection-preview':type,'pointer-events':'none',stroke:'#087d95','stroke-width':1.8,opacity:.6});
   if(type==='hinge')el('circle',{cx:x,cy:y,r:6,fill:'white'},g);
@@ -2034,6 +2070,7 @@ function loadReferenceCandidates(){
  return collectReferenceBars({bars:items.filter(o=>ids.has(o.id)),anchorPoint:session.referenceAnchor||session.a,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/Math.abs(svg.getScreenCTM().a)});
 }
 function loadReferenceFrame(){
+ if(lockedPenForcePlacement())return penConnectionPlacement.lockedReferenceFrame;
  const session=loadPlacement;if(!session?.referenceBarId)return null;
  const candidate=loadReferenceCandidates().find(c=>c.barId===session.referenceBarId);
  if(candidate)return getReferenceBarFrame(candidate.bar);
@@ -2043,6 +2080,7 @@ function loadReferenceFrame(){
  svg.querySelector('[data-load-reference]')?.remove();return null;
 }
 function loadReferenceOverrideAt(cursorPoint){
+ if(lockedPenForcePlacement())return null;
  const candidates=loadReferenceCandidates();if(candidates.length<2)return null;
  const bar=hitReferenceOverride({bars:candidates.map(c=>c.bar),anchorPoint:loadPlacement.referenceAnchor||loadPlacement.a,cursorPoint,screenScale:Math.abs(svg.getScreenCTM().a)});
  return bar?.id!==loadPlacement.referenceBarId?bar:null;
@@ -2053,6 +2091,7 @@ function resolveLoadUserAngle(){
  session.globalPlacementAngle=global;session.angle=loadUIToInternal(session.type,global,session.rotation);
 }
 function setLoadReference(barId){
+ if(lockedPenForcePlacement())return;
  const session=loadPlacement,global=session.globalPlacementAngle;
  session.referenceBarId=barId;const frame=loadReferenceFrame();
  if(session.uiAngle.mode==='locked')resolveLoadUserAngle();
@@ -2076,7 +2115,7 @@ function renderLoadReference(){
  const bar=items.find(o=>o.id===loadPlacement.referenceBarId);
  line(svg,bar.x,bar.y,bar.x2,bar.y2,{class:'thin-reference-highlight','data-load-reference':'true','pointer-events':'none','aria-hidden':'true'});
 }
-function cancelLoadPlacement(){svg.querySelector('.reference-angle-preview')?.remove();svg.querySelector('[data-load-reference]')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));if(typeof endLoadNumericInput==='function')endLoadNumericInput();loadPlacement=null;svg.querySelector('[data-load-preview]')?.remove()}
+function cancelLoadPlacement(){if(penConnectionPlacement?.type==='force')clearPenConnectionPlacement(true);svg.querySelector('.reference-angle-preview')?.remove();svg.querySelector('[data-load-reference]')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));if(typeof endLoadNumericInput==='function')endLoadNumericInput();loadPlacement=null;svg.querySelector('[data-load-preview]')?.remove()}
 // UI ray follows the visible body. Force tail = anchor - 75 * loadVector,
 // so its internal tail-to-head vector is opposite the ray; moment uses SVG rotation.
 function loadUIToInternal(type,angle,rotation='cw'){
@@ -2086,6 +2125,7 @@ function loadUIToInternal(type,angle,rotation='cw'){
  return ((base-angle)%360+360)%360;
 }
 function updateLoadOrientation(e){
+ if(penConnectionPlacement?.type==='force'&&penConnectionPlacement.state!=='angle-tracking')return false;
  const session=loadPlacement;if(!session||!session.uiAngle)return false;
  loadReferenceFrame();
  if(typeof readLoadNumericEdit==='function')readLoadNumericEdit();
@@ -2113,6 +2153,8 @@ function updateUDLOrientation(e){
  return true;
 }
 function placeLoadObject(){
+ // Pen Force creation is released only by the final explicit bubble command.
+ if(penConnectionPlacement?.type==='force')return;
  if(!loadPlacement)return;
  const p=loadPlacement,a=p.a,b=p.b;
  checkpoint();const o=make(p.type,a.x,a.y,b?.x,b?.y,{loadAngle:p.angle,rotation:p.rotation});
@@ -2130,15 +2172,51 @@ function paintLoadPreview(){renderLoadReference();renderReferenceAnglePreview();
  }else if(p.type==='force'){arrow(g,x-dx*75,y-dy*75,x,y)}
  else{const b=p.b;line(g,x-dx*55,y-dy*55,b.x-dx*55,b.y-dy*55);const n=Math.max(2,Math.ceil(Math.hypot(b.x-x,b.y-y)/25));for(let i=0;i<=n;i++){const xx=x+(b.x-x)*i/n,yy=y+(b.y-y)*i/n;arrow(g,xx-dx*55,yy-dy*55,xx,yy)}}
 }
+function beginLoadPlacement(e,numeric=true){
+ loadPlacement={type:mode,a:snapToBar(rawPoint(e))||point(e),angle:mode==='moment'?0:270,rotation:mode==='moment'?currentMomentRotation:$('rotation').value};
+ if(mode!=='udl'){
+  loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=loadUIToInternal(mode,0,loadPlacement.rotation);
+  beginLoadReference();if(numeric)beginLoadNumericInput(e);
+ }
+}
+// Force intercepts the existing load capture path; shared bubble ownership handles release.
+function handlePenForcePlacement(e){
+ if(mode!=='force')return false;
+ if(e.pointerType!=='pen'){
+  if(e.type==='pointerdown'&&e.button===0&&penConnectionPlacement?.type==='force')clearPenConnectionPlacement();
+  return penConnectionPlacement?.type==='force';
+ }
+ const placement=penConnectionPlacement,down=e.type==='pointerdown'&&e.button===0&&(e.buttons&1)!==0;
+ if(penConnectionButtonPointerId!==null||placement&&['anchor-locked','anchor-confirming','position-locked','angle-confirming'].includes(placement.state))return true;
+ if(penConnectionPlacementBlocked(e)||!svg.contains(document.elementFromPoint(e.clientX,e.clientY)))return true;
+ if(placement?.state==='angle-tracking'){
+  if(down){
+   const override=loadReferenceOverrideAt(rawPoint(e));
+   if(override){setLoadReference(override.id);updateLoadNumericInput(e);paintLoadPreview();return true}
+   if(!confirmLoadNumericInput(true)||!updateLoadOrientation(e))return true;
+   freezePenForceAngle();placement.state='position-locked';placement.lockedPointerId=e.pointerId;
+  }else{updateLoadOrientation(e);updateLoadNumericInput(e)}
+ }else{
+  if(!placement&&loadPlacement)cancelLoadPlacement();
+  beginLoadPlacement(e,false);
+  const anchor=Object.freeze({...loadPlacement.a});loadPlacement.a=anchor;
+  penConnectionPlacement=down?
+   {type:'force',state:'anchor-locked',lockedAnchor:anchor,lockedCandidate:anchor,lockedPointerId:e.pointerId}:
+   {type:'force',state:'tracking',hoverCandidate:anchor};
+ }
+ render();return true;
+}
 svg.addEventListener('pointerdown',e=>{
+ if(handlePenForcePlacement(e)){e.preventDefault();e.stopImmediatePropagation();return}
  if(e.button!==0||!['force','moment','udl'].includes(mode)||typeof panEnabled!=='undefined'&&panEnabled)return;
  e.preventDefault();e.stopImmediatePropagation();
- if(!loadPlacement){loadPlacement={type:mode,a:snapToBar(rawPoint(e))||point(e),angle:mode==='moment'?0:270,rotation:mode==='moment'?currentMomentRotation:$('rotation').value};if(mode!=='udl'){loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=loadUIToInternal(mode,0,loadPlacement.rotation);beginLoadReference();beginLoadNumericInput(e)}}
+ if(!loadPlacement)beginLoadPlacement(e);
  else if(mode==='udl'&&!loadPlacement.b){const b=snapToBar(rawPoint(e))||point(e);if(Math.hypot(b.x-loadPlacement.a.x,b.y-loadPlacement.a.y)<1)return;loadPlacement.b=b;loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=90;beginLoadReference();beginLoadNumericInput(e)}
  else{const override=loadReferenceOverrideAt(rawPoint(e));if(override){setLoadReference(override.id);updateLoadNumericInput(e);paintLoadPreview();return}if(loadPlacement.uiAngle){if(!confirmLoadNumericInput()||!updateLoadOrientation(e))return}else if(loadPlacement.type==='udl'&&!updateUDLOrientation(e))return;placeLoadObject();return}
  paintLoadPreview();
 },true);
 svg.addEventListener('pointermove',e=>{
+ if(handlePenForcePlacement(e)){e.stopImmediatePropagation();return}
  if(!loadPlacement)return;if(loadPlacement.type==='udl'&&!loadPlacement.b)e.stopImmediatePropagation();
  if(loadPlacement.uiAngle){updateLoadOrientation(e);updateLoadNumericInput(e);paintLoadPreview();return}
  if(loadPlacement.type==='udl'&&!loadPlacement.b){loadPlacement.hover=drawingPoint(e);paintLoadPreview();return}
