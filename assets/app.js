@@ -21,6 +21,7 @@ function supportReferenceCandidates(){
  return collectReferenceBars({bars:items.filter(o=>ids.has(o.id)),anchorPoint:session.anchorPoint,toleranceModel:THIN_REFERENCE_TOLERANCE_PX/Math.abs(svg.getScreenCTM().a)});
 }
 function supportReferenceFrame(){
+ if(lockedPenSupportPlacement())return penConnectionPlacement.lockedReferenceFrame;
  const session=supportPlacementSession;if(!session?.referenceBarId)return null;
  const candidate=supportReferenceCandidates().find(c=>c.barId===session.referenceBarId);
  if(candidate)return getReferenceBarFrame(candidate.bar);
@@ -30,22 +31,26 @@ function supportReferenceFrame(){
  svg.querySelector('[data-support-reference]')?.remove();
  return null;
 }
-function supportGlobalAngle(){
+function supportGlobalAngle(fromNumeric=false){
+ const locked=lockedPenSupportPlacement();if(locked&&!fromNumeric)return locked.supportAngle;
  const session=supportPlacementSession,frame=supportReferenceFrame();
  return frame?referenceAngleToGlobalPlacementAngle(session.angle.value,frame):session.angle.value;
 }
 function supportReferenceOverrideAt(cursorPoint){
+ if(lockedPenSupportPlacement())return null;
  const candidates=supportReferenceCandidates();if(candidates.length<2)return null;
  const bar=hitReferenceOverride({bars:candidates.map(c=>c.bar),anchorPoint:supportPlacementSession.anchorPoint,cursorPoint,screenScale:Math.abs(svg.getScreenCTM().a)});
  return bar?.id!==supportPlacementSession.referenceBarId?bar:null;
 }
 function setSupportReference(barId){
+ if(lockedPenSupportPlacement())return;
  const session=supportPlacementSession,global=session.previewAngle??({down:0,up:180,left:90,right:-90}[session.direction]);
  session.referenceBarId=barId;const frame=supportReferenceFrame();
  if(session.angle.mode==='locked')session.previewAngle=frame?referenceAngleToGlobalPlacementAngle(session.angle.value,frame):session.angle.value;
  else session.angle.value=frame?globalPlacementAngleToReferenceAngle(global,frame):global;
 }
 function updateSupportOrientation(e){
+ if(penConnectionPlacement?.type==='support'&&penConnectionPlacement.state!=='angle-tracking')return;
  const session=supportPlacementSession;supportReferenceFrame();
  const raw=rawPoint(e);
  if(!session.referenceBarId){
@@ -62,14 +67,18 @@ function updateSupportOrientation(e){
 function renderSupportReference(){
  if(mode!=='support'||!supportReferenceFrame())return;
  const bar=items.find(o=>o.id===supportPlacementSession.referenceBarId);
+ if(!bar)return;
  line(svg,bar.x,bar.y,bar.x2,bar.y2,{class:'thin-reference-highlight','data-support-reference':'true','pointer-events':'none','aria-hidden':'true'});
 }
 function clearSupportPlacement(){
+ if(penConnectionPlacement?.type==='support')clearPenConnectionPlacement(true);
  if(typeof endSupportNumericInput==='function')endSupportNumericInput();
  svg.querySelector('[data-support-reference]')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));
  supportPlacementSession=null;svg.querySelector('[data-support-preview]')?.remove();svg.querySelector('.reference-angle-preview')?.remove();
 }
 function commitSupportPlacement(angle){
+ // Numeric Enter may validate a pen angle, but only the floating confirm can create.
+ if(penConnectionPlacement?.type==='support')return false;
  const session=supportPlacementSession;if(!session||!Number.isFinite(angle))return false;
  const o=make('support',session.anchorPoint.x,session.anchorPoint.y,undefined,undefined,{support:session.supportSubtype,direction:session.direction,supportAngle:angle});
  checkpoint();items.push(o);selected=o.id;clearSupportPlacement();render();return true;
@@ -93,7 +102,7 @@ function placeSupport(e){
 function renderSupportPlacement(){
  if(!supportPlacementSession)return;
  const session=supportPlacementSession,g=el('g',{'data-support-preview':'true','pointer-events':'none',stroke:'#087d95',fill:'none',opacity:0.7});
- drawSupport(g,{...session.anchorPoint,support:session.supportSubtype,direction:session.direction,supportAngle:session.previewAngle});
+ drawSupport(g,lockedPenSupportPlacement()||{...session.anchorPoint,support:session.supportSubtype,direction:session.direction,supportAngle:session.previewAngle});
 }
 function rotateVector(p,a){return {x:Math.cos(a)*p.x-Math.sin(a)*p.y,y:Math.sin(a)*p.x+Math.cos(a)*p.y}}
 function rigidWorld(o,p){const q=rotateVector(p,rigidRadians(o));return {x:o.x+q.x,y:o.y+q.y}}
@@ -874,6 +883,30 @@ function definePersonSymbol(defs){
 }
 // Transient pen lock-confirm UI for Hinge, Weld and the existing Person placement solver.
 let penConnectionPlacement=null;
+function lockedPenSupportPlacement(){
+ const placement=penConnectionPlacement;
+ return placement?.type==='support'&&['position-locked','angle-confirming'].includes(placement.state)?placement.lockedCandidate:null;
+}
+function penConnectionConfirming(placement=penConnectionPlacement){
+ return placement?.type==='support'?['anchor-confirming','angle-confirming'].includes(placement.state):placement?.state==='confirming';
+}
+function freezePenSupportAngle(angle){
+ const placement=penConnectionPlacement,session=supportPlacementSession;
+ if(placement?.type!=='support'||!session||!Number.isFinite(angle))return;
+ session.previewAngle=angle;const frame=supportReferenceFrame();
+ if(session.angle.mode!=='locked')session.angle.value=frame?globalPlacementAngleToReferenceAngle(angle,frame):angle;
+ placement.lockedCandidate=Object.freeze({...placement.lockedAnchor,support:session.supportSubtype,direction:session.direction,supportAngle:angle});
+ placement.lockedReferenceFrame=frame?copy(frame):null;
+}
+function confirmPenSupportAngle(){
+ const placement=penConnectionPlacement;
+ if(placement?.type!=='support'||!['angle-tracking','position-locked','angle-confirming'].includes(placement.state))return false;
+ const alreadyConfirming=placement.state==='angle-confirming';
+ freezePenSupportAngle(supportGlobalAngle(true));
+ placement.state='angle-confirming';placement.lockedPointerId=null;
+ render();if(!alreadyConfirming)positionPenConnectionBubble();
+ return true;
+}
 const penConnectionBubble=document.createElement('div');
 penConnectionBubble.id='penConnectionBubble';penConnectionBubble.hidden=true;
 penConnectionBubble.setAttribute('role','group');penConnectionBubble.setAttribute('aria-label','Đặt liên kết bằng bút');
@@ -882,7 +915,7 @@ penConnectionLockHalo.id='penConnectionLockHalo';penConnectionLockHalo.hidden=tr
 document.body.append(penConnectionLockHalo);
 function updatePenConnectionLockHalo(){
  const placement=penConnectionPlacement;
- penConnectionLockHalo.hidden=!placement||placement.type!==mode||!['position-locked','confirming'].includes(placement.state);
+ penConnectionLockHalo.hidden=!placement||placement.type!==mode||!['position-locked','confirming',...(placement.type==='support'?['anchor-locked','anchor-confirming','angle-tracking','angle-confirming']:[])].includes(placement.state);
  if(penConnectionLockHalo.hidden)return;
  const matrix=svg.getScreenCTM();if(!matrix){penConnectionLockHalo.hidden=true;return}
  const {x,y}=placement.lockedCandidate,p=new DOMPoint(x,y).matrixTransform(matrix);
@@ -895,8 +928,29 @@ window.visualViewport?.addEventListener('scroll',updatePenConnectionLockHalo);
 let penConnectionButtonPointerId=null,penConnectionSuppressClick=false;
 function activatePenConnectionButton(action,e){
  if(penConnectionBubble.hidden)return;
- if(action==='cancel'){clearPenConnectionPlacement();return}
  const placement=penConnectionPlacement;
+ if(placement?.type==='support'){
+  if(placement.type!==mode||!penConnectionConfirming(placement)||penConnectionPlacementBlocked(e))return;
+  if(action==='cancel'&&placement.state==='anchor-confirming'){clearPenConnectionPlacement();return}
+  if(placement.state==='anchor-confirming'||action==='cancel'){
+   const retryAngle=placement.state==='angle-confirming',angle=placement.lockedCandidate.supportAngle;
+   placement.state='angle-tracking';placement.lockedPointerId=null;placement.lockedCandidate=placement.lockedAnchor;
+   delete placement.lockedReferenceFrame;penConnectionBubble.hidden=true;
+   if(retryAngle)supportPlacementSession.angle.mode='live';
+   if(typeof beginSupportNumericInput==='function')beginSupportNumericInput(e);
+   if(retryAngle){
+    const frame=supportReferenceFrame();
+    supportPlacementSession.angle.value=frame?globalPlacementAngleToReferenceAngle(angle,frame):angle;
+    supportPlacementSession.previewAngle=angle;
+   }
+   render();return;
+  }
+  if(typeof confirmSupportNumericInput==='function'&&!confirmSupportNumericInput(true))return;
+  const {supportAngle}=placement.lockedCandidate;
+  clearPenConnectionPlacement(true); // Only angle confirm reaches normal Support creation.
+  commitSupportPlacement(supportAngle);return;
+ }
+ if(action==='cancel'){clearPenConnectionPlacement();return}
  if(!placement||placement.type!==mode||placement.state!=='confirming'||penConnectionPlacementBlocked(e))return;
  const {type,lockedCandidate:candidate}=placement;
  clearPenConnectionPlacement(); // Retire first: duplicate activation cannot place twice.
@@ -931,14 +985,23 @@ for(const event of ['pointerup','pointercancel'])window.addEventListener(event,e
   return;
  }
  const placement=penConnectionPlacement;
+ if(e.pointerType==='pen'&&placement?.type==='support'&&e.type==='pointercancel'){
+  if(placement.state!=='angle-confirming'&&(placement.lockedPointerId==null||placement.lockedPointerId===e.pointerId)){clearPenConnectionPlacement();render()}
+  e.stopImmediatePropagation(); // Do not let the legacy canvas cancel erase another pointer's lock.
+  return;
+ }
+ if(e.pointerType==='pen'&&placement?.type==='support'&&placement.state==='anchor-locked'&&placement.lockedPointerId===e.pointerId){
+  placement.state='anchor-confirming';placement.lockedPointerId=null;
+  paintPenConnectionPreview();positionPenConnectionBubble();return;
+ }
  if(e.pointerType!=='pen'||!placement||placement.state!=='position-locked'||placement.lockedPointerId!==e.pointerId)return;
  if(e.type==='pointercancel'){clearPenConnectionPlacement();return}
- placement.state='confirming';placement.lockedPointerId=null;
+ placement.state=placement.type==='support'?'angle-confirming':'confirming';placement.lockedPointerId=null;
  paintPenConnectionPreview();positionPenConnectionBubble();
 },true);
 document.body.append(penConnectionBubble);
 function positionPenConnectionBubble(){
- if(penConnectionBubble.hidden||penConnectionPlacement?.state!=='confirming')return;
+ if(penConnectionBubble.hidden||!penConnectionConfirming())return;
  const matrix=svg.getScreenCTM();if(!matrix)return;
  const {x,y}=penConnectionPlacement.lockedCandidate,p=new DOMPoint(x,y).matrixTransform(matrix);
  const viewport=window.visualViewport,left=viewport?.offsetLeft||0,top=viewport?.offsetTop||0;
@@ -950,9 +1013,11 @@ function positionPenConnectionBubble(){
  penConnectionBubble.style.left=Math.max(left+margin,Math.min(bx,right-width-margin))+'px';
  penConnectionBubble.style.top=Math.max(top+margin,Math.min(by,bottom-height-margin))+'px';
 }
-function clearPenConnectionPlacement(){
+function clearPenConnectionPlacement(preserveSupportSession=false){
+ const support=penConnectionPlacement?.type==='support';
  if(penConnectionPlacement?.type==='person')clearPersonPreview(true);
  penConnectionPlacement=null;penConnectionBubble.hidden=true;penConnectionLockHalo.hidden=true;svg.querySelector('[data-pen-connection-preview]')?.remove();
+ if(support&&!preserveSupportSession)clearSupportPlacement();
 }
 function paintPenConnectionPreview(){
  updatePenConnectionLockHalo();
@@ -960,24 +1025,62 @@ function paintPenConnectionPreview(){
  if(!penConnectionPlacement||penConnectionPlacement.type!==mode)return;
  const {type,state,hoverCandidate,lockedCandidate}=penConnectionPlacement;
  const {x,y}=state==='tracking'?hoverCandidate:lockedCandidate;
- if(type==='person')paintPersonPreview(null,state==='tracking'?hoverCandidate:lockedCandidate);
+ if(type==='support'){
+  if(state==='tracking'){
+   const g=el('g',{'data-support-preview':'true','pointer-events':'none',stroke:'#087d95',fill:'none',opacity:0.7});
+   drawSupport(g,{x,y,support:penConnectionPlacement.supportSubtype,direction:penConnectionPlacement.direction});
+  }
+ }else if(type==='person')paintPersonPreview(null,state==='tracking'?hoverCandidate:lockedCandidate);
  else{
   const g=el('g',{'data-pen-connection-preview':type,'pointer-events':'none',stroke:'#087d95','stroke-width':1.8,opacity:.6});
   if(type==='hinge')el('circle',{cx:x,cy:y,r:6,fill:'white'},g);
   else el('rect',{x:x-6,y:y-6,width:12,height:12,fill:'#087d95',stroke:'none'},g);
  }
- penConnectionBubble.hidden=state!=='confirming';
+ penConnectionBubble.hidden=!penConnectionConfirming();
 }
 function penConnectionPlacementBlocked(e){
  return drag||groupDrag||rigidDrag||(typeof jointDrag!=='undefined'&&jointDrag)||
   (typeof panEnabled!=='undefined'&&panEnabled)||(typeof gesture!=='undefined'&&gesture)||e.ctrlKey&&e.altKey;
 }
+// Support keeps its existing session/solver; this adapter only owns the two pen locks.
+function handlePenSupportPlacement(e){
+ const placement=penConnectionPlacement,down=e.type==='pointerdown'&&e.button===0&&(e.buttons&1)!==0;
+ if(penConnectionButtonPointerId!==null||placement&&['anchor-locked','anchor-confirming','position-locked','angle-confirming'].includes(placement.state))return true;
+ if(penConnectionPlacementBlocked(e)||!svg.contains(document.elementFromPoint(e.clientX,e.clientY)))return true;
+ if(placement?.state==='angle-tracking'){
+  if(down){
+   const override=supportReferenceOverrideAt(rawPoint(e));
+   if(override){setSupportReference(override.id);if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);render();return true}
+   if(typeof confirmSupportNumericInput==='function'&&!confirmSupportNumericInput(true))return true;
+   const session=supportPlacementSession,angle=session.angle.mode==='locked'?supportGlobalAngle():solveSupportAngle(session.anchorPoint,rawPoint(e));
+   if(angle===null)return true;
+   freezePenSupportAngle(angle);
+   placement.state='position-locked';placement.lockedPointerId=e.pointerId;
+  }else{
+   updateSupportOrientation(e);if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);
+  }
+  render();return true;
+ }
+ if(down){
+  // Reuse normal snapped-anchor initialization, then defer its numeric phase to release.
+  clearSupportPlacement();placeSupport(e);
+  const session=supportPlacementSession,anchor=Object.freeze({...session.anchorPoint});session.anchorPoint=anchor;
+  if(typeof endSupportNumericInput==='function')endSupportNumericInput();
+  penConnectionPlacement={type:'support',state:'anchor-locked',lockedAnchor:anchor,lockedCandidate:anchor,lockedPointerId:e.pointerId};
+ }else{
+  const candidate=drawingPoint(e);if(![candidate.x,candidate.y].every(Number.isFinite))return true;
+  penConnectionPlacement={type:'support',state:'tracking',hoverCandidate:candidate,supportSubtype:$('support').value,direction:$('direction').value};
+ }
+ render();return true;
+}
 function handlePenConnectionPlacement(e){
- if(!['hinge','weld','person'].includes(mode))return false;
+ if(!['hinge','weld','person','support'].includes(mode))return false;
+ if(mode==='support'&&!['pin','pin-plain','roller','roller-plain','fixed'].includes($('support').value))return false;
  if(e.pointerType!=='pen'){
   if(e.type==='pointerdown'&&e.button===0)clearPenConnectionPlacement();
   return false;
  }
+ if(mode==='support')return handlePenSupportPlacement(e);
  if(penConnectionButtonPointerId!==null||penConnectionPlacement&&penConnectionPlacement.state!=='tracking')return true;
  if(penConnectionPlacementBlocked(e))return true;
  // Tracking only acquires drawing points, including when implicit capture targets SVG over UI.

@@ -107,6 +107,11 @@ button.icon-button.active,button.icon-button[aria-pressed="true"]{background:#cc
 #dynamicInput input{width:100px;min-width:0;min-height:44px;flex:0 1 100px;margin:0;font-size:16px}
 #dynamicInputSuffix{min-width:0;overflow-wrap:anywhere;font-size:13px}
 #dynamicInput button{flex:0 0 44px;min-width:44px;min-height:44px;margin:0;padding:6px;font-size:18px}
+#tabletNumericKeypad{position:fixed;z-index:2350;display:grid;grid-template-columns:repeat(4,48px);gap:4px;padding:6px;background:#edf5f6;border:1px solid #b9d5da;border-radius:6px;box-shadow:0 2px 8px #183e5526;box-sizing:border-box;overflow:auto}
+#tabletNumericKeypad[hidden]{display:none}
+#tabletNumericKeypad button{min-width:44px;min-height:48px;margin:0;padding:6px;font-size:20px;touch-action:manipulation}
+#tabletNumericKeypad [data-numeric-key="0"]{grid-column:span 2}
+#tabletNumericKeypad [data-numeric-key="confirm"]{color:#087d95}
 #penConnectionBubble{position:fixed;z-index:2400;display:flex;gap:6px;padding:6px;background:#edf5f6;border:1px solid #b9d5da;border-radius:6px;box-shadow:0 2px 8px #183e5526}
 #penConnectionBubble[hidden]{display:none}
 #penConnectionBubble button{width:48px;height:48px;min-width:48px;min-height:48px;margin:0;padding:6px;font-size:24px;touch-action:none}

@@ -1502,6 +1502,63 @@ colorInput.addEventListener('keydown',e=>{
 });
 syncObjectColorControls();
 
+// Generic input-method adapter: the owning editor supplies its field and validation callback.
+function createTabletNumericKeypad(){
+ const panel=document.createElement('div');panel.id='tabletNumericKeypad';panel.hidden=true;
+ panel.setAttribute('role','group');panel.setAttribute('aria-label','Bàn phím số');document.body.append(panel);
+ let owner=null,previousInputMode=null,viewport=null;
+ // Recheck only overlay visibility transitions, never canvas/camera movement.
+ const overlayObserver=new MutationObserver(()=>position());
+ function position(){
+  if(!owner||panel.hidden)return;
+  const vv=window.visualViewport,left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
+  const width=vv?.width||document.documentElement.clientWidth,height=vv?.height||innerHeight,gap=8;
+  panel.style.maxWidth=Math.max(44,width-2*gap)+'px';panel.style.maxHeight=Math.max(44,height-2*gap)+'px';
+  const rect=panel.getBoundingClientRect(),right=left+width-gap-rect.width,bottom=top+height-gap-rect.height;
+  const obstacles=[owner.input.closest('#dynamicInput'),...(owner.avoid?.()||[])].filter(el=>el&&!el.hidden).map(el=>el.getBoundingClientRect());
+  const candidates=[[right,bottom],[left+gap,bottom],[right,top+gap],[left+gap,top+gap]];
+  const overlap=([x,y])=>obstacles.reduce((sum,r)=>sum+Math.max(0,Math.min(x+rect.width,r.right+gap)-Math.max(x,r.left-gap))*Math.max(0,Math.min(y+rect.height,r.bottom+gap)-Math.max(y,r.top-gap)),0);
+  candidates.sort((a,b)=>overlap(a)-overlap(b));
+  panel.style.left=Math.max(left+gap,candidates[0][0])+'px';panel.style.top=Math.max(top+gap,candidates[0][1])+'px';
+ }
+ function hide(){
+  if(owner){if(previousInputMode===null)owner.input.removeAttribute('inputmode');else owner.input.setAttribute('inputmode',previousInputMode)}
+  owner=null;panel.hidden=true;
+  overlayObserver.disconnect();
+  window.removeEventListener('resize',position);window.removeEventListener('scroll',position);
+  viewport?.removeEventListener('resize',position);viewport?.removeEventListener('scroll',position);viewport=null;
+ }
+ function show(adapter){
+  if(owner?.input===adapter.input){owner=adapter;return}
+  hide();owner=adapter;previousInputMode=owner.input.getAttribute('inputmode');owner.input.inputMode='none';panel.hidden=false;
+  for(const el of owner.avoid?.()||[])if(el)overlayObserver.observe(el,{attributes:true,attributeFilter:['hidden']});
+  viewport=window.visualViewport;window.addEventListener('resize',position);window.addEventListener('scroll',position);
+  viewport?.addEventListener('resize',position);viewport?.addEventListener('scroll',position);position();
+ }
+ function press(key){
+  if(!owner)return;
+  if(key==='confirm'){owner.confirm();return}
+  const input=owner.input;let value=input.value;
+  if(key==='clear')value='';
+  else if(key==='backspace')value=value.slice(0,-1);
+  else if(key==='sign')value=value.startsWith('-')?value.slice(1):'-'+value;
+  else if(key==='.'){
+   if(/[.,]/.test(value))return;
+   value=value===''?'0.':value==='-'?'-0.':value+'.';
+  }else value+=key;
+  input.value=value;input.setSelectionRange(value.length,value.length);
+  input.dispatchEvent(new Event('input',{bubbles:true}));
+ }
+ const keys=[['7','7'],['8','8'],['9','9'],['backspace','⌫','Xóa ký tự cuối'],['4','4'],['5','5'],['6','6'],['sign','±','Đổi dấu'],['1','1'],['2','2'],['3','3'],['.','.'],['0','0'],['clear','C','Xóa giá trị'],['confirm','✓','Xác nhận giá trị']];
+ for(const [key,label,title=label]of keys){
+  const button=document.createElement('button');button.type='button';button.dataset.numericKey=key;button.textContent=label;
+  button.title=title;button.setAttribute('aria-label',title);button.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();press(key)});panel.append(button);
+ }
+ // Native clicks activate once; pressing a key must not focus it or reach the canvas.
+ for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])panel.addEventListener(type,e=>{e.stopPropagation();if(type==='pointerdown')e.preventDefault()});
+ return {show,hide,position};
+}
+
 // Transient numeric-entry UI. Positions are CSS client coordinates, never model coordinates.
 const dynamicInputUI=(()=>{
  const panel=document.createElement('div');panel.id='dynamicInput';panel.hidden=true;
@@ -1514,7 +1571,13 @@ const dynamicInputUI=(()=>{
  const secondary=document.createElement('input');secondary.id='dynamicInputSecondary';secondary.type='text';secondary.inputMode='decimal';secondary.enterKeyHint='done';secondary.autocomplete='off';secondary.hidden=true;
  const secondarySuffix=document.createElement('span');secondarySuffix.hidden=true;
  panel.insertBefore(secondary,confirmButton);panel.insertBefore(secondarySuffix,confirmButton);
+ const keypad=createTabletNumericKeypad();let keypadEnabled=false,keypadAvoid=null;
  let fields=null,activeIndex=0;
+ function syncKeypad(){
+  if(keypadEnabled&&!panel.hidden&&floatingToolsMedia.matches)keypad.show({input:activeInput(),confirm,avoid:keypadAvoid});
+  else keypad.hide();
+ }
+ floatingToolsMedia.addEventListener('change',syncKeypad);
  const fieldInputs=[input,secondary];
  for(const el of fieldInputs){
   const hitArea=document.createElement('label');hitArea.className='dynamic-hit-area';hitArea.htmlFor=el.id;
@@ -1598,6 +1661,7 @@ const dynamicInputUI=(()=>{
   if(options.focus&&!panel.hidden)activeInput().focus({preventScroll:true});
  }
  function show(options={}){
+  keypadEnabled=options.tabletKeypad===true;keypadAvoid=options.keypadAvoid||null;
   arcDirection=null;
   panel.classList.toggle('dynamic-compact',options.compact===true);
   confirmButton.hidden=cancelButton.hidden=options.compact===true;
@@ -1615,11 +1679,11 @@ const dynamicInputUI=(()=>{
    window.addEventListener('resize',position);window.addEventListener('scroll',position);
    viewport?.addEventListener('resize',position);viewport?.addEventListener('scroll',position);
   }
-  update(options);
+  syncKeypad();update(options);keypad.position();
  }
  function hide(){
   const restore=panel.contains(document.activeElement);
-  panel.hidden=true;
+  panel.hidden=true;keypadEnabled=false;keypad.hide();
   window.removeEventListener('keydown',keyboard,true);
   onConfirm=null;onCancel=null;validateValue=null;clearError();
   fields=null;for(const el of fieldInputs)delete el.dataset.editing;
@@ -1722,7 +1786,9 @@ function lockSupportNumericAngle(value){
  // Same SVG +Y convention and canonical range as the pure direction solver.
  const wrapped=value%360,r=wrapped*Math.PI/180;
  const angle=solveSupportAngle({x:0,y:0},{x:-Math.sin(r),y:Math.cos(r)});
- supportReferenceFrame();session.angle.mode='locked';session.angle.value=angle;session.previewAngle=supportGlobalAngle();render();
+ supportReferenceFrame();session.angle.mode='locked';session.angle.value=angle;session.previewAngle=supportGlobalAngle(true);
+ if(lockedPenSupportPlacement())freezePenSupportAngle(session.previewAngle);
+ render();
 }
 function beginSupportNumericInput(e){
  endSupportNumericInput();
@@ -1733,11 +1799,17 @@ function beginSupportNumericInput(e){
  armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onCancel:cancelToSelection});
  supportNumericSession={session,capture:dynamicNumericCapture,touch:e.pointerType==='touch',initialAnchor:{clientX:e.clientX,clientY:e.clientY},cursorAnchor:{clientX:e.clientX,clientY:e.clientY}};
  showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onConfirm:dynamicNumericCapture.confirm,onCancel:dynamicNumericCapture.cancel,
-  fields:{label:'G\u00f3c',values:[session.angle],validate:()=>true,onConfirm:(_,value)=>lockSupportNumericAngle(value),
-   onKeyboardCommit:()=>commitSupportPlacement(supportGlobalAngle())}});
+  tabletKeypad:mode==='support'&&['pin','pin-plain','roller','roller-plain','fixed'].includes(session.supportSubtype),keypadAvoid:()=>[penConnectionBubble],
+  fields:{label:'G\u00f3c',values:[session.angle],validate:()=>true,onConfirm:(_,value)=>{
+    lockSupportNumericAngle(value);
+    if(!supportNumericSession?.deferPenConfirmation)confirmPenSupportAngle();
+   },onKeyboardCommit:()=>{if(!confirmPenSupportAngle())commitSupportPlacement(supportGlobalAngle())}}});
 }
-function confirmSupportNumericInput(){
- return !supportNumericSession||dynamicInputUI.confirmPending();
+function confirmSupportNumericInput(deferPenConfirmation=false){
+ const numeric=supportNumericSession;if(!numeric)return true;
+ // Canvas contact validates the field now; its matching release exposes the bubble.
+ numeric.deferPenConfirmation=deferPenConfirmation;
+ try{return dynamicInputUI.confirmPending()}finally{delete numeric.deferPenConfirmation}
 }
 function updateSupportNumericInput(e){
  if(!supportNumericSession)return;
