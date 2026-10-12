@@ -114,7 +114,7 @@ button.icon-button.active,button.icon-button[aria-pressed="true"]{background:#cc
 #tabletNumericKeypad [data-numeric-key="0"]{grid-column:span 2}
 #tabletNumericKeypad [data-numeric-key="confirm"]{color:#087d95}
 #tabletNumericKeypad .tablet-text-rollers{display:flex;gap:4px;flex:none;height:204px}
-#tabletNumericKeypad .tablet-text-roller{width:44px;height:100%;overflow-y:auto;scrollbar-width:none;overscroll-behavior:contain;touch-action:pan-y;user-select:none}
+#tabletNumericKeypad .tablet-text-roller{flex:none;width:44px;height:204px;overflow-y:auto;scrollbar-width:none;overscroll-behavior:contain;touch-action:pan-y;user-select:none}
 #tabletNumericKeypad .tablet-text-roller::-webkit-scrollbar{display:none}
 #tabletNumericKeypad .tablet-text-roller button{display:block;width:44px;height:44px;min-height:44px;border:0;box-shadow:none;background:transparent;touch-action:pan-y}
 #tabletNumericKeypad.tablet-text-mode [data-numeric-key="0"]{grid-column:auto}

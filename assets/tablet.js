@@ -1514,12 +1514,15 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
   capsButton.setAttribute('aria-pressed',String(caps));
  }
  for(const characters of characterGroups){
-  const roller=document.createElement('div');roller.className='tablet-text-roller';rollers.append(roller);
+  const roller=document.createElement('div');roller.className='tablet-text-roller';
+  rollers.append(roller);
   for(const char of characters){
    const button=document.createElement('button');button.type='button';button.dataset.textCharacter=char;button.textContent=char;
    button.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();if(owner?.text)insertText(button.textContent)});roller.append(button);
   }
  }
+ const spaceButton=document.createElement('button');spaceButton.type='button';spaceButton.dataset.numericKey='space';spaceButton.textContent='␣';spaceButton.title='Dấu cách (Space)';spaceButton.setAttribute('aria-label','Space');
+ spaceButton.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();if(owner?.text)insertText(' ')});spaceButton.hidden=true;
  let owner=null,previousInputMode=null,viewport=null;
  // Recheck only overlay visibility transitions, never canvas/camera movement.
  const overlayObserver=new MutationObserver(()=>position());
@@ -1546,9 +1549,12 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
  function show(adapter){
   if(owner?.input===adapter.input&&owner.text===adapter.text){owner=adapter;return}
   hide();owner=adapter;previousInputMode=owner.input.getAttribute('inputmode');owner.input.inputMode='none';panel.hidden=false;
-  panel.classList.toggle('tablet-text-mode',!!owner.text);rollers.hidden=capsButton.hidden=!owner.text;
+  panel.classList.toggle('tablet-text-mode',!!owner.text);rollers.hidden=capsButton.hidden=spaceButton.hidden=!owner.text;
+  const signButton=numbers.querySelector('[data-numeric-key="sign"]'),clearButton=numbers.querySelector('[data-numeric-key="clear"]');
+  signButton.hidden=!!owner.text;
+  numbers.insertBefore(clearButton,owner.text?signButton:numbers.querySelector('[data-numeric-key="confirm"]'));
   panel.setAttribute('aria-label',owner.text?'Bàn phím chữ và số':'Bàn phím số');
-  if(owner.text){caps=true;updateCaps();for(const roller of rollers.children)roller.scrollTop=0}
+  if(owner.text){caps=true;updateCaps();for(const roller of rollers.querySelectorAll('.tablet-text-roller'))roller.scrollTop=0}
   for(const el of owner.avoid?.()||[])if(el)overlayObserver.observe(el,{attributes:true,attributeFilter:['hidden']});
   viewport=window.visualViewport;window.addEventListener('resize',position);window.addEventListener('scroll',position);
   viewport?.addEventListener('resize',position);viewport?.addEventListener('scroll',position);position();
@@ -1591,7 +1597,7 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
   button.title=title;button.setAttribute('aria-label',title);button.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();press(key)});numbers.append(button);
  }
  const capsButton=document.createElement('button');capsButton.type='button';capsButton.dataset.numericKey='caps';capsButton.textContent='⇪';capsButton.title='Caps Lock';capsButton.setAttribute('aria-label','Caps Lock');capsButton.hidden=true;
- capsButton.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();press('caps')});numbers.insertBefore(capsButton,numbers.querySelector('[data-numeric-key="clear"]'));
+ capsButton.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();press('caps')});numbers.insertBefore(capsButton,numbers.querySelector('[data-numeric-key="clear"]'));numbers.insertBefore(spaceButton,numbers.querySelector('[data-numeric-key="confirm"]'));
  // Native clicks activate once; pressing a key must not focus it or reach the canvas.
  for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])panel.addEventListener(type,e=>{e.stopPropagation();if(type==='pointerdown')e.preventDefault()});
  // A drag can end with a compatibility click on the roller container rather than a key.
