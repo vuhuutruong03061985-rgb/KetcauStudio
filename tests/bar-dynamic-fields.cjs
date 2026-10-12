@@ -4,7 +4,7 @@ const {chromium}=require('../.test-tools/node_modules/playwright');const {pathTo
   const context=await browser.newContext({hasTouch:touch,viewport:{width:1400,height:1000}}),p=await context.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));
   await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof beginBarNumericInput==='function');
   const coords=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});
-  const click=async(x,y)=>{const q=await coords(x,y);if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
+  const click=async(x,y)=>{const q=await coords(x,y);if(touch){await p.touchscreen.tap(q.x,q.y);const bubble=p.locator('#penConnectionBubble');if(await bubble.isVisible())await bubble.locator('[data-pen-connection-action=confirm]').tap();else if(await p.evaluate(()=>canFinishLockedBar()))await p.locator('#tabletNumericKeypad [data-numeric-key=confirm]').tap()}else await p.mouse.click(q.x,q.y)};
   const move=async(x,y)=>{const q=await coords(x,y);await p.mouse.move(q.x,q.y)};
   const start=async()=>{await p.evaluate(()=>{document.activeElement.blur();items=[];past=[];future=[];geometryScale=100;setMode('bar')});await click(300,300)};
   const state=()=>p.evaluate(()=>barNumericSession?.state);
@@ -23,8 +23,8 @@ const {chromium}=require('../.test-tools/node_modules/playwright');const {pathTo
   for(const value of ['-30','90','180','270','360','450']){await angle.fill(value);await p.keyboard.press('Tab');await p.keyboard.press('Shift+Tab');assert.equal((await state()).angle.value,Number(value))}
   await move(800,300);assert.equal((await state()).distance.mode,'live');assert(Math.abs((await state()).distance.value-5)<.001);assert.equal((await state()).angle.value,450);
   if(touch){await angle.tap();const box=await p.locator('#dynamicInput').boundingBox();await p.locator('#drawing').dispatchEvent('pointermove',{pointerType:'touch',clientX:400,clientY:400});const after=await p.locator('#dynamicInput').boundingBox();assert.equal(after.x,box.x);assert.equal(after.y,box.y)}
-  // Mouse anchor follows the cursor while retaining the angle constraint.
-  await move(700,200);const a=await p.locator('#dynamicInput').boundingBox();await move(600,400);const b=await p.locator('#dynamicInput').boundingBox();assert(a.x!==b.x||a.y!==b.y);assert.equal((await state()).angle.value,450);
+  // PC mouse follows the cursor; a tablet-owned focused edit stays stationary.
+  await move(700,200);const a=await p.locator('#dynamicInput').boundingBox();await move(600,400);const b=await p.locator('#dynamicInput').boundingBox();if(touch)assert.deepEqual([b.x,b.y],[a.x,a.y]);else assert(a.x!==b.x||a.y!==b.y);assert.equal((await state()).angle.value,450);
   // The existing click path now commits the solver endpoint and resets constraints.
   await click(600,400);assert.equal((await state()).distance.mode,'live');assert.equal((await state()).angle.mode,'live');assert.deepEqual(await p.evaluate(()=>[items[0].x,items[0].y,items[0].x2,items[0].y2].map(Math.round)),[300,300,300,-16]);assert.equal(await p.evaluate(()=>past.length),1);
   await start();await p.evaluate(()=>setMode('thin'));assert.equal(await state(),undefined);assert(await p.locator('#dynamicInput').isHidden());

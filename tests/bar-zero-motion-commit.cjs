@@ -33,6 +33,7 @@ const contentTypes={'.html':'text/html','.js':'text/javascript','.css':'text/css
    },{modeValue,zoom});
    const q=await p.evaluate(()=>{const q=new DOMPoint(100,100).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}});
    if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y);
+   if(touch&&!baseline&&modeValue==='bar')await p.locator('#penConnectionBubble [data-pen-connection-action=confirm]').tap();
    await p.evaluate(()=>{window.zeroMoves=0;svg.addEventListener('pointermove',()=>zeroMoves++,{signal:(window.zeroController?.abort(),window.zeroController=new AbortController()).signal})});
   };
   const lock=async(id,value)=>{await p.locator('#'+id).fill(String(value));await p.keyboard.press('Tab')};
@@ -65,7 +66,15 @@ const contentTypes={'.html':'text/html','.js':'text/javascript','.css':'text/css
   await start();
   const live=await p.evaluate(()=>{const q=new DOMPoint(200,150).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}});
   await p.locator('#drawing').dispatchEvent('pointermove',{pointerType:touch?'touch':'mouse',clientX:live.x,clientY:live.y});
-  await p.keyboard.press('Enter');const liveBar=await p.evaluate(()=>items[0]);near(liveBar.x2,200);near(liveBar.y2,150);
+  await p.keyboard.press('Enter');
+  if(touch&&!baseline){
+   assert.equal(await p.evaluate(()=>items.length),0,'Hover alone does not confirm a tablet endpoint');
+   await p.touchscreen.tap(live.x,live.y);
+   await p.evaluate(()=>window.liveContactCandidate={...penConnectionPlacement.lockedCandidate});
+   const acquired=await p.evaluate(()=>liveContactCandidate);assert(Math.abs(acquired.x-200)<1e-4&&Math.abs(acquired.y-150)<1e-4);
+   await p.locator('#penConnectionBubble [data-pen-connection-action=confirm]').tap();
+  }
+  const liveBar=await p.evaluate(()=>items[0]),expectedLive=touch&&!baseline?await p.evaluate(()=>liveContactCandidate):{x:200,y:150};near(liveBar.x2,expectedLive.x);near(liveBar.y2,expectedLive.y);
   await start('thin');await p.locator('#dynamicInputValue').fill('110');await p.keyboard.press('Enter');
   assert.equal(await p.evaluate(()=>items.length),0);assert.equal(await p.evaluate(()=>thinNumericSession.endpoint),null);
   const q=await p.evaluate(()=>{const q=new DOMPoint(200,100).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}});
@@ -81,6 +90,8 @@ const contentTypes={'.html':'text/html','.js':'text/javascript','.css':'text/css
     window.previousBarSession=barNumericSession;window.previousBarFirst=first;
     window.beforeFinishCounts={objects:items.length,history:past.length};document.activeElement?.blur();
    });
+   // Exercise the preserved external Finish fallback when the Bar keypad is unavailable.
+   if(touch)await p.evaluate(()=>{tabletInputKeypad.hide();updateCommandControls()});
    const control=p.locator('#commandFinish'),available=await control.isVisible();
    const diagnostic=await p.evaluate(()=>({hidden:commandFinish.hidden,disabled:commandFinish.disabled,
     controlsHidden:commandControls.hidden,objects:items.length,history:past.length,moves:zeroMoves}));

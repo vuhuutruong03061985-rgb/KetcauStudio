@@ -4,7 +4,7 @@ const {chromium}=require('../.test-tools/node_modules/playwright');const {pathTo
   const c=await browser.newContext({hasTouch:touch,viewport:{width:1400,height:1000}}),p=await c.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());
   await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof beginBarNumericInput==='function');
   const client=(x,y)=>p.evaluate(({x,y})=>{const p=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:p.x,y:p.y}},{x,y});
-  const click=async(x,y)=>{const q=await client(x,y);if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
+  const click=async(x,y)=>{const q=await client(x,y);if(touch){await p.touchscreen.tap(q.x,q.y);const bubble=p.locator('#penConnectionBubble');if(await bubble.isVisible())await bubble.locator('[data-pen-connection-action=confirm]').tap();else if(await p.evaluate(()=>canFinishLockedBar()))await p.locator('#tabletNumericKeypad [data-numeric-key=confirm]').tap()}else await p.mouse.click(q.x,q.y)};
   const start=async()=>{await p.evaluate(()=>{document.activeElement.blur();items=[];past=[];future=[];geometryScale=100;setMode('bar');savedDocument=documentText()});await click(300,300)};
   const lock=async(id,value)=>{await p.locator('#'+id).fill(String(value));await p.keyboard.press('Tab');await p.keyboard.press('Shift+Tab')};
   const near=(a,b)=>assert(Math.abs(a-b)<.001,`${a} != ${b}`);

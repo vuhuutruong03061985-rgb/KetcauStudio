@@ -5,7 +5,7 @@ const {chromium}=require('../.test-tools/node_modules/playwright');const {pathTo
   await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof beginBarNumericInput==='function');
   const event=(x,y)=>p.evaluate(({x,y})=>{const p=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {clientX:p.x,clientY:p.y}},{x,y});
   const move=async(x,y)=>p.locator('#drawing').dispatchEvent('pointermove',{...await event(x,y),pointerType:touch?'touch':'mouse'});
-  const start=async()=>{await p.evaluate(()=>{document.activeElement.blur();items=[];past=[];future=[];geometryScale=100;setMode('bar');camera={x:0,y:0,w:1100,h:720};applyCamera()});const e=await event(300,300);if(touch)await p.touchscreen.tap(e.clientX,e.clientY);else await p.mouse.click(e.clientX,e.clientY);await move(500,300)};
+  const start=async()=>{await p.evaluate(()=>{document.activeElement.blur();items=[];past=[];future=[];geometryScale=100;setMode('bar');camera={x:0,y:0,w:1100,h:720};applyCamera()});const e=await event(300,300);if(touch){await p.touchscreen.tap(e.clientX,e.clientY);await p.locator('#penConnectionBubble [data-pen-connection-action=confirm]').tap()}else await p.mouse.click(e.clientX,e.clientY);await move(500,300)};
   const snapshot=()=>p.evaluate(()=>({doc:documentText(),past:copy(past),future:copy(future),draft:localStorage.getItem(draftKey),saved:savedDocument}));
   const endpoint=()=>p.evaluate(()=>barNumericSession.endpoint);
   const lock=async(id,value)=>{await p.locator('#'+id).fill(value);await p.keyboard.press('Tab');await p.keyboard.press('Shift+Tab')};

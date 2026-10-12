@@ -2,7 +2,7 @@ const {chromium}=require('../.test-tools/node_modules/playwright');const {pathTo
 (async()=>{const b=await chromium.launch({channel:'msedge',headless:true});try{
 for(const touch of [false,true]){
  const c=await b.newContext({hasTouch:touch,viewport:{width:1400,height:1000}}),p=await c.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof beginThinNumericInput==='function');
- const click=async(x,y)=>{const q=await p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
+ const click=async(x,y)=>{const q=await p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});if(touch){await p.touchscreen.tap(q.x,q.y);if(await p.evaluate(()=>mode==='bar')){const bubble=p.locator('#penConnectionBubble');if(await bubble.isVisible())await bubble.locator('[data-pen-connection-action=confirm]').tap();else if(await p.evaluate(()=>canFinishLockedBar()))await p.locator('#tabletNumericKeypad [data-numeric-key=confirm]').tap()}}else await p.mouse.click(q.x,q.y)};
  const start=async mode=>{await p.evaluate(mode=>{document.activeElement.blur();items=[];past=[];future=[];setMode(mode)},mode);await click(300,300);if(mode==='thin')await p.evaluate(()=>openArmedDynamicInput())};
  for(const mode of ['bar','thin']){
  await start(mode);assert.equal(await p.locator('#dynamicInput button:visible').count(),0);assert.equal(await p.locator('#dynamicInput input:visible').count(),mode==='bar'?2:1);

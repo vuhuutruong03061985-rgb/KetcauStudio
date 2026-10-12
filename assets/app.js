@@ -811,7 +811,7 @@ function renderThinConstraintPreview(){
 function renderBarConstraintPreview(){
  svg.querySelector('[data-bar-preview]')?.remove();
  if(mode!=='bar'||!first)return;
- const endpoint=typeof barNumericSession!=='undefined'&&barNumericSession?barNumericSession.endpoint:hover;
+ const endpoint=penConnectionPlacement?.type==='bar'?penConnectionPlacement.lockedCandidate:typeof barNumericSession!=='undefined'&&barNumericSession?barNumericSession.endpoint:hover;
  if(!endpoint)return;
  const g=el('g',{'data-bar-preview':'true','pointer-events':'none',stroke:'#087d95','stroke-dasharray':'5 4'});
  line(g,first.x,first.y,endpoint.x,endpoint.y);
@@ -947,6 +947,15 @@ let penConnectionButtonPointerId=null,penConnectionSuppressClick=false;
 function activatePenConnectionButton(action,e){
  if(penConnectionBubble.hidden)return;
  const placement=penConnectionPlacement;
+ if(placement?.type==='bar'){
+  if(mode!=='bar'||placement.first!==first||penConnectionPlacementBlocked(e))return;
+  const {lockedCandidate:candidate,anchor,first:establishedStart}=placement;
+  clearTabletBarCandidate(); // Retire ownership before creation: compatibility clicks cannot repeat it.
+  if(action==='cancel'){render();return}
+  if(establishedStart)commitBarCandidate(candidate,anchor,{resolved:true});
+  else{first={...candidate};beginBarNumericInput(anchor);render()}
+  return;
+ }
  if(placement?.type==='force'){
   if(placement.type!==mode||!penConnectionConfirming(placement)||penConnectionPlacementBlocked(e))return;
   if(action==='cancel'&&placement.state==='anchor-confirming'){clearPenConnectionPlacement();return}
@@ -1043,14 +1052,22 @@ function positionPenConnectionBubble(){
  let bx=p.x+gap,by=p.y-height-margin;
  if(bx+width>right-margin)bx=p.x-gap-width;
  if(by<top+margin)by=p.y+margin;
+ if(penConnectionPlacement.type==='bar'){
+  const clamp=([x,y])=>[Math.max(left+margin,Math.min(x,right-width-margin)),Math.max(top+margin,Math.min(y,bottom-height-margin))];
+  const obstacles=[$('dynamicInput'),$('tabletNumericKeypad'),$('commandControls')].filter(node=>node&&!node.hidden).map(node=>node.getBoundingClientRect());
+  const overlap=([x,y])=>obstacles.reduce((sum,r)=>sum+Math.max(0,Math.min(x+width,r.right+margin)-Math.max(x,r.left-margin))*Math.max(0,Math.min(y+height,r.bottom+margin)-Math.max(y,r.top-margin)),0);
+  const positions=[[bx,by],[p.x-gap-width,p.y-height-margin],[p.x+gap,p.y+margin],[p.x-gap-width,p.y+margin],[left+margin,top+margin],[right-width-margin,bottom-height-margin]].map(clamp);
+  positions.sort((a,b)=>overlap(a)-overlap(b));[bx,by]=positions[0];
+ }
  penConnectionBubble.style.left=Math.max(left+margin,Math.min(bx,right-width-margin))+'px';
  penConnectionBubble.style.top=Math.max(top+margin,Math.min(by,bottom-height-margin))+'px';
 }
 function clearPenConnectionPlacement(preservePlacementSession=false){
+ if(penConnectionPlacement?.type==='bar')for(const selector of ['[data-bar-preview]','[data-extra-snap-hint]','[data-midpoint-hint]','[data-endpoint-hint]','[data-intersection-hint]'])svg.querySelector(selector)?.remove();
  const support=penConnectionPlacement?.type==='support';
  const force=penConnectionPlacement?.type==='force';
  if(penConnectionPlacement?.type==='person')clearPersonPreview(true);
- penConnectionPlacement=null;penConnectionBubble.hidden=true;penConnectionLockHalo.hidden=true;svg.querySelector('[data-pen-connection-preview]')?.remove();
+ penConnectionPlacement=null;penConnectionBubble.hidden=true;penConnectionLockHalo.hidden=true;svg.querySelector('[data-pen-connection-preview]')?.remove();svg.querySelector('[data-bar-point]')?.remove();
  if(support&&!preservePlacementSession)clearSupportPlacement();
  if(force&&!preservePlacementSession)cancelLoadPlacement();
 }
@@ -1060,7 +1077,12 @@ function paintPenConnectionPreview(){
  if(!penConnectionPlacement||penConnectionPlacement.type!==mode)return;
  const {type,state,hoverCandidate,lockedCandidate}=penConnectionPlacement;
  const {x,y}=state==='tracking'?hoverCandidate:lockedCandidate;
- if(type==='support'){
+ if(type==='bar'){
+  svg.querySelector('[data-bar-point]')?.remove();
+  const g=el('g',{'data-bar-point':'true','pointer-events':'none'});
+  el('circle',{cx:x,cy:y,r:3/Math.abs(svg.getScreenCTM().a),fill:'#087d95'},g);
+  if(typeof paintFrozenBarSnap==='function')paintFrozenBarSnap();
+ }else if(type==='support'){
   if(state==='tracking'){
    const g=el('g',{'data-support-preview':'true','pointer-events':'none',stroke:'#087d95',fill:'none',opacity:0.7});
    drawSupport(g,{x,y,support:penConnectionPlacement.supportSubtype,direction:penConnectionPlacement.direction});
@@ -1110,6 +1132,7 @@ function handlePenSupportPlacement(e){
  render();return true;
 }
 function handlePenConnectionPlacement(e){
+ if(handleTabletBarPlacement(e))return true;
  if(!['hinge','weld','person','support'].includes(mode))return false;
  if(mode==='support'&&!['pin','pin-plain','roller','roller-plain','fixed'].includes($('support').value))return false;
  if(e.pointerType!=='pen'){
@@ -1134,7 +1157,34 @@ function handlePenConnectionPlacement(e){
  paintPenConnectionPreview();
  return true;
 }
+// Tablet Bar adapts point acquisition only; solvers, committed items and chaining stay shared.
+function tabletBarInteraction(e){return mode==='bar'&&matchMedia('(any-pointer: coarse)').matches&&['pen','touch'].includes(e.pointerType)}
+function clearTabletBarCandidate(){
+ if(penConnectionPlacement?.type!=='bar')return;
+ clearPenConnectionPlacement();hover=null;
+}
+function handleTabletBarPlacement(e){
+ if(mode!=='bar')return false;
+ if(penConnectionButtonPointerId!==null||penConnectionPlacement?.type==='bar')return true;
+ if(!tabletBarInteraction(e))return false;
+ if(penConnectionPlacementBlocked(e)||!svg.contains(document.elementFromPoint(e.clientX,e.clientY)))return true;
+ // Both locks determine an input-derived endpoint: canvas contact never commits this path.
+ if(e.type!=='pointerdown')return canFinishLockedBar();
+ if(e.button!==0||canFinishLockedBar())return true;
+ const acquired=drawingPoint(e),state=barNumericSession?.state;
+ const candidate=first?solveBarEndpoint({startPoint:first,candidatePoint:acquired,geometryScale,
+  distanceMode:state?.distance.mode||'live',distanceValue:state?.distance.value,
+  angleMode:state?.angle.mode||'live',angleValue:state?.angle.value}):acquired;
+ if(!candidate||![candidate.x,candidate.y].every(Number.isFinite)||first&&candidate.x===first.x&&candidate.y===first.y)return true;
+ const snap=constructionSnap(e)||geometricSnap(rawPoint(e));
+ penConnectionPlacement={type:'bar',state:'confirming',first,lockedCandidate:Object.freeze({...candidate}),
+  snapKind:snap&&Math.hypot(snap.point.x-candidate.x,snap.point.y-candidate.y)<1e-8?snap.kind:null,
+  anchor:{clientX:e.clientX,clientY:e.clientY,pointerType:e.pointerType},pointerId:e.pointerId};
+ if(first)hover={...acquired};
+ render();positionPenConnectionBubble();return true;
+}
 function render(clean=false){
+ if(penConnectionPlacement?.type==='bar'&&(mode!=='bar'||penConnectionPlacement.first!==first))clearTabletBarCandidate();
  // A settings redraw must not preserve a Grid marker from an earlier spacing or disabled option.
  if(rigidSnapHint?.kind==='grid'&&(rigidSnapGridSize!==gridSize||!gridSnap(rigidSnapHint.point)))rigidSnapHint=null;
  syncThinReferenceSession();
@@ -1496,10 +1546,10 @@ function extensionPoint(line,boundary,start){
  return {x:ax+t*dx,y:ay+t*dy};
 }
 // Shared click/tap/keyboard path: one solver, object creation and checkpoint.
-function commitBarCandidate(candidate,anchor){
+function commitBarCandidate(candidate,anchor,{resolved=false}={}){
  if(mode!=='bar'||!first)return false;
  let p=candidate;
-if(mode==='bar'&&first&&typeof barNumericSession!=='undefined'&&barNumericSession?.first===first){
+if(!resolved&&mode==='bar'&&first&&typeof barNumericSession!=='undefined'&&barNumericSession?.first===first){
  const state=barNumericSession.state;
  if(state.distance.mode==='locked'||state.angle.mode==='locked'){
   p=solveBarEndpoint({startPoint:first,candidatePoint:p,geometryScale,distanceMode:state.distance.mode,

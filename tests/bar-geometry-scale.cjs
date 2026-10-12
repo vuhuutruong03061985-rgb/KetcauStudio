@@ -16,7 +16,7 @@ const diagnosticCases=[[50,1,0,50,0],[50,1,90,0,-50],[100,1,0,100,0],[50,2,0,100
    const p=await context.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));
    await p.goto(pathToFileURL(path.resolve('index.html')).href);
    const client=q=>p.evaluate(q=>{const c=new DOMPoint(q.x,q.y).matrixTransform(svg.getScreenCTM());return {x:c.x,y:c.y}},q);
-   const click=async q=>{const c=await client(q);if(touch)await p.touchscreen.tap(c.x,c.y);else await p.mouse.click(c.x,c.y)};
+   const click=async q=>{const c=await client(q);if(touch){await p.touchscreen.tap(c.x,c.y);const bubble=p.locator('#penConnectionBubble');if(await bubble.isVisible())await bubble.locator('[data-pen-connection-action=confirm]').tap();else if(await p.evaluate(()=>canFinishLockedBar()))await p.locator('#tabletNumericKeypad [data-numeric-key=confirm]').tap()}else await p.mouse.click(c.x,c.y)};
    const move=async q=>{
     const c=await client(q);
     // Touch hover is emulated; taps/commits use the browser's real touch path.

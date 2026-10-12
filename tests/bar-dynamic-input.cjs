@@ -4,7 +4,7 @@ const {chromium}=require('../.test-tools/node_modules/playwright');const {pathTo
   const c=await b.newContext({hasTouch:touch,viewport:{width:1400,height:1000}}),p=await c.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());
   await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof beginBarNumericInput==='function');
   const point=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});
-  const click=async(x,y)=>{const q=await point(x,y);if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
+  const click=async(x,y)=>{const q=await point(x,y);if(touch){await p.touchscreen.tap(q.x,q.y);const bubble=p.locator('#penConnectionBubble');if(await bubble.isVisible())await bubble.locator('[data-pen-connection-action=confirm]').tap();else if(await p.evaluate(()=>canFinishLockedBar()))await p.locator('#tabletNumericKeypad [data-numeric-key=confirm]').tap()}else await p.mouse.click(q.x,q.y)};
   const armed=()=>p.evaluate(()=>isDynamicNumericInputArmed());
   const reset=()=>p.evaluate(()=>{document.activeElement.blur();items=[];past=[];future=[];setMode('bar');geometryScale=789;saveDraft()});
   await reset();assert.equal(await armed(),false);await click(200,200);assert.equal(await armed(),true);

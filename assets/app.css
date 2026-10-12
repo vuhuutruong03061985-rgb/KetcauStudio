@@ -113,6 +113,7 @@ button.icon-button.active,button.icon-button[aria-pressed="true"]{background:#cc
 #tabletNumericKeypad button{min-width:44px;min-height:48px;margin:0;padding:6px;font-size:20px;touch-action:manipulation}
 #tabletNumericKeypad [data-numeric-key="0"]{grid-column:span 2}
 #tabletNumericKeypad [data-numeric-key="confirm"]{color:#087d95}
+#tabletNumericKeypad [data-numeric-key="exit"]{grid-column:1 / -1;height:44px;min-height:44px}
 #tabletNumericKeypad .tablet-text-rollers{display:flex;gap:4px;flex:none;height:204px}
 #tabletNumericKeypad .tablet-text-roller{flex:none;width:44px;height:204px;overflow-y:auto;scrollbar-width:none;overscroll-behavior:contain;touch-action:pan-y;user-select:none}
 #tabletNumericKeypad .tablet-text-roller::-webkit-scrollbar{display:none}
@@ -140,6 +141,11 @@ button.icon-button.active,button.icon-button[aria-pressed="true"]{background:#cc
 #dynamicInput.dynamic-compact span{font-size:12px}
 @media(pointer:coarse){#dynamicInput.dynamic-compact input{font-size:16px;box-shadow:0 0 0 8px transparent;touch-action:manipulation}}
 #dynamicInput .dynamic-hit-area{display:contents;margin:0}
+#dynamicInput.dynamic-unit-locks{flex-wrap:nowrap}
+#dynamicInput.dynamic-unit-locks .dynamic-hit-area{display:inline-flex;align-items:center;gap:2px}
+#dynamicInput .dynamic-unit-lock{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:18px;flex:0 0 18px;line-height:12px;pointer-events:none}
+#dynamicInput .dynamic-unit-lock[hidden]{display:none}
+#dynamicInput .dynamic-lock-icon{display:block;width:18px;height:18px;flex:none;border:0;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 @media(pointer:coarse){#dynamicInput.dynamic-compact .dynamic-hit-area{display:inline-flex;align-items:center;min-height:44px;min-width:44px;margin:0;cursor:text}#dynamicInput.dynamic-compact .dynamic-hit-area:has(input[hidden]){display:none}}
 /* Scale controls reuse the toolbar icon and floating-panel presentation. */
 #drawingScales{position:fixed;z-index:2000;grid-template-columns:minmax(0,1fr);width:max-content;margin:0;padding:8px 10px;gap:5px;background:white;border:1px solid #cbd6df;border-radius:6px;box-shadow:0 4px 14px #183e5526;overflow:auto}
@@ -181,6 +187,7 @@ main[data-toolbox-mode="auto-hide"] #toolPanel{position:absolute;left:44px;top:v
 #commandControls{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));display:flex;gap:8px;z-index:1500;padding:4px;background:#fff;border:1px solid #bccbd4;border-radius:8px;box-shadow:0 2px 8px #0002}
 #commandControls[hidden],#commandControls button[hidden]{display:none}
 body[data-radial-context="true"] #commandControls{display:none}
+body[data-bar-keypad-commands="true"] #commandControls{display:none}
 #commandControls button{min-width:44px;min-height:44px;font-size:24px;touch-action:manipulation}
 
 /* Tablet branding occupies one row; PWA notices overlay without reducing the canvas. */
