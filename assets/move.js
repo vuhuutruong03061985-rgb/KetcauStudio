@@ -76,27 +76,82 @@ function barRotationHandlePoint(o,pivot){
 }
 function beginBarRotation(e){
  const o=rotationBar();
- if(!o||e.button!==0||e.ctrlKey||e.altKey||panEnabled||gesture)return false;
+ if(!o||e.button!==0||e.ctrlKey||e.altKey||panEnabled||gesture||inlineEditor||document.querySelector('dialog[open]')||dynamicInputUI.isOpen())return false;
  const pivot=objectPivot(o),p=rawPoint(e);
  if(!beginSmartMove(p,e))return false;
  Object.assign(smartMoveSession,{rotating:true,state:'ROTATE_BAR',rotationPivot:Object.freeze(pivot),
   rotationAngle:0,rotationLastAngle:Math.atan2(p.y-pivot.y,p.x-pivot.x),rotationHandle:p,
   rotationPreview:copy(o),valid:true,rotationTablet:['touch','pen'].includes(e.pointerType)});
- svg.setPointerCapture(e.pointerId);render();return true;
+ Object.freeze(smartMoveSession.originals[0]);
+ showRotationNumericInput();svg.setPointerCapture(e.pointerId);render();return true;
+}
+function ownsRotationNumericInput(s=smartMoveSession){return !!s?.rotating&&!!s.rotationNumeric&&dynamicInputUI.owns(s.rotationNumeric.confirm)}
+function rotationPreviewAt(s,angle){
+ const o=s.originals[0],c=s.rotationPivot,a=rotateAround(o,c,angle),b=rotateAround({x:o.x2,y:o.y2},c,angle);
+ return {...o,x:a.x,y:a.y,x2:b.x,y2:b.y};
+}
+function validRotationPreview(o){return [o.x,o.y,o.x2,o.y2].every(v=>Number.isFinite(v)&&Math.abs(v)<=10000)}
+function applyBarRotationAngle(s,angle){
+ s.rotationAngle=angle;s.rotationPreview=rotationPreviewAt(s,angle);s.valid=validRotationPreview(s.rotationPreview);
+}
+// Same sign as R1's Δθ: SVG y grows downward, so positive mathematical
+// counterclockwise input uses a negative SVG rotation. Always solve from originals.
+function normalizeRotationDegrees(value){const angle=value%360;return Object.is(angle,-0)?0:angle}
+function rotationDraftValid(s,value){
+ const text=$('dynamicInputValue').value.trim();
+ return /^[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?$/.test(text)&&Number.isFinite(value)&&validRotationPreview(rotationPreviewAt(s,-normalizeRotationDegrees(value)*Math.PI/180));
+}
+function rotationNumericObstacles(){return [penConnectionBubble,$('tabletNumericKeypad'),$('commandControls'),svg.querySelector('[data-bar-pivot]'),svg.querySelector('[data-bar-rotation-handle]')]}
+function showRotationNumericInput(){
+ const s=smartMoveSession;if(!s?.rotating)return;
+ const numeric=s.rotationNumeric||={field:{mode:'live',value:0},locked:false,confirm:()=>{}};
+ numeric.field.value=-s.rotationAngle*180/Math.PI;
+ const box=svg.getBoundingClientRect();
+ showDynamicInput({compact:true,clientX:box.left+box.width/2,clientY:box.top+12,suffix:'°',tabletKeypad:s.rotationTablet,
+  onConfirm:numeric.confirm,onCancel:()=>{cancelSmartMove();render()},
+  keypadAvoid:()=>[penConnectionBubble,svg.querySelector('[data-bar-pivot]'),svg.querySelector('[data-bar-rotation-handle]')],
+  fields:{values:[numeric.field],label:'Δθ — góc xoay tương đối',displayLabel:'Δθ',labels:['Δθ'],unitLocks:true,keyboardFocusOnly:true,
+   selectionAware:true,keypadOnEdit:true,tabletPlacement:s.rotationTablet,positionAvoid:rotationNumericObstacles,
+   invalidMessage:'Nhập góc Δθ hữu hạn hợp lệ; xác nhận bằng ✓.',validate:(_,value)=>rotationDraftValid(s,value),
+   onEdit:()=>updateCommandControls(),
+   onConfirm:(_,value)=>{
+    if(smartMoveSession!==s)return;
+    const degrees=normalizeRotationDegrees(value);numeric.field.value=degrees;numeric.field.mode='locked';numeric.locked=true;
+    applyBarRotationAngle(s,-degrees*Math.PI/180);releaseSmartMovePointer();clearSmartMovePoint();
+    if(s.rotationTablet)freezeSmartMovePoint('rotation',s.rotationPivot);
+    else{s.pending={kind:'rotation'};s.state='CONFIRM_ROTATION';render()}
+   },
+   onConfirmed:()=>{updateCommandControls();positionPenConnectionBubble();tabletInputKeypad.position()}}});
+}
+function syncRotationNumericInput(s){
+ if(!ownsRotationNumericInput(s))return;
+ if(!s.rotationNumeric.locked)s.rotationNumeric.field.value=-s.rotationAngle*180/Math.PI;
+ updateDynamicInput();tabletInputKeypad.position();
+}
+function rotationHasDraft(s=smartMoveSession){return ownsRotationNumericInput(s)&&dynamicInputUI.hasPendingEdit()}
+function resumeBarRotation(e,s){
+ if(e.button!==0||e.ctrlKey||e.altKey||panEnabled||gesture||s.pointerId!==null)return false;
+ const p=rawPoint(e),c=s.rotationPivot;
+ clearSmartMovePoint();hideDynamicInput();
+ s.rotationNumeric.locked=false;s.rotationNumeric.field.mode='live';s.rotationTablet=['touch','pen'].includes(e.pointerType);
+ s.rotationHandle=rotateAround(p,c,-s.rotationAngle);s.rotationLastAngle=Math.atan2(p.y-c.y,p.x-c.x);
+ s.pointerId=e.pointerId;s.screenStart={x:e.clientX,y:e.clientY};s.state='ROTATE_BAR';
+ showRotationNumericInput();svg.setPointerCapture(e.pointerId);render();return true;
 }
 function updateBarRotation(p){
- const s=smartMoveSession;if(!s?.rotating||s.pending)return;
+ const s=smartMoveSession;if(!s?.rotating||s.pending||s.rotationNumeric?.locked||rotationHasDraft(s))return;
  const c=s.rotationPivot;if(Math.hypot(p.x-c.x,p.y-c.y)<1e-9)return;
  const angle=Math.atan2(p.y-c.y,p.x-c.x),step=angle-s.rotationLastAngle;
  // Accumulate the shortest signed step, keeping continuous feedback across ±π.
- s.rotationAngle+=Math.atan2(Math.sin(step),Math.cos(step));s.rotationLastAngle=angle;
- const o=s.originals[0],a=rotateAround(o,c,s.rotationAngle),b=rotateAround({x:o.x2,y:o.y2},c,s.rotationAngle);
- s.rotationPreview={...o,x:a.x,y:a.y,x2:b.x,y2:b.y};
- s.valid=[a.x,a.y,b.x,b.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=10000);
+ applyBarRotationAngle(s,s.rotationAngle+Math.atan2(Math.sin(step),Math.cos(step)));s.rotationLastAngle=angle;
 }
-function canFinishBarRotation(){return !!smartMoveSession?.rotating&&smartMoveSession.pending?.kind==='rotation'&&!smartMoveSession.rotationTablet}
+function hasBarRotationConfirmation(){return !!smartMoveSession?.rotating&&smartMoveSession.pending?.kind==='rotation'&&!smartMoveSession.rotationTablet}
+function canFinishBarRotation(){return hasBarRotationConfirmation()&&!rotationHasDraft()}
 function commitBarRotation(){
  const s=smartMoveSession;if(!s?.rotating||s.pending?.kind!=='rotation'||!s.valid)return false;
+ if(rotationHasDraft(s)){
+  const input=$('dynamicInputValue');input.setCustomValidity('Xác nhận Δθ bằng ✓ trước khi hoàn tất.');input.reportValidity();return false;
+ }
  if(JSON.stringify(items)!==s.document){cancelSmartMove();render();return false}
  const o=s.originals[0],next=s.rotationPreview,changed=Math.max(Math.hypot(next.x-o.x,next.y-o.y),Math.hypot(next.x2-o.x2,next.y2-o.y2))>1e-9;
  cancelSmartMove();
@@ -117,7 +172,7 @@ function handleBarRotationPointer(e,s){
 function renderBarRotation(){
  const s=smartMoveSession,o=rotationBar();if(!o||s&&!s.rotating)return;
  const pivot=s?.rotating?s.rotationPivot:objectPivot(o),scale=Math.hypot(svg.getScreenCTM().a,svg.getScreenCTM().b)||1;
- const point=s?.rotating?rotateAround(s.rotationHandle,pivot,s.rotationAngle):barRotationHandlePoint(o,pivot);
+ const point=s?.rotating?(s.pending?barRotationHandlePoint(s.rotationPreview,pivot):rotateAround(s.rotationHandle,pivot,s.rotationAngle)):barRotationHandlePoint(o,pivot);
  const g=el('g',{'data-bar-rotation':'true'});
  // PC keeps its existing midpoint Move target; this Pivot marker is display-only.
  if(!tabletPivotInteraction()){
@@ -129,9 +184,10 @@ function renderBarRotation(){
   const a=s.rotationPreview,color=s.valid?'#c66b08':'#b42318';
   line(g,a.x,a.y,a.x2,a.y2,{stroke:color,'stroke-width':3.5,'stroke-dasharray':'6 3','vector-effect':'non-scaling-stroke','pointer-events':'none','data-rotation-preview':'true'});
  }
+ if(s?.rotating)syncRotationNumericInput(s);
  if(!point)return;
  line(g,pivot.x,pivot.y,point.x,point.y,{stroke:'#c66b08','stroke-dasharray':'3 4','vector-effect':'non-scaling-stroke','pointer-events':'none'});
- const h=el('g',{'data-bar-rotation-handle':'true',transform:`translate(${point.x} ${point.y}) scale(${1/scale})`,role:'button','aria-label':'Xoay thanh quanh Pivot',cursor:'grab','pointer-events':s?'none':'all'},g);
+ const h=el('g',{'data-bar-rotation-handle':'true',transform:`translate(${point.x} ${point.y}) scale(${1/scale})`,role:'button','aria-label':s?.pending?'Kéo để mở khóa Δθ và xoay tiếp':'Xoay thanh quanh Pivot',cursor:'grab','pointer-events':s&&!s.pending?'none':'all'},g);
  el('rect',{x:-22,y:-22,width:44,height:44,fill:'transparent','data-rotation-hit':'true'},h);
  el('circle',{r:11,fill:'white',stroke:'#c66b08','stroke-width':2,'pointer-events':'none'},h);
  el('path',{d:'M6 -2A6 6 0 1 0 4 5M2 -3L7 -2L6 -7',fill:'none',stroke:'#c66b08','stroke-width':2,'stroke-linecap':'round','stroke-linejoin':'round','pointer-events':'none'},h);
@@ -322,7 +378,7 @@ function releaseSmartMovePointer(){
 function cancelSmartMove(){
  smartMoveMenuPointer=null;smartMoveMenuClickPointer=null;
  releaseSmartMovePointer();
- const s=smartMoveSession,primary=selected;clearSmartMovePoint();smartMoveSession=null;
+ const s=smartMoveSession,primary=selected;if(ownsRotationNumericInput(s))hideDynamicInput();clearSmartMovePoint();smartMoveSession=null;
  svg.querySelector('[data-move-preview]')?.remove();
  svg.querySelector('[data-bar-rotation]')?.remove();
  if(s?.command&&mode==='move'){setMode('select');updateSelection(s.ids,primary)}
@@ -410,6 +466,7 @@ function freezeSmartMovePoint(kind,point){
  if(kind==='rotation'){s.state='CONFIRM_ROTATION';setSmartMoveBubblePresentation(kind)}
  if(kind==='base'||kind==='pivot'||s.base){s.state=kind==='pivot'?'CONFIRM_PIVOT':kind==='base'?'CONFIRM_BASE_POINT':'CONFIRM_MOVE_WITH_BASE_POINT';setSmartMoveBubblePresentation(kind)}
  penConnectionPlacement={type:'move',state:'confirming',lockedCandidate:Object.freeze({...point}),lockedPointerId:null};
+ if(kind==='rotation')penConnectionPlacement.rotationInput=true;
  penConnectionBubble.hidden=false;positionPenConnectionBubble();render();
 }
 function confirmSmartMovePoint(action){
@@ -428,6 +485,10 @@ function confirmSmartMovePoint(action){
 }
 function handleSmartMovePointer(e){
  let s=smartMoveSession;
+ if(s?.rotating&&e.type==='pointerdown'&&e.target.closest('[data-bar-rotation-handle]')){
+  if(!resumeBarRotation(e,s))return false;
+  e.preventDefault();e.stopImmediatePropagation();return true;
+ }
  if(!s&&e.type==='pointerdown'&&e.target.closest('[data-bar-rotation-handle]')){
   if(!beginBarRotation(e))return false;s=smartMoveSession;
  }
@@ -509,7 +570,7 @@ function renderSmartMove(){
 }
 document.addEventListener('keydown',e=>{
  if(!smartMoveSession||e.isComposing||e.target.matches('input,textarea,select')||e.ctrlKey||e.altKey||e.metaKey||e.key!=='Enter')return;
- e.preventDefault();e.stopImmediatePropagation();if(!e.repeat){if(smartMoveSession.rotating)commitBarRotation();else if(smartMoveSession.pending)confirmSmartMovePoint('confirm');else commitSmartMove()}
+ e.preventDefault();e.stopImmediatePropagation();if(!e.repeat){if(smartMoveSession.rotating){if(!smartMoveSession.rotationTablet)commitBarRotation()}else if(smartMoveSession.pending)confirmSmartMovePoint('confirm');else commitSmartMove()}
 },true);
 for(const type of ['blur','resize','scroll'])window.addEventListener(type,()=>{if(smartMoveSession){cancelSmartMove();render()}},type==='scroll');
  new ResizeObserver(()=>{if(rotationBar()&&!smartMoveSession)render()}).observe(svg);

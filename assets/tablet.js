@@ -1596,7 +1596,7 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
   const rect=panel.getBoundingClientRect(),right=left+width-gap-rect.width,bottom=top+height-gap-rect.height;
   const obstacles=[owner.input.closest('#dynamicInput')||owner.input,...(owner.avoid?.()||[])].filter(el=>el&&!el.hidden&&el.getClientRects().length).map(el=>el.getBoundingClientRect());
   // The Bar-only fifth row must clear the same normal menu envelopes as its editor.
-  const menuSpace=owner.commandExit?tabletBarInputHorizontalBounds(left,width,rect.width):null;
+  const menuSpace=owner.commandExit||owner.reserveMenus?tabletBarInputHorizontalBounds(left,width,rect.width):null;
   const rightX=menuSpace?Math.min(right,menuSpace.max):right,leftX=menuSpace?Math.max(left+gap,menuSpace.min):left+gap;
   const candidates=[[rightX,bottom],[leftX,bottom],[rightX,top+gap],[leftX,top+gap]];
   const overlap=([x,y])=>obstacles.reduce((sum,r)=>sum+Math.max(0,Math.min(x+rect.width,r.right+gap)-Math.max(x,r.left-gap))*Math.max(0,Math.min(y+rect.height,r.bottom+gap)-Math.max(y,r.top-gap)),0);
@@ -1700,10 +1700,11 @@ const dynamicInputUI=(()=>{
  const panel=document.createElement('div');panel.id='dynamicInput';panel.hidden=true;
  const input=document.createElement('input');input.id='dynamicInputValue';input.type='text';input.inputMode='decimal';input.autocomplete='off';input.setAttribute('aria-label','Giá trị');input.setAttribute('aria-describedby','dynamicInputSuffix');
  const suffix=document.createElement('span');suffix.id='dynamicInputSuffix';
+ const fieldLabel=document.createElement('span');fieldLabel.id='dynamicInputLabel';fieldLabel.hidden=true;
  const confirmButton=document.createElement('button');confirmButton.type='button';confirmButton.textContent='✓';confirmButton.setAttribute('aria-label','Xác nhận');
  const cancelButton=document.createElement('button');cancelButton.type='button';cancelButton.textContent='×';cancelButton.setAttribute('aria-label','Hủy');
  input.enterKeyHint='done';
- panel.append(input,suffix,confirmButton,cancelButton);document.body.append(panel);
+ panel.append(fieldLabel,input,suffix,confirmButton,cancelButton);document.body.append(panel);
  const secondary=document.createElement('input');secondary.id='dynamicInputSecondary';secondary.type='text';secondary.inputMode='decimal';secondary.enterKeyHint='done';secondary.autocomplete='off';secondary.hidden=true;
  const secondarySuffix=document.createElement('span');secondarySuffix.id='dynamicInputSecondarySuffix';secondarySuffix.hidden=true;
  panel.insertBefore(secondary,confirmButton);panel.insertBefore(secondarySuffix,confirmButton);
@@ -1711,11 +1712,14 @@ const dynamicInputUI=(()=>{
  let fields=null,activeIndex=0;
  function syncKeypad(){
   syncUnitIndicators();
-  if(keypadEnabled&&!panel.hidden&&floatingToolsMedia.matches){
+  const tablet=keypadEnabled&&!panel.hidden&&floatingToolsMedia.matches;
+  if(tablet){
    // Suppress both paired fields before focus; keypad retargeting must not restore the old field to decimal.
    for(const el of fieldInputs)if(!el.hidden){if(!suppressedModes.has(el))suppressedModes.set(el,el.getAttribute('inputmode'));el.inputMode='none'}
-   keypad.show({input:activeInput(),confirm:confirmKeypad,avoid:keypadAvoid,selectionAware:fields?.tabletBarEdit===true,commandExit:fields?.tabletBarEdit===true?fields.onCommandExit:null,confirmLabel:()=>fields?.canCommit?.()?'✓✓':'✓'});
-  }else{keypad.hide();restoreInputModes()}
+  }
+  if(tablet&&(!fields?.keypadOnEdit||activeInput().dataset.editing)){
+   keypad.show({input:activeInput(),confirm:confirmKeypad,avoid:keypadAvoid,selectionAware:fields?.tabletBarEdit===true||fields?.selectionAware===true,reserveMenus:fields?.tabletPlacement===true,commandExit:fields?.tabletBarEdit===true?fields.onCommandExit:null,confirmLabel:()=>fields?.canCommit?.()?'✓✓':'✓'});
+  }else{keypad.hide();if(!tablet)restoreInputModes()}
  }
  const suppressedModes=new Map();
  function restoreInputModes(){for(const [el,value]of suppressedModes){if(value===null)el.removeAttribute('inputmode');else el.setAttribute('inputmode',value)}suppressedModes.clear()}
@@ -1741,13 +1745,13 @@ const dynamicInputUI=(()=>{
    const {icon,shackle}=unitIndicators[i],editing=!!fieldInputs[i].dataset.editing,locked=field.mode==='locked'&&!editing;
    icon.dataset.lockState=locked?'locked':editing?'editing':'live';
    shackle.setAttribute('d',locked?'M6 9V6a4 4 0 0 1 8 0v3':'M6 9V5a4 4 0 0 1 8 0');
-   icon.setAttribute('aria-label',(i===0?'Chiều dài':'Góc')+': '+(locked?'đã khóa':editing?'đang chỉnh sửa, chưa xác nhận':'trực tiếp, chưa khóa'));
+   icon.setAttribute('aria-label',(fields.labels?.[i]||(i===0?'Chiều dài':'Góc'))+': '+(locked?'đã khóa':editing?'đang chỉnh sửa, chưa xác nhận':'trực tiếp, chưa khóa'));
   });
  }
  function showUnitIndicators(enabled){
   panel.classList.toggle('dynamic-unit-locks',enabled);
   unitIndicators.forEach(({column,icon},i)=>{
-   column.hidden=!enabled;
+   column.hidden=!enabled||!fields?.values[i];
    if(enabled){column.prepend(fieldSuffixes[i]);fieldInputs[i].setAttribute('aria-describedby',fieldSuffixes[i].id+' '+icon.id)}
    else{fieldInputs[i].closest('label').after(fieldSuffixes[i]);if(i===0)input.setAttribute('aria-describedby',suffix.id);else secondary.removeAttribute('aria-describedby')}
   });
@@ -1776,7 +1780,7 @@ const dynamicInputUI=(()=>{
   el.addEventListener('focus',()=>{if(fields){if(!selectField(i)){activeInput().focus({preventScroll:true});return}el.select()}});
   let selectOnRelease=false,editVersion=0;
   el.closest('label').addEventListener('pointerdown',e=>{
-   if(!fields?.tabletBarEdit||!['touch','pen'].includes(e.pointerType))return;
+   if(!(fields?.tabletBarEdit||fields?.selectionAware)||!['touch','pen'].includes(e.pointerType))return;
    editVersion++;
    if(!selectField(i)){e.preventDefault();e.stopPropagation();activeInput().focus({preventScroll:true});return}
    selectOnRelease=!el.dataset.editing;
@@ -1786,7 +1790,7 @@ const dynamicInputUI=(()=>{
    if(selectOnRelease){const editingFields=fields,version=editVersion;selectOnRelease=false;requestAnimationFrame(()=>{if(fields===editingFields&&version===editVersion&&activeInput()===el&&el.dataset.editing){el.select();syncKeypad()}})}
   });
   el.closest('label').addEventListener('pointercancel',()=>{selectOnRelease=false});
-  el.addEventListener('input',()=>{editVersion++;el.setCustomValidity('');el.removeAttribute('aria-invalid');el.dataset.editing='true';syncUnitIndicators();if(fields?.tabletBarEdit){syncKeypad();fields.onEdit?.()}});
+  el.addEventListener('input',()=>{editVersion++;el.setCustomValidity('');el.removeAttribute('aria-invalid');el.dataset.editing='true';syncUnitIndicators();if(fields?.tabletBarEdit||fields?.selectionAware){syncKeypad();fields.onEdit?.()}});
   el.addEventListener('keydown',e=>e.stopPropagation());el.addEventListener('keyup',e=>e.stopPropagation());
  });
  let arcDirection=null;
@@ -1797,7 +1801,7 @@ const dynamicInputUI=(()=>{
   // One comma is a decimal separator; mixed/repeated separators remain invalid.
   const target=activeInput(),text=target.value.trim().replace(',','.'),value=Number(text);
   if(!text||!Number.isFinite(value)||(validateValue&&validateValue(value)===false)||(fields&&fields.validate(activeIndex,value)===false)){
-   target.setCustomValidity('Nhập số hữu hạn hợp lệ; chiều dài phải lớn hơn 0.');target.setAttribute('aria-invalid','true');target.reportValidity();return;
+   target.setCustomValidity(fields?.invalidMessage||'Nhập số hữu hạn hợp lệ; chiều dài phải lớn hơn 0.');target.setAttribute('aria-invalid','true');target.reportValidity();return;
   }
   if(fields){fields.onConfirm(activeIndex,value);delete target.dataset.editing;clearError();syncFields();target.select();syncKeypad();fields?.onConfirmed?.();return true}
   const callback=onConfirm;hide();callback?.(value);return true;
@@ -1806,6 +1810,7 @@ const dynamicInputUI=(()=>{
  function cancel(){if(panel.hidden)return;const callback=onCancel;hide();callback?.()}
  function keyboard(e){
   if(panel.hidden||document.querySelector('dialog[open]')||inlineEditor||(!panel.contains(e.target)&&e.target!==document.body&&e.target!==document.documentElement))return;
+  if(fields?.keyboardFocusOnly&&!panel.contains(e.target))return;
   if(e.key!=='Enter'&&e.key!=='Escape'&&!(fields&&e.key==='Tab'))return;
   e.stopImmediatePropagation();
   if(e.isComposing||e.keyCode===229)return;
@@ -1827,7 +1832,7 @@ const dynamicInputUI=(()=>{
   if(panel.hidden)return;
   const vv=window.visualViewport,valid=vv&&[vv.width,vv.height,vv.offsetLeft,vv.offsetTop].every(Number.isFinite)&&vv.width>0&&vv.height>0;
   const left=valid?vv.offsetLeft:0,top=valid?vv.offsetTop:0,width=valid?vv.width:innerWidth,height=valid?vv.height:innerHeight;
-  const tabletBar=fields?.tabletBarEdit===true&&floatingToolsMedia.matches,viewportKey=[left,top,width,height].join(',');
+  const tabletBar=(fields?.tabletBarEdit===true||fields?.tabletPlacement===true)&&floatingToolsMedia.matches,viewportKey=[left,top,width,height].join(',');
   // State/hover refreshes must not move a tablet typing target. A new viewport
   // still needs a safe placement, without altering the focused field or draft.
   if(tabletBar&&positionedViewport===viewportKey&&fieldInputs.some(el=>el.dataset.editing||el===document.activeElement))return;
@@ -1840,8 +1845,17 @@ const dynamicInputUI=(()=>{
   let panelLeft=clamp(px,left+mx,left+width-mx-rect.width);
   const menuSpace=tabletBar?tabletBarInputHorizontalBounds(left,width,rect.width):null;
   if(menuSpace)panelLeft=clamp(panelLeft,menuSpace.min,menuSpace.max);
+  let panelTop=clamp(py,top+my,top+height-my-rect.height);
+  if(fields?.positionAvoid){
+   const area=svg.getBoundingClientRect(),obstacles=fields.positionAvoid().filter(node=>node&&!node.hidden&&node.getClientRects().length).map(node=>node.getBoundingClientRect());
+   const ys=[panelTop,Math.max(top+my,area.top+8),Math.min(top+height-my,area.bottom)-rect.height-8];
+   const xs=[panelLeft,menuSpace?.min??left+mx,menuSpace?.max??left+width-mx-rect.width];
+   const candidates=xs.flatMap(x=>ys.map(y=>[clamp(x,left+mx,left+width-mx-rect.width),clamp(y,top+my,top+height-my-rect.height)]));
+   const overlap=([x,y])=>obstacles.reduce((sum,r)=>sum+Math.max(0,Math.min(x+rect.width,r.right+8)-Math.max(x,r.left-8))*Math.max(0,Math.min(y+rect.height,r.bottom+8)-Math.max(y,r.top-8)),0);
+   candidates.sort((a,b)=>overlap(a)-overlap(b));[panelLeft,panelTop]=candidates[0];
+  }
   panel.style.left=panelLeft+'px';
-  panel.style.top=clamp(py,top+my,top+height-my-rect.height)+'px';
+  panel.style.top=panelTop+'px';
   positionedViewport=viewportKey;
  }
  function update(options={}){
@@ -1863,6 +1877,7 @@ const dynamicInputUI=(()=>{
   panel.classList.toggle('dynamic-compact',options.compact===true);
   confirmButton.hidden=cancelButton.hidden=options.compact===true;
   fields=options.fields||null;activeIndex=0;validateValue=typeof options.validateValue==='function'?options.validateValue:null;
+  fieldLabel.textContent=fields?.displayLabel||'';fieldLabel.hidden=!fieldLabel.textContent;
   for(const el of fieldInputs)delete el.dataset.editing;
   showUnitIndicators(fields?.unitLocks===true);
   secondary.hidden=secondarySuffix.hidden=!fields||fields.values.length<2;
@@ -2278,12 +2293,14 @@ commandCancel.onclick=cancelActiveCommand;commandFinish.onclick=finishActiveComm
 function updateCommandControls(){
  const touch=matchMedia('(any-pointer: coarse)').matches;
  const rotation=typeof canFinishBarRotation==='function'&&canFinishBarRotation();
+ const rotationSession=typeof hasBarRotationConfirmation==='function'&&hasBarRotationConfirmation();
  const editing=inlineEditor||document.querySelector('dialog[open]')||document.activeElement?.matches('input,textarea,select')||document.activeElement?.isContentEditable;
- const active=mode!=='select'||mirrorSelecting||rotation;
+ const active=mode!=='select'||mirrorSelecting||rotationSession;
  const lockedBar=canFinishLockedBar();
  const finish=rotation||lockedBar||mode==='section'&&!sectionPending&&sectionPoints.length>=2||mode==='rigidRegion'&&rigidPoints.length>=3||mode==='hatch'&&hatchPoints.length>=3||mirrorSelecting&&selectedObjectIds().size>0;
  const barInputEditing=lockedBar&&barNumericSession?.tablet&&!inlineEditor&&!document.querySelector('dialog[open]')&&$('dynamicInput').contains(document.activeElement);
- commandControls.hidden=(!touch&&!lockedBar&&!rotation)||!!editing&&!barInputEditing||!active;
+ const rotationInputEditing=rotationSession&&typeof ownsRotationNumericInput==='function'&&ownsRotationNumericInput()&&!inlineEditor&&!document.querySelector('dialog[open]')&&$('dynamicInput').contains(document.activeElement);
+ commandControls.hidden=(!touch&&!lockedBar&&!rotationSession)||!!editing&&!barInputEditing&&!rotationInputEditing||!active;
  commandFinish.hidden=!finish;
  // Keep clear of the existing numeric editor; do not create a second confirmation UI.
  const input=$('dynamicInput');

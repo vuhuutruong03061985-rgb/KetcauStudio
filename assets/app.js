@@ -1074,9 +1074,10 @@ function positionPenConnectionBubble(){
  let bx=p.x+gap,by=p.y-height-margin;
  if(bx+width>right-margin)bx=p.x-gap-width;
  if(by<top+margin)by=p.y+margin;
- if(penConnectionPlacement.type==='bar'){
-  const clamp=([x,y])=>[Math.max(left+margin,Math.min(x,right-width-margin)),Math.max(top+margin,Math.min(y,bottom-height-margin))];
-  const obstacles=[$('dynamicInput'),$('tabletNumericKeypad'),$('commandControls')].filter(node=>node&&!node.hidden).map(node=>node.getBoundingClientRect());
+ if(penConnectionPlacement.type==='bar'||penConnectionPlacement.rotationInput){
+  const rotation=penConnectionPlacement.rotationInput,space=rotation&&typeof tabletBarInputHorizontalBounds==='function'?tabletBarInputHorizontalBounds(left,right-left,width):null;
+  const clamp=([x,y])=>[Math.max(space?.min??left+margin,Math.min(x,space?.max??right-width-margin)),Math.max(top+margin,Math.min(y,bottom-height-margin))];
+  const obstacles=[$('dynamicInput'),$('tabletNumericKeypad'),$('commandControls'),...(rotation?[svg.querySelector('[data-bar-pivot]'),svg.querySelector('[data-bar-rotation-handle]')]:[])].filter(node=>node&&!node.hidden).map(node=>node.getBoundingClientRect());
   const overlap=([x,y])=>obstacles.reduce((sum,r)=>sum+Math.max(0,Math.min(x+width,r.right+margin)-Math.max(x,r.left-margin))*Math.max(0,Math.min(y+height,r.bottom+margin)-Math.max(y,r.top-margin)),0);
   const positions=[[bx,by],[p.x-gap-width,p.y-height-margin],[p.x+gap,p.y+margin],[p.x-gap-width,p.y+margin],[left+margin,top+margin],[right-width-margin,bottom-height-margin]].map(clamp);
   positions.sort((a,b)=>overlap(a)-overlap(b));[bx,by]=positions[0];

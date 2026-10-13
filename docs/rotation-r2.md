@@ -1,0 +1,17 @@
+# Rotation R2 — relative numeric angle
+
+Select one straight Bar and drag its existing Rotation Handle. The compact `Δθ` field follows the live relative rotation; `°` and the existing padlock indicator describe its numeric state.
+
+On tablet, tap the field to select/edit it using the existing four-row Numeric-only Keypad. Android's native keyboard is suppressed through `inputmode="none"` while this editor owns the transaction. Keypad `✓` validates and locks the number, closes the keypad for preview review, and adds no history. The established rotation Bubble `✓` commits; Bubble `×` cancels. Each changed rotation adds one checkpoint. A zero/full-turn result adds none.
+
+On PC, edit the same field and press Enter to validate the number. Finish commits through the existing rotation command. Canvas Enter/Escape retain R1 commit/cancel behavior when the field is not the keyboard target. No tablet keypad or Bubble is required for mouse sessions. Invalid or unconfirmed drafts block commit; Cancel remains available.
+
+Angles are relative to the frozen original Bar and frozen Pivot at the start of the transaction, never added to the current preview. Dragging to `+20°`, then entering `+30°`, previews exactly `+30°`. Positive input is counterclockwise as in R1's displayed mathematical angle; the shared SVG transform uses the opposite sign because its Y axis points downward. Negative input is clockwise.
+
+Finite decimal values (including comma decimals and finite scientific notation on a hardware keyboard) are accepted. Values outside ±360° use a **signed remainder modulo 360°**, retaining the direction: `450 → 90`, `-450 → -90`, and `±360 → 0`. Geometry is solved using this bounded angle. Input has ordinary JavaScript double precision; extreme numbers cannot retain digits beyond that precision. Empty/incomplete/non-finite drafts, or angles producing endpoints outside the existing drawing bounds, do not change the last valid preview.
+
+The locked preview survives pointer motion and draft editing. To explicitly release the numeric lock, re-grab the existing Rotation Handle. This also discards any unconfirmed draft; the preview stays at its current angle and subsequent freehand movement continues smoothly from there. Re-entering a number replaces the relative angle from the same original geometry.
+
+R1's lifecycle is retained: Pan, Ctrl+Alt navigation, tool changes, document/history changes, window blur, resize/orientation and pinch cancel an uncommitted transaction. The editor/keypad close and the committed drawing stays unchanged. A new rotation starts live at zero. Single-Bar midpoint, endpoint and off-Bar Pivots are supported; Pivot metadata and other properties persist unchanged. No JSON format change, other-object rotation or PWA/cache update is included.
+
+On 2026-10-13, the user reported physical Xiaomi Pad 6 Pro acceptance of +30° and -45° entry, replacement of the freehand preview angle, keypad ✓ locking, Bubble ✓ commit/× cancellation, custom Pivot +90°, Undo/Redo and continued freehand R1 operation. This is user-reported device evidence; the browser and tested build hash were not supplied. Field selection/caret, native-keyboard suppression, fractional entry, explicit lock release, edge placement and zoom/orientation checks remain covered by automated Edge touch/CDP pen emulation unless separately reported on the device. The previously recorded PWA offline loading limitation remains.

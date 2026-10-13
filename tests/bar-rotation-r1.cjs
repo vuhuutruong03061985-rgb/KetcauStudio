@@ -59,6 +59,8 @@ const near=(a,b,t=1e-4)=>assert(Math.abs(a-b)<t,`${a} != ${b}`);
    if(action==='resize')await p.setViewportSize({width:800,height:1000});
    await p.waitForFunction(()=>!smartMoveSession?.rotating);assert.deepEqual((await state()).items,before.items);assert.equal((await state()).history,0);assert(!(await state()).bubble);
    await p.setViewportSize({width:1280,height:800});
+   // Wait for resize/ResizeObserver cancellation before seeding the next gesture.
+   await p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   }
   // Pivot, body and endpoint contacts retain their own owners.
   await seed();const e=await screen({x:250,y:310});await contact('down',e);assert.equal(await p.evaluate(()=>drag?.endpoint),'start');assert(!(await state()).session);await contact('up',e);
