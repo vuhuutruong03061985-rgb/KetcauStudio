@@ -236,16 +236,20 @@ function midpointSnap(p,excludeId=null){
  }
  return best;
 }
+function segmentIntersectionPoint(a,b){
+ const ux=a.x2-a.x,uy=a.y2-a.y,vx=b.x2-b.x,vy=b.y2-b.y,d=ux*vy-uy*vx;
+ if(Math.abs(d)<1e-10*Math.max(1,Math.hypot(ux,uy)*Math.hypot(vx,vy)))return null;
+ const rx=b.x-a.x,ry=b.y-a.y,t=(rx*vy-ry*vx)/d,s=(rx*uy-ry*ux)/d;
+ if(t< -1e-8||t>1+1e-8||s< -1e-8||s>1+1e-8)return null;
+ return {x:a.x+t*ux,y:a.y+t*uy};
+}
 function intersectionSnap(p,excludeId=null){
  if(!snapEnabled||!snapOptions.intersection)return null;
  const tolerance=12/Math.abs(svg.getScreenCTM().a);let best=null,distance=tolerance;
  const lines=items.filter(o=>o.id!==excludeId&&['bar','thin','dashed'].includes(o.type)&&p.x>=Math.min(o.x,o.x2)-tolerance&&p.x<=Math.max(o.x,o.x2)+tolerance&&p.y>=Math.min(o.y,o.y2)-tolerance&&p.y<=Math.max(o.y,o.y2)+tolerance);
  for(let i=0;i<lines.length;i++)for(let j=i+1;j<lines.length;j++){
-  const a=lines[i],b=lines[j],ux=a.x2-a.x,uy=a.y2-a.y,vx=b.x2-b.x,vy=b.y2-b.y,d=ux*vy-uy*vx;
-  if(Math.abs(d)<1e-10*Math.max(1,Math.hypot(ux,uy)*Math.hypot(vx,vy)))continue;
-  const rx=b.x-a.x,ry=b.y-a.y,t=(rx*vy-ry*vx)/d,s=(rx*uy-ry*ux)/d;
-  if(t< -1e-8||t>1+1e-8||s< -1e-8||s>1+1e-8)continue;
-  const q={x:a.x+t*ux,y:a.y+t*uy},gap=Math.hypot(p.x-q.x,p.y-q.y);
+  const q=segmentIntersectionPoint(lines[i],lines[j]);if(!q)continue;
+  const gap=Math.hypot(p.x-q.x,p.y-q.y);
   if(gap<=distance){best=q;distance=gap}
  }
  return best;
@@ -300,6 +304,23 @@ function drawDimension(g,o){
  txt(t,0,-9,o.label);
 }
 function rawPoint(e){return new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.getScreenCTM().inverse())}
+// Optional Bar metadata in model units, relative to its midpoint and local axes.
+// Translation/rotation therefore preserve the same logical transformation center.
+function barPivotFrame(o){
+ const dx=o.x2-o.x,dy=o.y2-o.y,length=Math.hypot(dx,dy);
+ return {x:(o.x+o.x2)/2,y:(o.y+o.y2)/2,ux:length?dx/length:1,uy:length?dy/length:0};
+}
+function objectPivot(o){
+ if(o?.type!=='bar'||o.sectionGroup)return null;
+ const f=barPivotFrame(o),a=o.pivot?.along||0,n=o.pivot?.normal||0;
+ return {x:f.x+f.ux*a-f.uy*n,y:f.y+f.uy*a+f.ux*n};
+}
+function barPivotLocal(o,p){const f=barPivotFrame(o),x=p.x-f.x,y=p.y-f.y;return {along:x*f.ux+y*f.uy,normal:-x*f.uy+y*f.ux}}
+function validateBarPivot(o){
+ const p=o.pivot;
+ if(o.type!=='bar'||o.sectionGroup||!p||typeof p!=='object'||Array.isArray(p)||!Number.isFinite(p.along)||!Number.isFinite(p.normal)||Math.abs(p.along)>30000||Math.abs(p.normal)>30000)throw Error('Invalid Bar pivot');
+ const q=objectPivot(o);if(!Number.isFinite(q.x)||!Number.isFinite(q.y))throw Error('Invalid Bar pivot position');
+}
 function geometricPoints(o){
  if(o.type==='linkBar')return [{x:o.x,y:o.y},{x:o.x2,y:o.y2}];
  if(o.type==='weld')return [{x:o.x,y:o.y}];
@@ -946,6 +967,7 @@ window.visualViewport?.addEventListener('scroll',updatePenConnectionLockHalo);
 let penConnectionButtonPointerId=null,penConnectionSuppressClick=false;
 function activatePenConnectionButton(action,e){
  if(penConnectionBubble.hidden)return;
+ if(penConnectionPlacement?.type==='move'){if(!penConnectionPlacementBlocked(e))confirmSmartMovePoint(action);return}
  const placement=penConnectionPlacement;
  if(placement?.type==='bar'){
   if(mode!=='bar'||placement.first!==first||penConnectionPlacementBlocked(e))return;
@@ -1355,6 +1377,7 @@ if(!clean&&mode==='select'&&selectedObjectIds().size<2){
  if(!clean&&mode==='joint'&&typeof drawJointHandles==='function')drawJointHandles();
  if(!clean)renderRigidControls();
  if(!clean)paintPenConnectionPreview();
+ if(!clean&&typeof renderSmartMove==='function')renderSmartMove();
 }
 // Capture visible geometry once per rectangle, independently of selection/hit overlays.
 const selectionGeometry=(()=>{
@@ -1455,6 +1478,7 @@ function paintMarquee(){
  el('rect',{'data-marquee':'true',x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),width:Math.abs(b.x-a.x),height:Math.abs(b.y-a.y),'data-selection-kind':crossing?'crossing':'window',fill:color, 'fill-opacity':0.08,stroke:color,'stroke-dasharray':crossing?'5 3':'none','pointer-events':'none'});
 }
 svg.addEventListener('pointerdown',e=>{
+ if(typeof handleSmartMovePointer==='function'&&handleSmartMovePointer(e))return;
  if(!['select','erase'].includes(mode)||e.button!==0)return;
  const id=e.target.closest('[data-id]')?.dataset.id;
  // Erase on an object retains its immediate pointer-down deletion path.
@@ -1472,6 +1496,7 @@ svg.addEventListener('pointerdown',e=>{
  multiSelection.clear();
 },true);
 svg.addEventListener('pointermove',e=>{
+ if(typeof handleSmartMovePointer==='function'&&handleSmartMovePointer(e))return;
  if(boxSelect){e.stopImmediatePropagation();boxSelect.end=rawPoint(e);boxSelect.dragged=Math.hypot(e.clientX-boxSelect.screenStart.x,e.clientY-boxSelect.screenStart.y)>=4;paintMarquee();return}
  if(!groupDrag)return;e.stopImmediatePropagation();
  if(groupDrag.screenStart&&!groupDrag.thresholdPassed){if(Math.hypot(e.clientX-groupDrag.screenStart.x,e.clientY-groupDrag.screenStart.y)<4)return;groupDrag.thresholdPassed=true}
@@ -1483,6 +1508,7 @@ svg.addEventListener('pointermove',e=>{
  render();
 },true);
 function finishMulti(e){
+ if(typeof handleSmartMovePointer==='function'&&handleSmartMovePointer(e))return;
  if(e.type==='pointercancel'&&groupDrag?.before.some(o=>groupDrag.ids.has(o.id)&&drawingConnection(o))){e.stopImmediatePropagation();cancelConnectionDrag();render();return}
  if(e.type==='pointercancel'&&groupDrag?.sectionAdded){e.stopImmediatePropagation();items=groupDrag.before;groupDrag=null;multiSelection.clear();selected=null;render();return}
  if(boxSelect){
@@ -1505,7 +1531,7 @@ function finishMulti(e){
 svg.addEventListener('pointerup',finishMulti,true);
 svg.addEventListener('pointercancel',finishMulti,true);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){extendBoundary=null;multiSelection.clear();boxSelect=null;groupDrag=null;render()}});
-function setMode(m){clearPenConnectionPlacement();clearSupportPlacement();if(m!=='select')rememberCancelSelection();else cancelSelection=null;cancelConnectionDrag();cancelRigidDrag();rigidPoints=[];if(typeof mirrorSelecting!=='undefined')mirrorSelecting=false;if(typeof cancelLoadPlacement==='function')cancelLoadPlacement();hatchPoints=[];extendBoundary=null;multiSelection.clear();mode=m;first=null;second=null;hover=null;for(const b of document.querySelectorAll('button[data-mode]')){const active=b.dataset.mode===m;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}if($('delete')){$('delete').classList.toggle('active',m==='erase');$('delete').setAttribute('aria-pressed',String(m==='erase'))}svg.classList.toggle('erase-cursor',m==='erase');svg.style.cursor='';$('help').textContent=m==='curve'?'Chọn điểm đầu, điểm đi qua, rồi điểm cuối.':m==='erase'?'Bấm trực tiếp vào đối tượng để xóa. Esc để thoát; Hoàn tác để khôi phục.':m==='hatch'?'Bấm các điểm bao vùng biểu đồ. Enter để hoàn tất; Esc để hủy.':m==='extend'?'Chọn đường biên, rồi bấm gần đầu nét cần kéo dài. Shift + bấm để đổi biên.':m==='dim'?'Chọn hai điểm trên thanh, sau đó bấm vị trí đặt đường kích thước.':m==='select'?'Bấm chọn hoặc kéo đối tượng.':['bar','udl','dim','thin','dashed'].includes(m)?'Bấm hai điểm để tạo đối tượng.':'';$('help').hidden=!$('help').textContent;render()}
+function setMode(m){if(typeof cancelSmartMove==='function')cancelSmartMove();clearPenConnectionPlacement();clearSupportPlacement();if(m!=='select')rememberCancelSelection();else cancelSelection=null;cancelConnectionDrag();cancelRigidDrag();rigidPoints=[];if(typeof mirrorSelecting!=='undefined')mirrorSelecting=false;if(typeof cancelLoadPlacement==='function')cancelLoadPlacement();hatchPoints=[];extendBoundary=null;multiSelection.clear();mode=m;first=null;second=null;hover=null;for(const b of document.querySelectorAll('button[data-mode]')){const active=b.dataset.mode===m;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}if($('delete')){$('delete').classList.toggle('active',m==='erase');$('delete').setAttribute('aria-pressed',String(m==='erase'))}svg.classList.toggle('erase-cursor',m==='erase');svg.style.cursor='';$('help').textContent=m==='curve'?'Chọn điểm đầu, điểm đi qua, rồi điểm cuối.':m==='erase'?'Bấm trực tiếp vào đối tượng để xóa. Esc để thoát; Hoàn tác để khôi phục.':m==='hatch'?'Bấm các điểm bao vùng biểu đồ. Enter để hoàn tất; Esc để hủy.':m==='extend'?'Chọn đường biên, rồi bấm gần đầu nét cần kéo dài. Shift + bấm để đổi biên.':m==='dim'?'Chọn hai điểm trên thanh, sau đó bấm vị trí đặt đường kích thước.':m==='select'?'Bấm chọn hoặc kéo đối tượng.':['bar','udl','dim','thin','dashed'].includes(m)?'Bấm hai điểm để tạo đối tượng.':'';$('help').hidden=!$('help').textContent;render()}
 for(const [m,title]of Object.entries(modes)){const b=document.createElement('button');b.textContent=title;b.dataset.mode=m;b.onclick=()=>chooseToolOptions(m);$('tools').append(b)}
 function props(){return Object.fromEntries(['label','support','direction','rotation'].map(k=>[k,$(k).value]))}
 function make(type,x,y,x2,y2,p={}){if(type==='person')return {id:newId(),type,x,y,angle:p.angle??0,size:p.size??PERSON_DEFAULT_SIZE};return {id:newId(),type,x,y,...(x2===undefined?{}:{x2,y2}),...props(),label:({force:'P',moment:'M',udl:'q',dim:'L',text:'A',diagramM:'kN.m',diagramQ:'kN',diagramN:'kN'})[type]||'',...p}}
@@ -1739,7 +1765,7 @@ function download(blob,name){const u=URL.createObjectURL(blob),a=document.create
 function exportSVG(){render(true);try{const out=svg.cloneNode(true);out.setAttribute('viewBox','0 0 1100 720');out.setAttribute('width','1100');out.setAttribute('height','720');return new XMLSerializer().serializeToString(out)}finally{render()}}
 const actions={undo:['↶ Hoàn tác',()=>{cancelConcentratedLoadPlacement();clearSupportPlacement();endThinReferenceSession();clearPersonPreview();if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!past.length)return;future.push(copy(items));items=past.pop();selected=null;first=null;second=null;hover=null;render()}],redo:['↷ Làm lại',()=>{cancelConcentratedLoadPlacement();clearSupportPlacement();endThinReferenceSession();clearPersonPreview();if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!future.length)return;past.push(copy(items));items=future.pop();selected=null;first=null;second=null;hover=null;render()}],delete:['Tẩy',()=>{selected=null;setMode(mode==='erase'?'select':'erase')}],clear:['Bản vẽ trống',()=>{clearSupportPlacement();checkpoint();items=[];restoreDrawingScales();selected=null;first=null;second=null;hover=null;render()}],save:['Lưu JSON',()=>download(new Blob([JSON.stringify({format:'ket-cau-studio',version:1,items,geometryScale,internalForceScale},null,2)],{type:'application/json'}),'ket-cau.json')],open:['Mở JSON',()=>$('file').click()],svg:['Xuất SVG',()=>download(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'}),'ket-cau.svg')],png:['Xuất PNG',()=>{const u=URL.createObjectURL(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'})),im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=3300;c.height=2160;c.getContext('2d').drawImage(im,0,0,3300,2160);URL.revokeObjectURL(u);c.toBlob(b=>b?download(b,'ket-cau.png'):msg('Không xuất được PNG.'))};im.onerror=()=>{URL.revokeObjectURL(u);msg('Không xuất được PNG. Hãy thử SVG.')};im.src=u}]};
 for(const [id,[title,fn]]of Object.entries(actions)){const b=document.createElement('button');b.id=id;b.textContent=title;b.onclick=fn;$('actions').append(b)}
-function validate(d){if(!d||d.format!=='ket-cau-studio'||d.version!==1||!Array.isArray(d.items)||d.items.length>2000)throw Error('Sai định dạng.');const ids=new Set();for(const o of d.items){if(!o||(!Object.hasOwn(modes,o.type)&&o.type!=='person')||['select','extend'].includes(o.type)||typeof o.id!=='string'||ids.has(o.id))throw Error('Đối tượng không hợp lệ.');ids.add(o.id);if(o.type==='person'){validatePerson(o);continue}if(o.sectionVisible!==undefined&&(typeof o.sectionVisible!=='boolean'||!sectionForceAction(o)))throw Error('Invalid section visibility');if(drawingConnection(o))validateConnection(o);if(o.strokeColor!==undefined&&!validObjectColor(o.strokeColor))throw Error('Invalid object strokeColor');if(o.type==='rigidRegion')validateRigidRegion(o);if(o.loadAngle!==undefined&&(!Number.isFinite(o.loadAngle)||Math.abs(o.loadAngle)>360))throw Error('Invalid load angle');if(o.labelFormula!==undefined&&(typeof o.labelFormula!=='string'||o.labelFormula.length>500||!['deg','rad'].includes(o.labelAngle)))throw Error('Invalid label expression');if(o.type==='curve'&&(!Array.isArray(o.curvePoints)||o.curvePoints.length!==2||o.curvePoints.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)))throw Error('Đường cong không hợp lệ.');if(o.type==='hatch'&&(!Array.isArray(o.points)||o.points.length<3||o.points.length>1000||o.points.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)||!Number.isFinite(o.spacing)||o.spacing<3||o.spacing>50))throw Error('Invalid hatch');if(o.offset!==undefined&&(!Number.isFinite(o.offset)||Math.abs(o.offset)>10000))throw Error('Khoảng cách đường kích thước không hợp lệ.');for(const k of ['x','y',...(['bar','udl','dim','thin','dashed'].includes(o.type)?['x2','y2']:[])])if(!Number.isFinite(o[k])||Math.abs(o[k])>10000)throw Error('Tọa độ không hợp lệ.');if(typeof o.label!=='string'||o.label.length>100||!['pin','roller','fixed','pin-plain','roller-plain'].includes(o.support)||!['down','up','left','right'].includes(o.direction)||!['cw','ccw'].includes(o.rotation))throw Error('Thuộc tính không hợp lệ.')}return d.items}
+function validate(d){if(!d||d.format!=='ket-cau-studio'||d.version!==1||!Array.isArray(d.items)||d.items.length>2000)throw Error('Sai định dạng.');const ids=new Set();for(const o of d.items){if(!o||(!Object.hasOwn(modes,o.type)&&o.type!=='person')||['select','extend'].includes(o.type)||typeof o.id!=='string'||ids.has(o.id))throw Error('Đối tượng không hợp lệ.');ids.add(o.id);if(o.pivot!==undefined)validateBarPivot(o);if(o.type==='person'){validatePerson(o);continue}if(o.sectionVisible!==undefined&&(typeof o.sectionVisible!=='boolean'||!sectionForceAction(o)))throw Error('Invalid section visibility');if(drawingConnection(o))validateConnection(o);if(o.strokeColor!==undefined&&!validObjectColor(o.strokeColor))throw Error('Invalid object strokeColor');if(o.type==='rigidRegion')validateRigidRegion(o);if(o.loadAngle!==undefined&&(!Number.isFinite(o.loadAngle)||Math.abs(o.loadAngle)>360))throw Error('Invalid load angle');if(o.labelFormula!==undefined&&(typeof o.labelFormula!=='string'||o.labelFormula.length>500||!['deg','rad'].includes(o.labelAngle)))throw Error('Invalid label expression');if(o.type==='curve'&&(!Array.isArray(o.curvePoints)||o.curvePoints.length!==2||o.curvePoints.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)))throw Error('Đường cong không hợp lệ.');if(o.type==='hatch'&&(!Array.isArray(o.points)||o.points.length<3||o.points.length>1000||o.points.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)||!Number.isFinite(o.spacing)||o.spacing<3||o.spacing>50))throw Error('Invalid hatch');if(o.offset!==undefined&&(!Number.isFinite(o.offset)||Math.abs(o.offset)>10000))throw Error('Khoảng cách đường kích thước không hợp lệ.');for(const k of ['x','y',...(['bar','udl','dim','thin','dashed'].includes(o.type)?['x2','y2']:[])])if(!Number.isFinite(o[k])||Math.abs(o[k])>10000)throw Error('Tọa độ không hợp lệ.');if(typeof o.label!=='string'||o.label.length>100||!['pin','roller','fixed','pin-plain','roller-plain'].includes(o.support)||!['down','up','left','right'].includes(o.direction)||!['cw','ccw'].includes(o.rotation))throw Error('Thuộc tính không hợp lệ.')}return d.items}
 $('file').onchange=async e=>{try{const f=e.target.files[0];if(!f)return;if(f.size>2000000)throw Error('Tệp quá lớn.');const data=JSON.parse(await f.text()),next=validate(data);checkpoint();items=next;restoreDrawingScales(data);selected=null;first=null;second=null;hover=null;render();msg('Đã mở bản vẽ.')}catch(err){msg('Không mở được: '+err.message)}e.target.value=''};
 let wordBridgeToken=null;
 const wordButton=document.createElement('button');wordButton.hidden=true;wordButton.textContent='Chèn vào Word';$('actions').append(wordButton);

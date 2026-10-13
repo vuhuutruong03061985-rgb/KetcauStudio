@@ -7,7 +7,7 @@ import socket
 
 ROOT = Path(__file__).resolve().parent.parent
 PUBLIC = {'/', '/index.html', '/index.updated.html', '/manifest.webmanifest', '/sw.js',
-          '/assets/app.js', '/assets/app.css', '/assets/tablet.js','/assets/calculator.js','/assets/section.js', '/assets/icon.svg',
+          '/assets/app.js', '/assets/app.css', '/assets/tablet.js','/assets/calculator.js','/assets/section.js', '/assets/move.js', '/assets/icon.svg',
           '/assets/icon-192.png', '/assets/icon-512.png'}
 
 class Handler(SimpleHTTPRequestHandler):

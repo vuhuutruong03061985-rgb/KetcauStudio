@@ -57,7 +57,7 @@ try {
     }
     $response.ContentType='application/json; charset=utf-8';$response.Headers['Cache-Control']='no-store'
     $bytes=[Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $store -Depth 100 -Compress))
-   } elseif($ctx.Request.HttpMethod -eq 'GET' -and $path -in @('/','/index.html','/index.updated.html','/assets/app.css','/assets/app.js','/assets/tablet.js','/assets/calculator.js','/assets/section.js','/assets/icon.svg','/assets/icon-192.png','/assets/icon-512.png','/manifest.webmanifest','/sw.js')){
+   } elseif($ctx.Request.HttpMethod -eq 'GET' -and $path -in @('/','/index.html','/index.updated.html','/assets/app.css','/assets/app.js','/assets/tablet.js','/assets/move.js','/assets/calculator.js','/assets/section.js','/assets/icon.svg','/assets/icon-192.png','/assets/icon-512.png','/manifest.webmanifest','/sw.js')){
     $relative=if($path -eq '/'){'index.html'}else{$path.TrimStart('/')}
     $types=@{'.html'='text/html; charset=utf-8';'.css'='text/css; charset=utf-8';'.js'='text/javascript; charset=utf-8';'.svg'='image/svg+xml';'.png'='image/png';'.webmanifest'='application/manifest+json'}
     $response.ContentType=$types[[IO.Path]::GetExtension($relative)]

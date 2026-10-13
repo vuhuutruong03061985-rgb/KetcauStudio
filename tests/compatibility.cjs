@@ -28,6 +28,8 @@ const {pathToFileURL}=require('node:url');
    const response=await route.fetch({url:source});await route.fulfill({response});
   });
   await lan.goto('http://studio.test/');await lan.waitForFunction(()=>items.length>0);
+  // The shared Move/Pivot/Rotation adapter must also load through the public server.
+  await lan.waitForFunction(()=>typeof handleSmartMovePointer==='function');
   assert.equal(await lan.evaluate(()=>window.isSecureContext),false);
   await lan.locator('[data-mode="force"]').click();const count=await lan.evaluate(()=>items.length);
   await lan.locator('#drawing').click({position:{x:200,y:200}});

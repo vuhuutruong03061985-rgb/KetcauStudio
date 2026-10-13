@@ -13,7 +13,7 @@ const drawingShortcutNames={bar:'T',thin:'L',dashed:'D',curve:'C',text:'TT',dim:
 document.addEventListener('keydown',e=>{
  const key=e.key.toLowerCase(),target=document.activeElement;
  const typing=target?.matches('input,textarea,select')||target?.isContentEditable;
- if(e.isComposing||typing||e.ctrlKey||e.altKey||e.metaKey||document.querySelector('dialog[open]')||drag||groupDrag||jointDrag||gesture){lastToolT=null;return}
+ if(e.isComposing||typing||e.ctrlKey||e.altKey||e.metaKey||document.querySelector('dialog[open]')||drag||groupDrag||jointDrag||gesture||(typeof smartMoveSession!=='undefined'&&smartMoveSession&&!smartMoveSession.command)){lastToolT=null;return}
  if(!drawingShortcuts[key]){lastToolT=null;return}
  e.preventDefault();e.stopImmediatePropagation();
  if(e.repeat)return;
@@ -60,7 +60,7 @@ function cancelToSelection(){
 document.addEventListener('pointerdown',e=>{
  if(!svg.contains(e.target)||e.pointerType!=='mouse')return;
  if(e.button===2){e.preventDefault();e.stopImmediatePropagation();cancelToSelection();return}
- if(e.button!==0||mode!=='select'||!e.ctrlKey||e.altKey||panEnabled||gesture||drag||groupDrag||rigidDrag||jointDrag)return;
+ if(e.button!==0||mode!=='select'||!e.ctrlKey||e.altKey||panEnabled||gesture||drag||groupDrag||rigidDrag||jointDrag||(typeof smartMoveSession!=='undefined'&&smartMoveSession))return;
  const id=e.target.closest('[data-id]')?.dataset.id;
  if(!items.some(o=>o.id===id))return;
  e.preventDefault();e.stopImmediatePropagation();
@@ -85,6 +85,7 @@ for(const [value,label]of [['pin-plain','Cố định · không gạch nền'],[
 }
 svg.addEventListener('pointermove',e=>{
  if(penConnectionPlacement?.type==='bar'){paintFrozenBarSnap();return}
+ if(typeof smartMoveSession!=='undefined'&&smartMoveSession)return;
  svg.querySelector('[data-midpoint-hint]')?.remove();
  svg.querySelector('[data-endpoint-hint]')?.remove();
  svg.querySelector('[data-intersection-hint]')?.remove();
@@ -160,6 +161,7 @@ window.addEventListener('scroll',discardTabletBarPoint,true);
 window.visualViewport?.addEventListener('resize',discardTabletBarPoint);
 window.visualViewport?.addEventListener('scroll',discardTabletBarPoint);
 function applyCamera(){
+ if(typeof cancelSmartMove==='function')cancelSmartMove();
  discardTabletBarPoint();
  clearPersonPreview();
  svg.setAttribute('viewBox',`${camera.x} ${camera.y} ${camera.w} ${camera.h}`);
@@ -236,8 +238,22 @@ function activateSelection(){
 }
 viewButton('resetView','Chọn',activateSelection).dataset.toolbarIcon='select';
 $('tools').querySelector('[data-mode="select"]').onclick=activateSelection;
-const panButton=viewButton('panView','Di chuyển trang',()=>{panEnabled=!panEnabled;panButton.classList.toggle('active',panEnabled);panButton.setAttribute('aria-pressed',String(panEnabled));svg.style.cursor=panEnabled?'grab':''});
+const panButton=viewButton('panView','Di chuyển trang',toggleCanvasPan);
 panButton.setAttribute('aria-pressed','false');
+function deactivateCanvasPan(){
+ const activePan=gesture?.kind==='pan'?gesture:null;
+ panEnabled=false;panButton.classList.remove('active');panButton.setAttribute('aria-pressed','false');svg.style.cursor='';
+ if(!activePan)return;
+ gesture=null;contacts.delete(activePan.id);
+ if(!contacts.size){touchSnapshot=null;suppressTouch=false}
+ if(svg.hasPointerCapture(activePan.id))svg.releasePointerCapture(activePan.id);
+}
+function toggleCanvasPan(){
+ if(panEnabled){deactivateCanvasPan();return}
+ // Retire only the uncommitted Bar transaction; other tools keep their Pan contract.
+ if(typeof smartMoveSession!=='undefined'&&smartMoveSession){cancelSmartMove();render()}
+ panEnabled=true;showTemporaryPan({});
+}
 function showTemporaryPan(e){
  const active=panEnabled||!!(e.ctrlKey&&e.altKey);
  svg.style.cursor=active?'grab':'';
@@ -247,6 +263,8 @@ function showTemporaryPan(e){
 document.addEventListener('keydown',showTemporaryPan);
 document.addEventListener('keyup',showTemporaryPan);
 window.addEventListener('blur',()=>showTemporaryPan({}));
+// Observe a Move hub press before the radial roller handlers consume it.
+window.addEventListener('pointerdown',e=>{if(typeof handleMovementMenuPointer==='function')handleMovementMenuPointer(e)},true);
 function editObjectLabel(object){
  if(!object||!editableTypes.includes(object.type))return;
  if(inlineEditor)inlineEditor.finish(true);
@@ -433,6 +451,7 @@ function captureDrawing(){
  return {items:copy(items),past:copy(past),future:copy(future),selected,first:copy(first),second:copy(second),hover:copy(hover),hatchPoints:copy(hatchPoints),rigidPoints:copy(rigidPoints),rigidPivot:copy(rigidPivot),extendBoundary,multiSelection:[...multiSelection]};
 }
 function restoreDrawing(snapshot){
+ if(typeof cancelSmartMove==='function')cancelSmartMove();
  clearTabletBarCandidate();
  if(mode==='section'||mirrorSelecting)clearMultiPointCommand();
  cancelConcentratedLoadPlacement();
@@ -469,6 +488,8 @@ document.addEventListener('pointerdown',e=>{
   if(suppressTouch){stopPointer(e);return}
  }
  if((panEnabled||(e.ctrlKey&&e.altKey))&&e.button===0){
+  // Temporary desktop navigation owns this contact even when it never moves.
+  if(typeof smartMoveSession!=='undefined'&&smartMoveSession){cancelSmartMove();render()}
   discardTabletBarPoint();
   const matrix=svg.getScreenCTM().inverse();
   gesture={kind:'pan',id:e.pointerId,camera:{...camera},matrix,start:new DOMPoint(e.clientX,e.clientY).matrixTransform(matrix)};
@@ -975,7 +996,9 @@ const toolIconPaths={
  zoomIn:'M12 4V20M4 12H20',zoomOut:'M4 12H20',
  fitView:'M8 3H3V8M16 3H21V8M3 16V21H8M21 16V21H16M3 3L8 8M21 3L16 8M3 21L8 16M21 21L16 16',
  resetView:'M9 3H3V9M15 3H21V9M3 15V21H9M15 21H21V15',
- panView:'M12 2V22M2 12H22M8 6L12 2L16 6M8 18L12 22L16 18M6 8L2 12L6 16M18 8L22 12L18 16',
+ panView:'M8 12V5A1.5 1.5 0 0 1 11 5V11V3.5A1.5 1.5 0 0 1 14 3.5V11V5A1.5 1.5 0 0 1 17 5V12V8A1.5 1.5 0 0 1 20 8V15C20 19 17 22 13 22H12C9 22 7 20 5 17L3 14A1.5 1.5 0 0 1 5.5 12.5L8 15Z',
+ moveObjects:'M3 3H12V12H3ZM8 18H21M17 14L21 18L17 22',
+ moveBasePoint:'M12 2V6M12 18V22M2 12H6M18 12H22M17 12A5 5 0 1 1 7 12A5 5 0 1 1 17 12M12 10V14M10 12H14',
  undo:'M4 10H15A6 6 0 0 1 15 22M9 5L4 10L9 15',
  redo:'M20 10H9A6 6 0 0 0 9 22M15 5L20 10L15 15',
  copyObjects:'M8 8H21V21H8ZM4 16H3V3H16V4',
@@ -1349,6 +1372,7 @@ function mirroredObjects(source,a,b){
  return source.map(original=>{
   const o=copy(original),p=reflect(o);o.id=newId();o.x=p.x;o.y=p.y;
   if(original.x2!==undefined){const q=reflect({x:original.x2,y:original.y2});o.x2=q.x;o.y2=q.y}
+  if(original.type==='bar'&&original.pivot)o.pivot={along:original.pivot.along,normal:-original.pivot.normal};
   for(const key of ['points','curvePoints'])if(original[key])o[key]=original[key].map(vector);
   if(original.type==='rigidRegion'&&original.rigidAngle){o.rigidAngle=(360-original.rigidAngle)%360;}
   if(o.type==='dim')o.offset=-(o.offset||0);
@@ -2221,7 +2245,8 @@ window.addEventListener('keydown',e=>{
 
 // Shared command actions: native editors/Dynamic Input retain their own key lifecycle.
 function finishActiveCommand(){
- if(canFinishLockedBar()){
+ if(typeof canFinishBarRotation==='function'&&canFinishBarRotation())commitBarRotation();
+ else if(canFinishLockedBar()){
   const session=barNumericSession;
   if(!dynamicInputUI.confirmPending())return;
   commitBarCandidate(null,{clientX:session.capture.clientX,clientY:session.capture.clientY,pointerType:session.tablet?'touch':'mouse'});
@@ -2252,12 +2277,13 @@ commandControls.addEventListener('pointerdown',e=>{e.preventDefault();e.stopProp
 commandCancel.onclick=cancelActiveCommand;commandFinish.onclick=finishActiveCommand;
 function updateCommandControls(){
  const touch=matchMedia('(any-pointer: coarse)').matches;
+ const rotation=typeof canFinishBarRotation==='function'&&canFinishBarRotation();
  const editing=inlineEditor||document.querySelector('dialog[open]')||document.activeElement?.matches('input,textarea,select')||document.activeElement?.isContentEditable;
- const active=mode!=='select'||mirrorSelecting;
+ const active=mode!=='select'||mirrorSelecting||rotation;
  const lockedBar=canFinishLockedBar();
- const finish=lockedBar||mode==='section'&&!sectionPending&&sectionPoints.length>=2||mode==='rigidRegion'&&rigidPoints.length>=3||mode==='hatch'&&hatchPoints.length>=3||mirrorSelecting&&selectedObjectIds().size>0;
+ const finish=rotation||lockedBar||mode==='section'&&!sectionPending&&sectionPoints.length>=2||mode==='rigidRegion'&&rigidPoints.length>=3||mode==='hatch'&&hatchPoints.length>=3||mirrorSelecting&&selectedObjectIds().size>0;
  const barInputEditing=lockedBar&&barNumericSession?.tablet&&!inlineEditor&&!document.querySelector('dialog[open]')&&$('dynamicInput').contains(document.activeElement);
- commandControls.hidden=(!touch&&!lockedBar)||!!editing&&!barInputEditing||!active;
+ commandControls.hidden=(!touch&&!lockedBar&&!rotation)||!!editing&&!barInputEditing||!active;
  commandFinish.hidden=!finish;
  // Keep clear of the existing numeric editor; do not create a second confirmation UI.
  const input=$('dynamicInput');
@@ -2282,7 +2308,7 @@ function clearMultiPointCommand(){
  sectionPoints=[];sectionPending=null;hatchPoints=[];rigidPoints=[];mirrorSelecting=false;
  document.querySelector('[data-section-dialog]')?.remove();setMode('select');updateCommandControls();
 }
-for(const name of ['undo','redo']){const action=actions[name][1];actions[name][1]=()=>{clearTabletBarCandidate();clearMultiPointCommand();action()};$(name).onclick=actions[name][1]}
+for(const name of ['undo','redo']){const action=actions[name][1];actions[name][1]=()=>{if(typeof cancelSmartMove==='function')cancelSmartMove();clearTabletBarCandidate();clearMultiPointCommand();action()};$(name).onclick=actions[name][1]}
 svg.addEventListener('pointercancel',clearMultiPointCommand);
 $('open').addEventListener('click',clearMultiPointCommand,true);
 updateCommandControls();
@@ -3188,7 +3214,7 @@ const rightCommandGroups=[
 const rightOneShot=new Set(['clear','open','save','saveAs','svg','png','insertWord','undo','redo','copyObjects','pasteObjects','zoomOut','zoomIn']);
 // Compact production navigation/utilities, using the existing authoritative controls.
 const rightCommandRings=[
- {id:'R1',label:'Chỉnh sửa / Chọn',ids:['resetView','editSelected','copyObjects','pasteObjects','delete','extend'],defaultTool:'resetView',tint:'#edf2f6'},
+ {id:'R1',label:'Chỉnh sửa / Chọn',ids:['resetView','moveObjects','moveBasePoint','editSelected','copyObjects','pasteObjects','delete','extend'],defaultTool:'resetView',tint:'#edf2f6'},
  {id:'R2',label:'Điều hướng / Tiện ích',ids:['panView','snapOptions','openCalculator'],defaultTool:'panView',tint:'#edf2f4'}
 ].map(ring=>({...ring,activeIndex:ring.ids.indexOf(ring.defaultTool),entries:[]}));
 function rightCommandSource(id){return id==='extend'?document.querySelector('button[data-mode="extend"]'):id==='insertWord'?wordButton:id==='snapOptions'?snapButton:$(id)}
@@ -3202,6 +3228,8 @@ function refreshRightCommandEntries(){
   const ring=rightCommandMenu?.state.rings.find(r=>r.id===config.id),remembered=ring?.entries[ring.activeIndex]?.id;
   const entries=config.ids.flatMap(id=>{
    const source=rightCommandSource(id);if(!source||((id==='insertWord'||id==='openCalculator')&&source.hidden))return [];
+   // Move options occupy the editing ring only when their Bar operation is available.
+   if(['moveObjects','moveBasePoint'].includes(id)&&(source.disabled||floatingToolsMedia.matches))return [];
    return [{id,label:source.getAttribute('aria-label')||source.title,source,icon:id==='snapOptions'?'toggleTools':source.dataset.toolbarIcon||id,oneShot:rightOneShot.has(id),popupOnly:id==='snapOptions',proxyLabel:id==='snapOptions'?'Tùy chọn bắt điểm':undefined,disabled:id==='snapOptions'&&snapButton.getAttribute('aria-pressed')!=='true'}];
   });
   // Preserve entry identity/array ownership while optional capabilities change.
@@ -3285,6 +3313,7 @@ window.addEventListener('pointerdown',e=>{
  rightCommandConsumed.add(e.pointerId);rightCommandSwallowClick=true;e.preventDefault();e.stopImmediatePropagation();rightCommandMenu.close();
 },true);
 for(const event of ['pointermove','pointerup','pointercancel'])window.addEventListener(event,e=>{
+ if(typeof handleMovementMenuPointer==='function'&&handleMovementMenuPointer(e)){e.preventDefault();e.stopImmediatePropagation();return}
  if(!rightCommandConsumed.has(e.pointerId))return;
  e.preventDefault();e.stopImmediatePropagation();if(event!=='pointermove')rightCommandConsumed.delete(e.pointerId);
 },true);
