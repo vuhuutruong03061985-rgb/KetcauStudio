@@ -75,11 +75,11 @@ const contentTypes={'.html':'text/html','.js':'text/javascript','.css':'text/css
    await p.locator('#penConnectionBubble [data-pen-connection-action=confirm]').tap();
   }
   const liveBar=await p.evaluate(()=>items[0]),expectedLive=touch&&!baseline?await p.evaluate(()=>liveContactCandidate):{x:200,y:150};near(liveBar.x2,expectedLive.x);near(liveBar.y2,expectedLive.y);
-  await start('thin');await p.locator('#dynamicInputValue').fill('110');await p.keyboard.press('Enter');
+  await start('thin');if(touch&&!baseline)await require('./tablet-point-test-actions.cjs').confirmPoint(p);await p.locator('#dynamicInputValue').fill('110');await p.keyboard.press('Enter');
   assert.equal(await p.evaluate(()=>items.length),0);assert.equal(await p.evaluate(()=>thinNumericSession.endpoint),null);
   const q=await p.evaluate(()=>{const q=new DOMPoint(200,100).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}});
   await p.locator('#drawing').dispatchEvent('pointermove',{pointerType:touch?'touch':'mouse',clientX:q.x,clientY:q.y});
-  await p.keyboard.press('Enter');assert.equal(await p.evaluate(()=>items.length),1);near(await p.evaluate(()=>items[0].x2-items[0].x),11);
+  await require('./tablet-point-test-actions.cjs').enterThin(p,touch&&!baseline);assert.equal(await p.evaluate(()=>items.length),1);near(await p.evaluate(()=>items[0].x2-items[0].x),11);
   console.log('PASS partial/live states blocked; Thin Line zero-motion underdetermined, acquired direction commits without further motion');
   const finish=async(angle=0,last='angle',zoom=100)=>{
    await start('bar',zoom);

@@ -318,3 +318,12 @@ body :is(.semicircle-left-menu,.semicircle-right-menu)>svg{touch-action:none}
 
 /* Group navigation is separate from the active source command. */
 :is(.semicircle-left-menu,.semicircle-right-menu) .selected-group .semicircle-hit{fill:#dce5f2;stroke:#6585af;stroke-width:1.5}
+
+/* Keep existing radial command proxies; numeric keypad stays four rows. */
+body[data-tablet-line-commands="true"][data-radial-primary="true"] #commandControls{display:none}
+
+/* Post-drawing Thin offset: three local controls, independent of numeric input. */
+#thinOffsetToolbar{position:fixed;z-index:2350;display:flex;gap:4px;padding:4px;border:1px solid #b9d5da;border-radius:6px;background:#edf5f6;box-shadow:0 2px 8px #183e5526}
+#thinOffsetToolbar[hidden]{display:none}
+#thinOffsetToolbar button{min-width:44px;min-height:44px;margin:0;padding:6px 10px;touch-action:manipulation}
+#thinOffsetToolbar [data-thin-offset="reset"]{width:44px;padding:6px;font-variant-numeric:tabular-nums}

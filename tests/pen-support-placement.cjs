@@ -3,6 +3,12 @@ const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
 const near=(a,b)=>assert(Math.abs(a-b)<.001,`${a} != ${b}`);
 const samePoint=(a,b)=>{near(a.x,b.x);near(a.y,b.y)};
+async function assertLocalBubble(page,bubble,point,dimensions){
+ const p=await page.evaluate(q=>{const a=new DOMPoint(q.x,q.y).matrixTransform(svg.getScreenCTM());return {x:a.x,y:a.y}},point),r=await bubble.boundingBox(),canvas=await page.locator('#drawing').boundingBox();
+ assert.equal(r.width,dimensions.width);assert.equal(r.height,dimensions.height);
+ assert(r.x>=canvas.x+7.9&&r.y>=canvas.y+7.9&&r.x+r.width<=canvas.x+canvas.width-7.9&&r.y+r.height<=canvas.y+canvas.height-7.9);
+ assert(Math.hypot(Math.max(r.x-p.x,0,p.x-r.x-r.width),Math.max(r.y-p.y,0,p.y-r.y-r.height))<=120);
+}
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -133,7 +139,7 @@ const samePoint=(a,b)=>{near(a.x,b.x);near(a.y,b.y)};
    await page.evaluate(()=>{setSupportReference('reference-1');render()});await pen('pointermove',{x:707,y:607});await pen('pointercancel');
    assert.equal((await session()).referenceBarId,referenceId);assert.deepEqual(await pose(),candidate);assert.deepEqual(await session(),frozenSession);assert.equal(await preview(),frozenPreview);assert.equal(await calls(),editedCalls);
    const exportState=await page.evaluate(()=>new DOMParser().parseFromString(exportSVG(),'image/svg+xml').querySelectorAll('[data-support-preview],[data-support-reference],.reference-angle-preview,#penConnectionBubble,#penConnectionLockHalo').length);assert.equal(exportState,0);
-   await page.evaluate(()=>{camera.x+=15;applyCamera();render();window.dispatchEvent(new Event('resize'))});await assertHalo(point);assert.equal(await preview(),frozenPreview);assert.deepEqual(await bubble.boundingBox(),frozenBubble);assert.deepEqual(await doc(),before);
+   await page.evaluate(()=>{camera.x+=15;applyCamera();render();window.dispatchEvent(new Event('resize'))});await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await assertHalo(point);assert.equal(await preview(),frozenPreview);await assertLocalBubble(page,bubble,point,frozenBubble);assert.deepEqual(await doc(),before);
    await pen('pointerdown',undefined,{target:selector('confirm'),buttons:1,pressure:.22});let placed=await assertPlaced(before,candidate,subtype);
    await pen('pointerdown',undefined,{target:selector('confirm'),buttons:1,pressure:.22});await pen('pointermove');assert.deepEqual(await doc(),placed);
    await pen('pointerup',undefined,{outside:true});

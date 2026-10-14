@@ -63,7 +63,7 @@ const settle=p=>p.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestA
    await contact('move',await screen(640,530));await contact('up',await screen(640,530));assert.notDeepEqual((await state()).camera,before);await p.keyboard.up('Alt');await p.keyboard.up('Control');assert.equal((await state()).panPressed,'false');assert(!(await state()).pan);await unchanged(original);
   }
   // Eligibility remains authoritative even while Pan is active.
-  for(const ids of [[],['A','X'],['X']]){await seed(ids);await source('panView');assert.equal(await p.evaluate(()=>beginSmartMove()),false);s=await state();assert(s.pan&&!s.session&&s.baseDisabled)}
+  for(const ids of [[],['A','X'],['X']]){await seed(ids);await p.evaluate(()=>{items.find(o=>o.id==='X').type='force';render()});await source('panView');assert.equal(await p.evaluate(()=>beginSmartMove()),false);s=await state();assert(s.pan&&!s.session&&s.baseDisabled)}
   assert.deepEqual(errors,[]);await p.close();console.log('PASS Pan/Move '+pointer+': radial ownership, all transient cancellations, capture retirement, exact commit/Undo/Redo, labels/icons and eligibility');
  }
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});

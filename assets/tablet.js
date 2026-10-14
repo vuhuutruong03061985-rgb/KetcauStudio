@@ -152,7 +152,7 @@ function paintFrozenBarSnap(){
  }
 }
 function discardTabletBarPoint(){
- if(penConnectionPlacement?.type!=='bar')return;
+ if(!['bar','thin','dashed'].includes(penConnectionPlacement?.type))return;
  clearTabletBarCandidate();render();
 }
 window.addEventListener('blur',discardTabletBarPoint);
@@ -1372,7 +1372,7 @@ function mirroredObjects(source,a,b){
  return source.map(original=>{
   const o=copy(original),p=reflect(o);o.id=newId();o.x=p.x;o.y=p.y;
   if(original.x2!==undefined){const q=reflect({x:original.x2,y:original.y2});o.x2=q.x;o.y2=q.y}
-  if(original.type==='bar'&&original.pivot)o.pivot={along:original.pivot.along,normal:-original.pivot.normal};
+  if(transformableLine(original)&&original.pivot)o.pivot={along:original.pivot.along,normal:-original.pivot.normal};
   for(const key of ['points','curvePoints'])if(original[key])o[key]=original[key].map(vector);
   if(original.type==='rigidRegion'&&original.rigidAngle){o.rigidAngle=(360-original.rigidAngle)%360;}
   if(o.type==='dim')o.offset=-(o.offset||0);
@@ -1607,19 +1607,22 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
   if(input&&owner?.input!==input)return;
   if(owner){if(previousInputMode===null)owner.input.removeAttribute('inputmode');else owner.input.setAttribute('inputmode',previousInputMode)}
   owner=null;numericSelection=null;panel.hidden=true;exitButton.hidden=true;delete document.body.dataset.barKeypadCommands;
-  const confirmKey=numbers.querySelector('[data-numeric-key="confirm"]');confirmKey.textContent='✓';confirmKey.title='Xác nhận giá trị';confirmKey.setAttribute('aria-label',confirmKey.title);
+  const confirmKey=numbers.querySelector('[data-numeric-key="confirm"]');confirmKey.disabled=false;confirmKey.textContent='✓';confirmKey.title='Xác nhận giá trị';confirmKey.setAttribute('aria-label',confirmKey.title);
   overlayObserver.disconnect();
   window.removeEventListener('resize',position);window.removeEventListener('scroll',position);
   viewport?.removeEventListener('resize',position);viewport?.removeEventListener('scroll',position);viewport=null;
  }
  function show(adapter){
   const confirmKey=numbers.querySelector('[data-numeric-key="confirm"]'),commit=adapter.confirmLabel?.()==='✓✓';
+  const disabled=commit&&adapter.canConfirm?.()===false;
+  confirmKey.disabled=disabled;
   confirmKey.textContent=commit?'✓✓':'✓';confirmKey.title=commit?'Hoàn tất Thanh':'Xác nhận giá trị';confirmKey.setAttribute('aria-label',confirmKey.title);
   const commandExit=!adapter.text&&typeof adapter.commandExit==='function';
   exitButton.hidden=!commandExit;
   document.body.dataset.barKeypadCommands=String(commandExit);
   if(owner?.input===adapter.input&&owner.text===adapter.text){const changed=!!owner.commandExit!==commandExit;owner=adapter;if(changed)position();return}
   hide();owner=adapter;previousInputMode=owner.input.getAttribute('inputmode');owner.input.inputMode='none';panel.hidden=false;
+  confirmKey.disabled=disabled;
   exitButton.hidden=!commandExit;document.body.dataset.barKeypadCommands=String(commandExit);
   confirmKey.textContent=commit?'✓✓':'✓';confirmKey.title=commit?'Hoàn tất Thanh':'Xác nhận giá trị';confirmKey.setAttribute('aria-label',confirmKey.title);
   panel.classList.toggle('tablet-text-mode',!!owner.text);rollers.hidden=capsButton.hidden=spaceButton.hidden=!owner.text;
@@ -1641,7 +1644,7 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
  function press(key){
   if(!owner)return;
   if(key==='exit'){owner.commandExit?.();return}
-  if(key==='confirm'){owner.confirm();return}
+  if(key==='confirm'){if(owner.canConfirm?.()!==false)owner.confirm();return}
   if(key==='caps'){caps=!caps;updateCaps();return}
   const input=owner.input;let value=input.value;
   if(owner.text||owner.selectionAware){
@@ -1688,6 +1691,40 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
  return {show,hide,position};
 }
 const tabletInputKeypad=createTabletNumericKeypad();
+
+// Post-drawing edits own only their native click; drawing/keypad transactions stay separate.
+var thinOffsetToolbar=document.createElement('div'),thinOffsetToolbarId=null;
+thinOffsetToolbar.id='thinOffsetToolbar';thinOffsetToolbar.hidden=true;thinOffsetToolbar.setAttribute('role','toolbar');thinOffsetToolbar.setAttribute('aria-label','Dịch nét nội lực dọc thanh tham chiếu');
+const thinOffsetButtons={},thinOffsetPositions=new WeakMap();
+for(const [action,label]of [['back','◀'],['reset','0'],['forward','▶']]){
+ const button=document.createElement('button');button.type='button';button.dataset.thinOffset=action;button.textContent=label;
+ button.setAttribute('aria-label',action==='reset'?'Đưa mức dịch về 0':action==='back'?'Lùi về đầu A của thanh':'Tiến về đầu B của thanh');
+ button.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const c=selectedThinOffsetContext();if(c&&c.object.id===thinOffsetToolbarId)setThinOffsetLevel(c.object,action==='reset'?0:c.meta.level+(action==='back'?-1:1))});
+ thinOffsetButtons[action]=button;thinOffsetToolbar.append(button);
+}
+for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])thinOffsetToolbar.addEventListener(type,e=>{e.stopPropagation();if(type==='pointerdown')e.preventDefault()});
+document.body.append(thinOffsetToolbar);
+function selectedThinOffsetContext(){
+ if(mode!=='select'||selectedObjectIds().size!==1||drag||groupDrag||rigidDrag||panEnabled||gesture||inlineEditor||document.querySelector('dialog[open]')||dynamicInputUI.isOpen()||typeof smartMoveSession!=='undefined'&&smartMoveSession)return null;
+ return thinOffsetContext(items.find(o=>o.id===[...selectedObjectIds()][0]));
+}
+function updateThinOffsetToolbar(){
+ if(!thinOffsetToolbar||!thinOffsetToolbarReady)return;
+ const c=selectedThinOffsetContext();thinOffsetToolbar.hidden=!c;thinOffsetToolbarId=c?.object.id||null;if(!c)return;
+ thinOffsetButtons.reset.textContent=c.meta.level>0?'+'+c.meta.level:String(c.meta.level);
+ thinOffsetButtons.back.disabled=c.meta.level===-3;thinOffsetButtons.forward.disabled=c.meta.level===3;
+ const matrix=svg.getScreenCTM();if(!matrix)return;
+ const anchor=new DOMPoint((c.object.x+c.object.x2)/2,(c.object.y+c.object.y2)/2).matrixTransform(matrix),vv=visualViewport,left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
+ const position=localPenBubblePosition({anchor,size:thinOffsetToolbar.getBoundingClientRect(),viewport:{left,top,right:left+(vv?.width||innerWidth),bottom:top+(vv?.height||innerHeight)},drawing:svg.getBoundingClientRect(),obstacles:penBubbleObstacles(thinOffsetToolbar),previous:thinOffsetPositions.get(c.object)});
+ thinOffsetPositions.set(c.object,position);
+ for(const [key,value]of [['left',position.x],['top',position.y]])if(Math.abs((parseFloat(thinOffsetToolbar.style[key])||0)-value)>.25)thinOffsetToolbar.style[key]=value+'px';
+}
+let thinOffsetPositionFrame=null;
+function scheduleThinOffsetToolbar(){if(thinOffsetPositionFrame!==null)return;thinOffsetPositionFrame=requestAnimationFrame(()=>{thinOffsetPositionFrame=null;updateThinOffsetToolbar()})}
+for(const type of ['resize','scroll']){window.addEventListener(type,scheduleThinOffsetToolbar,true);visualViewport?.addEventListener(type,scheduleThinOffsetToolbar)}
+const thinOffsetOverlayObserver=new MutationObserver(records=>{if(records.some(r=>r.target!==thinOffsetToolbar&&r.target.closest?.('#dynamicInput,#tabletNumericKeypad,#penConnectionBubble,#commandControls,.semicircle-left-menu,.semicircle-right-menu,#tabletTopBar,#tabletBottomLeftBar,#tabletBottomRightBar')))scheduleThinOffsetToolbar()});
+thinOffsetOverlayObserver.observe(document.body,{subtree:true,attributes:true,attributeFilter:['hidden','style','class']});
+const thinOffsetCameraObserver=new MutationObserver(scheduleThinOffsetToolbar);thinOffsetCameraObserver.observe(svg,{attributes:true,attributeFilter:['viewBox','width','height','style']});
 // The editor owns its value, selection and save/cancel lifecycle; the keypad only supplies input.
 function attachTabletTextKeypad(input,confirm){
  const sync=()=>{if(floatingToolsMedia.matches)tabletInputKeypad.show({input,confirm,text:true});else tabletInputKeypad.hide(input)};
@@ -1718,7 +1755,7 @@ const dynamicInputUI=(()=>{
    for(const el of fieldInputs)if(!el.hidden){if(!suppressedModes.has(el))suppressedModes.set(el,el.getAttribute('inputmode'));el.inputMode='none'}
   }
   if(tablet&&(!fields?.keypadOnEdit||activeInput().dataset.editing)){
-   keypad.show({input:activeInput(),confirm:confirmKeypad,avoid:keypadAvoid,selectionAware:fields?.tabletBarEdit===true||fields?.selectionAware===true,reserveMenus:fields?.tabletPlacement===true,commandExit:fields?.tabletBarEdit===true?fields.onCommandExit:null,confirmLabel:()=>fields?.canCommit?.()?'✓✓':'✓'});
+   keypad.show({input:activeInput(),confirm:confirmKeypad,avoid:keypadAvoid,selectionAware:fields?.tabletBarEdit===true||fields?.selectionAware===true,reserveMenus:fields?.tabletPlacement===true,commandExit:fields?.onCommandExit,confirmLabel:()=> (fields?.keypadCommitState?fields.keypadCommitState():fields?.canCommit?.())?'✓✓':'✓',canConfirm:()=>!fields?.keypadCommitState?.()||fields.canCommit?.()===true});
   }else{keypad.hide();if(!tablet)restoreInputModes()}
  }
  const suppressedModes=new Map();
@@ -1806,7 +1843,7 @@ const dynamicInputUI=(()=>{
   if(fields){fields.onConfirm(activeIndex,value);delete target.dataset.editing;clearError();syncFields();target.select();syncKeypad();fields?.onConfirmed?.();return true}
   const callback=onConfirm;hide();callback?.(value);return true;
  }
- function confirmKeypad(){if(fields?.canCommit?.())fields.onKeypadCommit?.();else confirm()}
+ function confirmKeypad(){if(fields?.keypadCommitState?.()){if(fields.canCommit?.())fields.onKeypadCommit?.();return}if(fields?.canCommit?.())fields.onKeypadCommit?.();else confirm()}
  function cancel(){if(panel.hidden)return;const callback=onCancel;hide();callback?.()}
  function keyboard(e){
   if(panel.hidden||document.querySelector('dialog[open]')||inlineEditor||(!panel.contains(e.target)&&e.target!==document.body&&e.target!==document.documentElement))return;
@@ -1845,12 +1882,13 @@ const dynamicInputUI=(()=>{
   let panelLeft=clamp(px,left+mx,left+width-mx-rect.width);
   const menuSpace=tabletBar?tabletBarInputHorizontalBounds(left,width,rect.width):null;
   if(menuSpace)panelLeft=clamp(panelLeft,menuSpace.min,menuSpace.max);
-  let panelTop=clamp(py,top+my,top+height-my-rect.height);
+  const panelMinTop=fields?.tabletCanvasPlacement?Math.max(top+my,Math.min(svg.getBoundingClientRect().top+8,top+height-my-rect.height)):top+my;
+  let panelTop=clamp(py,panelMinTop,top+height-my-rect.height);
   if(fields?.positionAvoid){
    const area=svg.getBoundingClientRect(),obstacles=fields.positionAvoid().filter(node=>node&&!node.hidden&&node.getClientRects().length).map(node=>node.getBoundingClientRect());
    const ys=[panelTop,Math.max(top+my,area.top+8),Math.min(top+height-my,area.bottom)-rect.height-8];
    const xs=[panelLeft,menuSpace?.min??left+mx,menuSpace?.max??left+width-mx-rect.width];
-   const candidates=xs.flatMap(x=>ys.map(y=>[clamp(x,left+mx,left+width-mx-rect.width),clamp(y,top+my,top+height-my-rect.height)]));
+   const candidates=xs.flatMap(x=>ys.map(y=>[clamp(x,left+mx,left+width-mx-rect.width),clamp(y,panelMinTop,top+height-my-rect.height)]));
    const overlap=([x,y])=>obstacles.reduce((sum,r)=>sum+Math.max(0,Math.min(x+rect.width,r.right+8)-Math.max(x,r.left-8))*Math.max(0,Math.min(y+rect.height,r.bottom+8)-Math.max(y,r.top-8)),0);
    candidates.sort((a,b)=>overlap(a)-overlap(b));[panelLeft,panelTop]=candidates[0];
   }
@@ -1923,6 +1961,7 @@ const dynamicInputUI=(()=>{
   hasPendingEdit:()=>!panel.hidden&&!!fields&&fieldInputs.some(el=>el.dataset.editing),
   isFieldFocused:()=>!!fields&&fieldInputs.includes(document.activeElement)};
 })();
+var thinOffsetToolbarReady=true;
 function showDynamicInput(options){dynamicInputUI.show(options)}
 function updateDynamicInput(options){dynamicInputUI.update(options)}
 function hideDynamicInput(){dynamicInputUI.hide()}
@@ -2184,7 +2223,7 @@ svg.addEventListener('pointermove',e=>{
  else updateDynamicNumericInputAnchor(e.clientX,e.clientY);
 });
 for(const id of ['dynamicInputValue','dynamicInputSecondary'])$(id).addEventListener('input',()=>{if(barNumericSession?.tablet)discardTabletBarPoint()});
-window.addEventListener('pointercancel',e=>{if(penConnectionPlacement?.type==='bar'&&penConnectionPlacement.pointerId===e.pointerId)discardTabletBarPoint()},true);
+window.addEventListener('pointercancel',e=>{if(['bar','thin','dashed'].includes(penConnectionPlacement?.type)&&penConnectionPlacement.pointerId===e.pointerId)discardTabletBarPoint()},true);
 
 // Thin-line magnitude session shared by pointer and keyboard interactions.
 var thinNumericSession=null;
@@ -2195,12 +2234,19 @@ function beginThinNumericInput(e){
  armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'NL',compact:true,
   validateValue:value=>value>0&&Number.isFinite(internalForceScale)&&internalForceScale>0&&Number.isFinite(value/internalForceScale)&&value/internalForceScale>0,
   onConfirm:value=>{if(!thinNumericSession)return;thinNumericSession.valueMode='locked';thinNumericSession.value=value;syncThinNumericInput();renderThinConstraintPreview()},
-  onCancel:()=>{thinNumericSession=null;cancelToSelection()}});
- thinNumericSession={first,capture:dynamicNumericCapture,valueMode:'live',value:0,endpoint:null,pointerType:e.pointerType||'mouse'};
+  onCancel:()=>{if(thinNumericSession?.tablet)cancelTabletLineSegment();else{thinNumericSession=null;cancelToSelection()}}});
+ thinNumericSession={first,capture:dynamicNumericCapture,valueMode:'live',value:0,endpoint:null,directionPoint:null,pointerType:e.pointerType||'mouse'};
  const session=thinNumericSession;
- showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'NL',compact:true,
+ session.tablet=tabletLineCommand===mode&&tabletLineInteraction(e);
+ const box=svg.getBoundingClientRect();
+ showDynamicInput({clientX:session.tablet?box.left+box.width/2:e.clientX,clientY:session.tablet?box.top+12:e.clientY,suffix:'NL',compact:true,
   onConfirm:session.capture.confirm,onCancel:session.capture.cancel,
-  fields:{label:'Độ lớn nội lực',values:[{get mode(){return session.valueMode},get value(){return session.value}}],
+  tabletKeypad:session.tablet,keypadAvoid:()=>[penConnectionBubble],
+  fields:{label:'Độ lớn nội lực',labels:['NL'],unitLocks:session.tablet,keyboardFocusOnly:session.tablet,selectionAware:session.tablet,tabletPlacement:session.tablet,tabletCanvasPlacement:session.tablet,
+   keypadCommitState:()=>session.tablet&&thinNumericSession===session&&session.valueMode==='locked'&&!dynamicInputUI.hasPendingEdit(),
+   canCommit:canFinishLockedThin,onKeypadCommit:commitTabletThinKeypad,onCommandExit:session.tablet?cancelToSelection:null,
+   positionAvoid:session.tablet?()=>[penConnectionBubble,commandControls]:null,onEdit:()=>{if(session.tablet)discardTabletBarPoint()},
+   invalidMessage:'Nhập độ lớn NL hữu hạn, lớn hơn 0.',values:[{get mode(){return session.valueMode},get value(){return session.value}}],
    validate:(i,value)=>session.capture.validateValue(value),
    onConfirm:(i,value)=>session.capture.onConfirm(value)}});
 
@@ -2215,16 +2261,46 @@ function syncThinNumericInput(){
  if(thinNumericSession&&(mode!=='thin'||first!==thinNumericSession.first||(thinNumericSession.valueMode==='live'&&dynamicNumericCapture!==thinNumericSession.capture)))endThinNumericInput();
  const referenceBar=thinNumericSession?getThinReferenceBar():null;
  const geometry=referenceBar?getThinConstrainedGeometry(referenceBar):null;
+ if(thinNumericSession?.tablet){
+  const raw=thinReferenceSession?.rawCursorPoint;
+  // Only canvas/reference intent supplies direction; keypad screen coordinates never do.
+  if(raw&&[raw.x,raw.y].every(Number.isFinite)&&Math.hypot(raw.x-first.x,raw.y-first.y)>1e-9&&(!referenceBar||geometry))thinNumericSession.directionPoint={...raw};
+ }
  if(thinNumericSession?.valueMode==='locked')thinNumericSession.endpoint=referenceBar?geometry?.endpoint||null:solveThinEndpointFromValue({startPoint:first,candidatePoint:hover||first,internalForceValue:thinNumericSession.value,internalForceScale});
+ if(thinNumericSession?.tablet&&thinNumericSession.valueMode==='locked')thinNumericSession.endpoint=tabletThinKeypadGeometry()?.endpoint||null;
  if(thinNumericSession?.valueMode==='live'){
   const candidate=hover||first;
   thinNumericSession.value=(referenceBar?Math.abs(geometry?.signedNormalDistance||0):Math.hypot(candidate.x-first.x,candidate.y-first.y))*internalForceScale;
  }
  if(thinNumericSession&&dynamicInputUI.owns(thinNumericSession.capture.confirm))updateDynamicInput();
 }
+function tabletThinKeypadGeometry(){
+ const session=thinNumericSession;
+ if(mode!=='thin'||!first||!session?.tablet||session.first!==first||session.valueMode!=='locked'||!session.capture.validateValue(session.value)||!session.directionPoint)return null;
+ const frozen=penConnectionPlacement?.type==='thin'?penConnectionPlacement:null;
+ let geometry;
+ if(frozen){if(frozen.first!==first||frozen.internalForceScale!==internalForceScale)return null;geometry={drawStartPoint:frozen.lockedStart,endpoint:frozen.lockedCandidate}}
+ else{const reference=getThinReferenceBar();geometry=reference?getThinConstrainedGeometry(reference,session.directionPoint):{drawStartPoint:first,endpoint:solveThinEndpointFromValue({startPoint:first,candidatePoint:session.directionPoint,internalForceValue:session.value,internalForceScale})}}
+ const start=geometry?.drawStartPoint,end=geometry?.endpoint;
+ return start&&end&&[start.x,start.y,end.x,end.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=10000)&&Math.hypot(end.x-start.x,end.y-start.y)>1e-9?geometry:null;
+}
+function canFinishLockedThin(){
+ return !!(thinNumericSession?.tablet&&dynamicInputUI.owns(thinNumericSession.capture.confirm)&&!dynamicInputUI.hasPendingEdit()&&!panEnabled&&!gesture&&!inlineEditor&&!document.querySelector('dialog[open]')&&!penConnectionPlacementBlocked({})&&tabletThinKeypadGeometry());
+}
+function commitTabletThinKeypad(){
+ if(!canFinishLockedThin())return false;
+ const geometry=tabletThinKeypadGeometry(),session=thinNumericSession,screen=new DOMPoint(session.directionPoint.x,session.directionPoint.y).matrixTransform(svg.getScreenCTM());
+ clearTabletBarCandidate();
+ return commitThinCandidate(geometry.endpoint,{clientX:screen.x,clientY:screen.y,pointerType:session.pointerType},{resolvedStart:geometry.drawStartPoint});
+}
 svg.addEventListener('pointermove',e=>{
  syncThinNumericInput();
  if(thinNumericSession&&dynamicNumericCapture===thinNumericSession.capture){
+  if(thinNumericSession.tablet){
+   // Retain drawing intent coordinates without moving the tablet editing target.
+   if(!penConnectionPlacement&&[e.clientX,e.clientY].every(Number.isFinite)){thinNumericSession.capture.clientX=e.clientX;thinNumericSession.capture.clientY=e.clientY}
+   updateDynamicInput({keepPosition:true});return;
+  }
   if(e.pointerType==='touch'&&dynamicInputUI.isFieldFocused())updateDynamicInput();
   else updateDynamicNumericInputAnchor(e.clientX,e.clientY);
  }
@@ -2234,6 +2310,7 @@ svg.addEventListener('pointermove',e=>{
 // Validation happens before the unchanged pointer commit handler.
 svg.addEventListener('pointerdown',e=>{
  if(consumeThinReferenceOverride(e))return;
+ if(tabletLineInteraction(e))return;
  if(e.button!==0||!first||!dynamicInputUI.isOpen())return;
  const session=mode==='bar'?barNumericSession:mode==='thin'?thinNumericSession:null;
  if(!session||!dynamicInputUI.owns(session.capture.confirm))return;
@@ -2242,11 +2319,17 @@ svg.addEventListener('pointerdown',e=>{
 
 
 // Preserve the latest interaction type for the chained session, not Enter semantics.
+window.addEventListener('keydown',e=>{
+ if(e.key!=='Escape'||e.isComposing||e.keyCode===229||tabletLineCommand!==mode||!['thin','dashed'].includes(mode)||inlineEditor||document.querySelector('dialog[open]'))return;
+ if(e.target!==document.body&&e.target!==document.documentElement&&!$('dynamicInput').contains(e.target))return;
+ e.preventDefault();e.stopImmediatePropagation();cancelTabletLineSegment();
+},true);
 $('dynamicInput').addEventListener('pointerdown',e=>{
  if(thinNumericSession&&dynamicInputUI.owns(thinNumericSession.capture.confirm)&&['touch','pen'].includes(e.pointerType))thinNumericSession.pointerType=e.pointerType;
 });
 window.addEventListener('keydown',e=>{
  const session=thinNumericSession;
+ if(session?.tablet)return;
  if(e.key!=='Enter'||e.isComposing||e.keyCode===229||e.ctrlKey||e.altKey||e.metaKey||mode!=='thin'||!first||!session||session.first!==first||inlineEditor||document.querySelector('dialog[open]'))return;
  const ownInput=dynamicInputUI.owns(session.capture.confirm);
  if(dynamicInputUI.isOpen()&&!ownInput)return;
@@ -2260,7 +2343,8 @@ window.addEventListener('keydown',e=>{
 
 // Shared command actions: native editors/Dynamic Input retain their own key lifecycle.
 function finishActiveCommand(){
- if(typeof canFinishBarRotation==='function'&&canFinishBarRotation())commitBarRotation();
+ if(tabletLineCommand===mode&&['thin','dashed'].includes(mode))cancelToSelection();
+ else if(typeof canFinishBarRotation==='function'&&canFinishBarRotation())commitBarRotation();
  else if(canFinishLockedBar()){
   const session=barNumericSession;
   if(!dynamicInputUI.confirmPending())return;
@@ -2272,7 +2356,7 @@ function finishActiveCommand(){
  else if(mirrorSelecting)startMirrorAxis();
  updateCommandControls();
 }
-function cancelActiveCommand(){cancelToSelection();updateCommandControls()}
+function cancelActiveCommand(){if(tabletLineCommand===mode&&['thin','dashed'].includes(mode))cancelTabletLineSegment();else cancelToSelection();updateCommandControls()}
 // Two locked values fully determine a Bar in model space, without a hover candidate.
 function canFinishLockedBar(){
  return mode==='bar'&&!!first&&barNumericSession?.first===first&&
@@ -2292,15 +2376,20 @@ commandControls.addEventListener('pointerdown',e=>{e.preventDefault();e.stopProp
 commandCancel.onclick=cancelActiveCommand;commandFinish.onclick=finishActiveCommand;
 function updateCommandControls(){
  const touch=matchMedia('(any-pointer: coarse)').matches;
+ const lineCommand=tabletLineCommand===mode&&['thin','dashed'].includes(mode);
+ document.body.dataset.tabletLineCommands=String(lineCommand);
+ commandCancel.setAttribute('aria-label',lineCommand?'Hủy đoạn đang vẽ (Esc)':'Hủy (Esc)');
+ commandFinish.setAttribute('aria-label',lineCommand?'Kết thúc vẽ':'Hoàn tất (Enter)');
  const rotation=typeof canFinishBarRotation==='function'&&canFinishBarRotation();
  const rotationSession=typeof hasBarRotationConfirmation==='function'&&hasBarRotationConfirmation();
  const editing=inlineEditor||document.querySelector('dialog[open]')||document.activeElement?.matches('input,textarea,select')||document.activeElement?.isContentEditable;
  const active=mode!=='select'||mirrorSelecting||rotationSession;
  const lockedBar=canFinishLockedBar();
- const finish=rotation||lockedBar||mode==='section'&&!sectionPending&&sectionPoints.length>=2||mode==='rigidRegion'&&rigidPoints.length>=3||mode==='hatch'&&hatchPoints.length>=3||mirrorSelecting&&selectedObjectIds().size>0;
+ const finish=lineCommand||rotation||lockedBar||mode==='section'&&!sectionPending&&sectionPoints.length>=2||mode==='rigidRegion'&&rigidPoints.length>=3||mode==='hatch'&&hatchPoints.length>=3||mirrorSelecting&&selectedObjectIds().size>0;
  const barInputEditing=lockedBar&&barNumericSession?.tablet&&!inlineEditor&&!document.querySelector('dialog[open]')&&$('dynamicInput').contains(document.activeElement);
  const rotationInputEditing=rotationSession&&typeof ownsRotationNumericInput==='function'&&ownsRotationNumericInput()&&!inlineEditor&&!document.querySelector('dialog[open]')&&$('dynamicInput').contains(document.activeElement);
- commandControls.hidden=(!touch&&!lockedBar&&!rotationSession)||!!editing&&!barInputEditing&&!rotationInputEditing||!active;
+ const lineInputEditing=lineCommand&&$('dynamicInput').contains(document.activeElement);
+ commandControls.hidden=(!touch&&!lockedBar&&!rotationSession)||!!editing&&!barInputEditing&&!rotationInputEditing&&!lineInputEditing||!active;
  commandFinish.hidden=!finish;
  // Keep clear of the existing numeric editor; do not create a second confirmation UI.
  const input=$('dynamicInput');
@@ -3192,7 +3281,7 @@ function leftRingGesturePointer(e,entry,{centered,dragging}){
 window.addEventListener('pointerdown',e=>{
  if(leftDrawingForwarding)return;
  leftDrawingSwallowClick=false;
- if(tabletTopBar.contains(e.target)||tabletBottomLeftBar.contains(e.target)||tabletBottomRightBar.contains(e.target)){leftDrawingMenu?.close();rightCommandMenu?.close();return}
+ if(tabletTopBar.contains(e.target)||tabletBottomLeftBar.contains(e.target)||tabletBottomRightBar.contains(e.target)||thinOffsetToolbar.contains(e.target)){leftDrawingMenu?.close();rightCommandMenu?.close();return}
  if(!leftDrawingMenu||leftDrawingMenu.host.hidden||window.semicircleDemo)return;
  if(rightCommandMenu?.host.contains(e.target))return;
  if(leftDrawingMenu.host.contains(e.target)){
@@ -3323,7 +3412,7 @@ for(const source of [commandControls,...sharedOuterActions.map(a=>a.source)])out
 const rightCommandConsumed=new Set();let rightCommandSwallowClick=false;
 window.addEventListener('pointerdown',e=>{
  rightCommandSwallowClick=false;
- if(tabletTopBar.contains(e.target)||tabletBottomLeftBar.contains(e.target)||tabletBottomRightBar.contains(e.target))return;
+ if(tabletTopBar.contains(e.target)||tabletBottomLeftBar.contains(e.target)||tabletBottomRightBar.contains(e.target)||thinOffsetToolbar.contains(e.target))return;
  if(!rightCommandMenu||rightCommandMenu.host.hidden||window.semicircleDemo)return;
  if(rightCommandMenu.host.contains(e.target)){e.preventDefault();e.stopImmediatePropagation();return}
  if(leftDrawingMenu?.host.contains(e.target)||!rightCommandMenu.state.open)return;

@@ -6,7 +6,7 @@ const near=(a,b)=>assert(Math.abs(a-b)<.003,`${a} != ${b}`);
   const context=await browser.newContext({hasTouch:touch,viewport:{width:1400,height:1000}}),p=await context.newPage(),errors=[];
   p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());await p.goto(pathToFileURL(path.resolve('index.html')).href);
   const coords=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});
-  const click=async(x,y)=>{const q=await coords(x,y);if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
+  const click=async(x,y)=>{const q=await coords(x,y);if(touch){await p.touchscreen.tap(q.x,q.y);await require('./tablet-point-test-actions.cjs').confirmPoint(p)}else await p.mouse.click(q.x,q.y)};
   const move=async(x,y)=>{const q=await coords(x,y);await p.locator('#drawing').dispatchEvent('pointermove',{clientX:q.x,clientY:q.y,pointerType:touch?'touch':'mouse'})};
   const px=async(x,y)=>p.evaluate(({x,y})=>{const s=Math.abs(svg.getScreenCTM().a),a=thinReferenceSession.anchorPoint;return {x:a.x+x/s,y:a.y+y/s}},{x,y});
   const tapPx=async(x,y)=>{const q=await px(x,y);await click(q.x,q.y)};

@@ -1,6 +1,6 @@
 'use strict';
 
-// Bar-only transaction. Preview and acquisition never write to the drawing model.
+// Standalone Bar/Thin/Dashed transaction. Preview never writes to the drawing model.
 let smartMoveSession=null;
 let smartMoveMenuPointer=null;
 let smartMoveMenuClickPointer=null;
@@ -46,7 +46,7 @@ penConnectionBubble.addEventListener('pointerdown',e=>{
  e.preventDefault();e.stopImmediatePropagation();penConnectionSuppressClick=true;activatePenConnectionButton(action,e);
 });
 
-function movableBars(ids){return ids.size>0&&[...ids].every(id=>items.some(o=>o.id===id&&o.type==='bar'&&!o.sectionGroup))}
+function movableBars(ids){return ids.size>0&&[...ids].every(id=>items.some(o=>o.id===id&&transformableLine(o)))}
 // Rotation shares the existing cancel/history/Bubble lifecycle, but never enters
 // Move's snap solver. Only the dedicated handle may acquire this transaction.
 function rotationBar(){
@@ -228,7 +228,7 @@ function beginBarPivot(e){
  if(!beginSmartMove(rawPoint(e),e))return false;
  const s=smartMoveSession;
  s.pivotEditing=true;s.pivotBefore=selectionPivot(s.originals);s.pivotCandidate={...s.pivotBefore};
- s.pivotCandidates=moveSnapPoints(items,true);s.pivotBars=copy(items.filter(o=>o.type==='bar'&&!o.sectionGroup));s.state='ADJUST_PIVOT';
+ s.pivotCandidates=moveSnapPoints(items,true);s.pivotBars=copy(items.filter(transformableLine));s.state='ADJUST_PIVOT';
  svg.setPointerCapture(e.pointerId);render();return true;
 }
 function commitBarPivot(){

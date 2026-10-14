@@ -3,6 +3,13 @@ const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
 const near=(a,b)=>assert(Math.abs(a-b)<1e-6,`${a} != ${b}`);
 const nearPoint=(a,b)=>{near(a.x,b.x);near(a.y,b.y)};
+async function assertLocalBubble(page,bubble,point,dimensions){
+ const p=await page.evaluate(q=>{const a=new DOMPoint(q.x,q.y).matrixTransform(svg.getScreenCTM());return {x:a.x,y:a.y}},point),r=await bubble.boundingBox(),canvas=await page.locator('#drawing').boundingBox();
+ assert.equal(r.width,dimensions.width);assert.equal(r.height,dimensions.height);
+ assert(r.x>=canvas.x+7.9&&r.y>=canvas.y+7.9&&r.x+r.width<=canvas.x+canvas.width-7.9&&r.y+r.height<=canvas.y+canvas.height-7.9);
+ assert(Math.hypot(Math.max(r.x-p.x,0,p.x-r.x-r.width),Math.max(r.y-p.y,0,p.y-r.y-r.height))<=120);
+ return r;
+}
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
@@ -93,19 +100,19 @@ const nearPoint=(a,b)=>{near(a.x,b.x);near(a.y,b.y)};
    await pen('pointerup',{x:303,y:303},{pointerId:72});assert.equal(await state(),'position-locked');assert.equal(await bubble.isVisible(),false);
    await pen('pointerup',{x:524,y:536},{outside:true});assert.equal(await state(),'confirming');nearPoint(await locked(),{x:400,y:450});assert.deepEqual(await doc(),before);
    await assertHaloAt({x:400,y:450});assert.deepEqual(await halo.boundingBox(),frozenHaloRect);
-   const frozenRect=await bubble.boundingBox();
+   let frozenRect=await bubble.boundingBox();
    for(const q of [{x:303,y:303},{x:524,y:536},{x:724,y:636},{x:303,y:303}]){
     await pen('pointermove',q);await pen('pointerdown',q,{buttons:1,pressure:.22});await pen('pointerup',q);
     assert.deepEqual(await preview(),frozen);assert.deepEqual(await bubble.boundingBox(),frozenRect);nearPoint(await locked(),{x:400,y:450});assert.deepEqual(await doc(),before);
     assert.deepEqual(await halo.boundingBox(),frozenHaloRect);
    }
    await pen('pointercancel');await page.evaluate(()=>{render();window.dispatchEvent(new Event('resize'));window.dispatchEvent(new Event('scroll'));camera.x+=15;applyCamera()});
-   assert.deepEqual(await preview(),frozen);assert.deepEqual(await bubble.boundingBox(),frozenRect);
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));assert.deepEqual(await preview(),frozen);frozenRect=await assertLocalBubble(page,bubble,{x:400,y:450},frozenRect);
    await assertHaloAt({x:400,y:450});
    assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(exportSVG(),'image/svg+xml').querySelectorAll('[data-pen-connection-preview],#penConnectionBubble').length),0);
    assert.deepEqual(await preview(),frozen);assert.deepEqual(await bubble.boundingBox(),frozenRect);assert.deepEqual(await doc(),before);
    assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(exportSVG(),'image/svg+xml').querySelectorAll('#penConnectionLockHalo').length),0);
-   await page.evaluate(()=>zoomAt(1.5));await assertHaloAt({x:400,y:450});assert.deepEqual(await bubble.boundingBox(),frozenRect);assert.deepEqual(await doc(),before);
+   await page.evaluate(()=>zoomAt(1.5));await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await assertHaloAt({x:400,y:450});await assertLocalBubble(page,bubble,{x:400,y:450},frozenRect);assert.deepEqual(await doc(),before);
    assert.equal(await page.evaluate(()=>getComputedStyle(svg.querySelector('[data-pen-connection-preview]')).animationName),'none');
    // Explicit pen confirm acts once; its release cannot fall through to the SVG.
    await pen('pointerdown',undefined,{target:selector('confirm'),buttons:1,pressure:.22});const placed=await assertPlaced(before,type,{x:400,y:450});
@@ -173,7 +180,7 @@ const nearPoint=(a,b)=>{near(a.x,b.x);near(a.y,b.y)};
    if(kind==='endpoint')nearPoint(sample.expected,{x:307,y:307});if(kind==='midpoint'||kind==='intersection')nearPoint(sample.expected,{x:407,y:307});
    await pen('pointermove',{x:724,y:636},{buttons:1,pressure:.22});await pen('pointerup',{x:724,y:636});await pen('pointermove',{x:524,y:536});nearPoint(await preview(),sample.expected);assert.deepEqual(await doc(),before);await activate('confirm');await assertPlaced(before,'hinge',sample.expected);
   }
-  // Bubble flips/clamps once at release; redraw/camera changes never reposition it.
+  // Frozen points ignore pen motion; camera changes re-evaluate local visible placement.
   for(const viewport of [{width:1500,height:1100},{width:800,height:1000},{width:1100,height:720}]){
    await page.setViewportSize(viewport);await reset('weld');await page.evaluate(()=>{snapEnabled=false});
    const edges=await page.evaluate(()=>{
@@ -186,9 +193,9 @@ const nearPoint=(a,b)=>{near(a.x,b.x);near(a.y,b.y)};
     const q=await page.evaluate(p=>{const q=new DOMPoint(p.x,p.y).matrixTransform(svg.getScreenCTM().inverse());return {x:q.x,y:q.y}},corner),before=await doc();
     await lock(q);nearPoint(await locked(),q);assert.deepEqual(await doc(),before);const box=await bubble.boundingBox();assert(box.x>=7&&box.y>=7&&box.x+box.width<=viewport.width-7&&box.y+box.height<=viewport.height-7);
     assert(await button('confirm').evaluate(b=>{const r=b.getBoundingClientRect();return document.elementFromPoint(r.x+24,r.y+24)===b}));
-    await page.evaluate(()=>{camera.x+=15;applyCamera();render()});assert.deepEqual(await bubble.boundingBox(),box);nearPoint(await preview(),q);assert.deepEqual(await doc(),before);await activate('confirm');await assertPlaced(before,'weld',q);
+    await page.evaluate(()=>{camera.x+=15;applyCamera();render()});await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await assertLocalBubble(page,bubble,q,box);nearPoint(await preview(),q);assert.deepEqual(await doc(),before);await activate('confirm');await assertPlaced(before,'weld',q);
    }
   }
-  assert.deepEqual(errors,[]);console.log('PASS down-event shared snap priority, clean export and stationary viewport-clamped UI');
+  assert.deepEqual(errors,[]);console.log('PASS down-event shared snap priority, clean export and frozen/local camera-aware UI');
  }finally{await browser.close()}
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -5,7 +5,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),{pathToFile
   const context=await browser.newContext({hasTouch:true,viewport:{width:1400,height:1000}}),p=await context.newPage(),errors=[];
   p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());await p.goto(pathToFileURL(path.resolve('index.html')).href);
   const coords=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});
-  const click=async(x,y)=>{const q=await coords(x,y);if(pointerType==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
+  const click=async(x,y)=>{const q=await coords(x,y);if(pointerType==='touch'){await p.touchscreen.tap(q.x,q.y);await require('./tablet-point-test-actions.cjs').confirmPoint(p)}else await p.mouse.click(q.x,q.y)};
   const orange=()=>p.locator('.reference-override').count();
   const seed=async(width=1100,count=2)=>{await p.evaluate(({width,count})=>{document.activeElement.blur();setMode('select');items=[{...make('bar',100,300,500,300),id:'h'},...(count===2?[{...make('bar',300,100,300,500),id:'v'}]:[])];past=[];future=[];camera={x:0,y:0,w:width,h:width*720/1100};applyCamera();setMode('thin')},{width,count});await click(300,300);const q=await coords(310,340);await p.locator('#drawing').dispatchEvent('pointermove',{clientX:q.x,clientY:q.y,pointerType});assert.equal(await p.evaluate(()=>thinReferenceSession.referenceBarId),'h')};
   const move=async(x,y,expected)=>{
@@ -18,7 +18,7 @@ const assert=require('node:assert/strict'),path=require('node:path'),{pathToFile
    await seed(width);await move(0,45,false);await move(0,30,true);await move(0,45,false);await move(-30,0,false);await move(8,8,false);await move(0,5,false);await move(11,30,false);
    await p.evaluate(()=>{items.push({...make('bar',320,310,340,310),id:'unrelated'})});await move(25,15,false);
    const before=await p.evaluate(()=>({count:items.length,history:past.length})),q=await move(0,30,true);
-   if(pointerType==='touch')await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y);
+   if(pointerType==='touch'){await p.touchscreen.tap(q.x,q.y);await require('./tablet-point-test-actions.cjs').confirmPoint(p)}else await p.mouse.click(q.x,q.y);
    assert.equal(await p.evaluate(()=>thinReferenceSession.referenceBarId),'v');assert.deepEqual(await p.evaluate(()=>({count:items.length,history:past.length})),before);assert.equal(await orange(),0);await move(0,30,false);
   }
   await seed(1100,1);await move(0,30,false);

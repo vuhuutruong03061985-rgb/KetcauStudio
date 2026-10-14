@@ -8,7 +8,7 @@ const near=(a,b)=>assert(Math.abs(a-b)<.002,`${a} != ${b}`);
   await p.goto(pathToFileURL(path.resolve('index.html')).href);
   await p.waitForFunction(()=>typeof beginThinReferenceSession==='function');
   const coords=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {clientX:q.x,clientY:q.y}},{x,y});
-  const click=async(x,y)=>{const q=await coords(x,y);if(touch)await p.touchscreen.tap(q.clientX,q.clientY);else await p.mouse.click(q.clientX,q.clientY)};
+  const click=async(x,y)=>{const q=await coords(x,y);if(touch){await p.touchscreen.tap(q.clientX,q.clientY);await require('./tablet-point-test-actions.cjs').confirmPoint(p)}else await p.mouse.click(q.clientX,q.clientY)};
   const move=async(x,y)=>p.locator('#drawing').dispatchEvent('pointermove',{...await coords(x,y),pointerType:touch?'touch':'mouse'});
   const state=()=>p.evaluate(()=>thinReferenceSession&&({anchor:thinReferenceSession.anchorPoint,ids:thinReferenceSession.candidates.map(c=>c.barId),id:thinReferenceSession.referenceBarId,locked:thinReferenceSession.referenceBarLocked}));
   const seed=async(kind='node',width=1100)=>p.evaluate(({kind,width})=>{
@@ -42,6 +42,7 @@ const near=(a,b)=>assert(Math.abs(a-b)<.002,`${a} != ${b}`);
    // Dispatch down/up directly: deliberately no pointermove before commit.
    await p.locator('#drawing').dispatchEvent('pointerdown',{...q,button:0,pointerId:91,pointerType:touch?'touch':'mouse'});
    await p.locator('#drawing').dispatchEvent('pointerup',{...q,button:0,pointerId:91,pointerType:touch?'touch':'mouse'});
+   if(touch)await require('./tablet-point-test-actions.cjs').confirmPoint(p);
    const result=await p.evaluate(()=>({observed:window.referenceAtCommit,o:items.at(-1),fresh:thinReferenceSession!==window.referenceOldSession,first,anchor:thinReferenceSession.anchorPoint,history:past.length}));
    assert.equal(result.observed.id,expectedId);assert.equal(result.observed.locked,expectedId!==null);assert(result.fresh);assert.equal(result.o.type,'thin');near(result.o.x2,expected.x);near(result.o.y2,expected.y);assert.deepEqual(result.anchor,result.first);assert.equal(result.history,1);
    if(expectedId==='h')assert.equal((await state()).id,'v');if(expectedId==='v')assert.equal((await state()).id,'h');if(expectedId===null)assert.equal((await state()).ids.length,0);

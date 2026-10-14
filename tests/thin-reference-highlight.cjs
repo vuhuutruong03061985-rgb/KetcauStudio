@@ -6,7 +6,7 @@ const near=(a,b)=>assert(Math.abs(a-b)<.003,`${a} != ${b}`);
   const context=await browser.newContext({hasTouch:touch,viewport:{width:1400,height:1000}}),p=await context.newPage(),errors=[];
   p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());await p.goto(pathToFileURL(path.resolve('index.html')).href);
   const coords=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});
-  const click=async(x,y)=>{const q=await coords(x,y);if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
+  const click=async(x,y)=>{const q=await coords(x,y);if(touch){await p.touchscreen.tap(q.x,q.y);await require('./tablet-point-test-actions.cjs').confirmPoint(p)}else await p.mouse.click(q.x,q.y)};
   const move=async(x,y)=>{const q=await coords(x,y);await p.locator('#drawing').dispatchEvent('pointermove',{clientX:q.x,clientY:q.y,pointerType:touch?'touch':'mouse'})};
   const count=()=>p.locator('.thin-reference-highlight').count();
   const seed=async(n=2)=>{await p.evaluate(n=>{document.activeElement.blur();setMode('select');items=[{...make('bar',100,300,500,300),id:'h'},...(n===2?[{...make('bar',300,100,300,500),id:'v'}]:[])];past=[];future=[];camera={x:0,y:0,w:1100,h:720};applyCamera();setMode('thin');savedDocument=documentText()},n);assert.equal(await count(),0);await click(300,300)};

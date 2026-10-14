@@ -3,7 +3,7 @@ const {chromium}=require('../.test-tools/node_modules/playwright');const {pathTo
 for(const touch of [false,true]){
  const c=await b.newContext({hasTouch:touch,viewport:{width:1400,height:1000}}),p=await c.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof beginThinNumericInput==='function');
  const coords=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});
- const click=async(x,y)=>{const q=await coords(x,y);if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
+ const click=async(x,y)=>{const q=await coords(x,y);if(touch){await p.touchscreen.tap(q.x,q.y);await require('./tablet-point-test-actions.cjs').confirmPoint(p)}else await p.mouse.click(q.x,q.y)};
  const start=async()=>{await p.evaluate(()=>{document.activeElement.blur();items=[];past=[];future=[];internalForceScale=10;setMode('thin');savedDocument=documentText()});await click(300,300)};
  const lock=async()=>{await p.evaluate(()=>openArmedDynamicInput());await p.locator('#dynamicInputValue').fill('110');await p.evaluate(()=>dynamicInputUI.confirmPending());assert.equal(await p.evaluate(()=>items.length),0);assert.equal(await p.evaluate(()=>past.length),0);assert.equal(await p.evaluate(()=>documentText()===savedDocument),true)};
  const near=(a,b)=>assert(Math.abs(a-b)<.001,`${a} != ${b}`);

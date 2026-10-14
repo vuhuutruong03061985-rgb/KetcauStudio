@@ -3,7 +3,7 @@
 for(const touch of [false,true]){
  const c=await b.newContext({hasTouch:touch,viewport:{width:1400,height:1000}}),p=await c.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof beginThinNumericInput==='function');
  const coords=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {clientX:q.x,clientY:q.y}},{x,y});
- const click=async(x,y)=>{const q=await coords(x,y);if(touch)await p.touchscreen.tap(q.clientX,q.clientY);else await p.mouse.click(q.clientX,q.clientY)};
+ const click=async(x,y)=>{const q=await coords(x,y);if(touch){await p.touchscreen.tap(q.clientX,q.clientY);await require('./tablet-point-test-actions.cjs').confirmPoint(p)}else await p.mouse.click(q.clientX,q.clientY)};
  const move=async(x,y)=>p.locator('#drawing').dispatchEvent('pointermove',{...await coords(x,y),pointerType:touch?'touch':'mouse'});
  const start=async()=>{await p.evaluate(()=>{document.activeElement.blur();items=[];past=[];future=[];internalForceScale=10;camera={x:0,y:0,w:1100,h:720};applyCamera();setMode('thin')});await click(300,300);await move(500,300)};
  const snapshot=()=>p.evaluate(()=>({doc:documentText(),past:copy(past),future:copy(future),draft:localStorage.getItem(draftKey),saved:savedDocument,snap:copy(snapOptions)}));

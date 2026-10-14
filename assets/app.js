@@ -304,21 +304,23 @@ function drawDimension(g,o){
  txt(t,0,-9,o.label);
 }
 function rawPoint(e){return new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.getScreenCTM().inverse())}
-// Optional Bar metadata in model units, relative to its midpoint and local axes.
+// Standalone endpoint segments share transformation geometry, not mechanical logic.
+function transformableLine(o){return !!o&&!o.sectionGroup&&(o.type==='bar'||['thin','dashed'].includes(o.type)&&!o.sectionExtract&&!o.sectionMark&&!o.sectionAction)}
+// Optional segment metadata in model units, relative to its midpoint and local axes.
 // Translation/rotation therefore preserve the same logical transformation center.
 function barPivotFrame(o){
  const dx=o.x2-o.x,dy=o.y2-o.y,length=Math.hypot(dx,dy);
  return {x:(o.x+o.x2)/2,y:(o.y+o.y2)/2,ux:length?dx/length:1,uy:length?dy/length:0};
 }
 function objectPivot(o){
- if(o?.type!=='bar'||o.sectionGroup)return null;
+ if(!transformableLine(o))return null;
  const f=barPivotFrame(o),a=o.pivot?.along||0,n=o.pivot?.normal||0;
  return {x:f.x+f.ux*a-f.uy*n,y:f.y+f.uy*a+f.ux*n};
 }
 function barPivotLocal(o,p){const f=barPivotFrame(o),x=p.x-f.x,y=p.y-f.y;return {along:x*f.ux+y*f.uy,normal:-x*f.uy+y*f.ux}}
 function validateBarPivot(o){
  const p=o.pivot;
- if(o.type!=='bar'||o.sectionGroup||!p||typeof p!=='object'||Array.isArray(p)||!Number.isFinite(p.along)||!Number.isFinite(p.normal)||Math.abs(p.along)>30000||Math.abs(p.normal)>30000)throw Error('Invalid Bar pivot');
+ if(!transformableLine(o)||!p||typeof p!=='object'||Array.isArray(p)||!Number.isFinite(p.along)||!Number.isFinite(p.normal)||Math.abs(p.along)>30000||Math.abs(p.normal)>30000)throw Error('Invalid segment pivot');
  const q=objectPivot(o);if(!Number.isFinite(q.x)||!Number.isFinite(q.y))throw Error('Invalid Bar pivot position');
 }
 function geometricPoints(o){
@@ -753,7 +755,7 @@ function overrideThinReference(e){
  session.rawCursorPoint={...(session.overrideCursorPoint||session.anchorPoint)};
  // Keyboard commit must use the same retained drawing intent as the refreshed preview.
  const numeric=typeof thinNumericSession!=='undefined'?thinNumericSession:null;
- if(numeric?.first===first&&typeof dynamicNumericCapture!=='undefined'&&dynamicNumericCapture===numeric.capture){
+ if(!numeric?.tablet&&numeric?.first===first&&typeof dynamicNumericCapture!=='undefined'&&dynamicNumericCapture===numeric.capture){
   const cursor=new DOMPoint(session.rawCursorPoint.x,session.rawCursorPoint.y).matrixTransform(svg.getScreenCTM());
   updateDynamicNumericInputAnchor(cursor.x,cursor.y);
  }
@@ -762,11 +764,49 @@ function overrideThinReference(e){
 function resolveThinConstrainedGeometry(options={}){
  if(!options)return null;
  const {anchorPoint,referenceBar,rawCursorPoint,screenScale,valueMode,internalForceValue,internalForceScale}=options;
- const placement=solveThinSectionPlacement({anchorPoint,referenceBar,cursorPoint:rawCursorPoint,screenScale,thresholdPx:THIN_SECTION_SIDE_THRESHOLD_PX,offsetPx:THIN_SECTION_OFFSET_PX});
+ const placement=solveThinSectionPlacement({anchorPoint,referenceBar,cursorPoint:rawCursorPoint,screenScale,thresholdPx:THIN_SECTION_SIDE_THRESHOLD_PX,offsetPx:0});
  if(!placement)return null;
- const {drawStartPoint,sectionSide,normal,normalDistance:signedNormalDistance}=placement;
+ const {drawStartPoint,normal,normalDistance:signedNormalDistance}=placement,sectionSide=0;
  const endpoint=solveThinPerpendicularEndpoint({drawStartPoint,normal,signedNormalDistance,valueMode,internalForceValue,internalForceScale});
  return endpoint?{drawStartPoint,endpoint,sectionSide,normal,signedNormalDistance}:null;
+}
+// Optional JSON v1 metadata: base.x/y is the original confirmed reference anchor.
+// Model-space step is established once; zoom never rewrites committed geometry.
+function thinOffsetCoordinates(meta,level=meta.level){
+ const frame=getThinBarFrame(meta.reference);if(!frame)return null;
+ const dx=level*meta.step*frame.tangent.x,dy=level*meta.step*frame.tangent.y,b=meta.base;
+ return {x:b.x+dx,y:b.y+dy,x2:b.x2+dx,y2:b.y2+dy};
+}
+function validateThinOffsetMetadata(o){
+ const m=o.thinOffset,finite=p=>p&&typeof p==='object'&&!Array.isArray(p)&&['x','y','x2','y2'].every(k=>Number.isFinite(p[k])&&Math.abs(p[k])<=10000);
+ if(o.type!=='thin'||!transformableLine(o)||!m||typeof m!=='object'||Array.isArray(m)||typeof m.barId!=='string'||!m.barId||!finite(m.reference)||!finite(m.base)||!Number.isInteger(m.level)||Math.abs(m.level)>3||!Number.isFinite(m.step)||m.step<=0||m.step>10000)throw Error('Invalid Thin offset metadata');
+ const frame=getThinBarFrame(m.reference),b=m.base,length=Math.hypot(b.x2-b.x,b.y2-b.y);
+ if(!frame||length<=1e-9||Math.abs((b.x2-b.x)*frame.tangent.x+(b.y2-b.y)*frame.tangent.y)>length*1e-8)throw Error('Invalid Thin offset canonical geometry');
+}
+function thinOffsetContext(o){
+ if(!o?.thinOffset)return null;
+ try{validateThinOffsetMetadata(o)}catch{return null}
+ const m=o.thinOffset,bar=items.find(item=>item.id===m.barId&&item.type==='bar');
+ // Never choose a replacement by proximity, or restore obsolete transformed geometry.
+ if(!bar||!getThinBarFrame(bar)||['x','y','x2','y2'].some(k=>bar[k]!==m.reference[k]))return null;
+ const expected=thinOffsetCoordinates(m);
+ if(!expected||['x','y','x2','y2'].some(k=>o[k]!==expected[k]))return null;
+ return {object:o,meta:m,bar};
+}
+function createThinOffsetMetadata(reference,start,end){
+ const frame=getThinBarFrame(reference),matrix=svg.getScreenCTM();if(!frame||!matrix||typeof reference.id!=='string')return null;
+ const t=frame.tangent,scale=Math.hypot(matrix.a*t.x+matrix.c*t.y,matrix.b*t.x+matrix.d*t.y);
+ if(!Number.isFinite(scale)||scale<=0)return null;
+ const meta={barId:reference.id,reference:{x:reference.x,y:reference.y,x2:reference.x2,y2:reference.y2},base:{x:start.x,y:start.y,x2:end.x,y2:end.y},level:0,step:3/scale};
+ try{validateThinOffsetMetadata({type:'thin',thinOffset:meta})}catch{return null}
+ return meta;
+}
+function setThinOffsetLevel(o,level){
+ const context=thinOffsetContext(o);if(!context||!Number.isInteger(level))return false;
+ level=Math.max(-3,Math.min(3,level));if(level===context.meta.level)return false;
+ const next=thinOffsetCoordinates(context.meta,level);
+ if(!next||Object.values(next).some(v=>!Number.isFinite(v)||Math.abs(v)>10000))return false;
+ checkpoint();Object.assign(o,next);context.meta.level=level;render();return true;
 }
 function getThinConstrainedGeometry(referenceBar,rawCursorPoint=thinReferenceSession?.rawCursorPoint){
  const numeric=typeof thinNumericSession!=='undefined'&&thinNumericSession?.first===first?thinNumericSession:null;
@@ -820,6 +860,10 @@ function renderThinReferenceHighlight(){
 function renderThinConstraintPreview(){
  svg.querySelector('[data-thin-preview]')?.remove();
  if(mode!=='thin'||!first)return;
+ if(penConnectionPlacement?.type==='thin'&&penConnectionPlacement.state==='confirming'){
+  const p=penConnectionPlacement,g=el('g',{'data-thin-preview':'true','pointer-events':'none',stroke:'#087d95','stroke-dasharray':'5 4'});
+  line(g,p.lockedStart.x,p.lockedStart.y,p.lockedCandidate.x,p.lockedCandidate.y);return;
+ }
  const referenceBar=getThinReferenceBar();
  const geometry=referenceBar?getThinConstrainedGeometry(referenceBar):null;
  const start=referenceBar?geometry?.drawStartPoint:first;
@@ -969,6 +1013,18 @@ function activatePenConnectionButton(action,e){
  if(penConnectionBubble.hidden)return;
  if(penConnectionPlacement?.type==='move'){if(!penConnectionPlacementBlocked(e))confirmSmartMovePoint(action);return}
  const placement=penConnectionPlacement;
+ if(placement&&['thin','dashed'].includes(placement.type)&&placement.state==='confirming'){
+  if(mode!==placement.type||placement.first!==first||penConnectionPlacementBlocked(e))return;
+  if(action==='confirm'&&placement.type==='thin'&&first&&placement.internalForceScale!==internalForceScale){clearTabletBarCandidate();render();return}
+  if(action==='confirm'&&first&&thinNumericSession?.tablet&&dynamicInputUI.hasPendingEdit())return;
+  const {lockedCandidate:p,lockedStart:start,anchor,type}=placement;
+  clearTabletBarCandidate();
+  if(action==='cancel'){render();return}
+  if(!first){first={...p};if(type==='thin'){beginThinReferenceSession();beginThinNumericInput(anchor)}render();return}
+  if(type==='thin')commitThinCandidate(p,anchor,{resolvedStart:start});
+  else{checkpoint();items.push(make(type,first.x,first.y,p.x,p.y));first={...p};hover=null;selected=items.at(-1).id;render()}
+  return;
+ }
  if(placement?.type==='bar'){
   if(mode!=='bar'||placement.first!==first||penConnectionPlacementBlocked(e))return;
   const {lockedCandidate:candidate,anchor,first:establishedStart}=placement;
@@ -1064,7 +1120,83 @@ for(const event of ['pointerup','pointercancel'])window.addEventListener(event,e
  paintPenConnectionPreview();positionPenConnectionBubble();
 },true);
 document.body.append(penConnectionBubble);
+// Bubble presentation uses client CSS pixels; transaction/model anchors remain untouched.
+const penBubblePositions=new WeakMap();
+function penBubbleClientAnchor(){
+ const placement=penConnectionPlacement;if(!placement)return null;
+ if(placement.rotationInput){
+  const handle=svg.querySelector('[data-bar-rotation-handle] circle');
+  if(handle){const r=handle.getBoundingClientRect();if(r.width&&r.height)return {x:r.left+r.width/2,y:r.top+r.height/2}}
+  const session=typeof smartMoveSession!=='undefined'?smartMoveSession:null;
+  if(session?.rotating&&session.rotationHandle&&svg.getScreenCTM()){const q=rotateAround(session.rotationHandle,session.rotationPivot,session.rotationAngle);return new DOMPoint(q.x,q.y).matrixTransform(svg.getScreenCTM())}
+ }
+ const point=placement.lockedCandidate,matrix=svg.getScreenCTM();
+ return point&&matrix?new DOMPoint(point.x,point.y).matrixTransform(matrix):null;
+}
+function penBubbleVisibleRect(node){
+ if(!node||node.hidden||!node.getClientRects().length)return null;
+ for(let p=node;p&&p!==document.body;p=p.parentElement){const style=getComputedStyle(p);if(p.hidden||style.display==='none'||style.visibility==='hidden'||Number(style.opacity)===0)return null}
+ const r=node.getBoundingClientRect();return r.width&&r.height?r:null;
+}
+function penBubbleObstacles(exclude=null){
+ const controls='#tabletTopBar,#tabletBottomLeftBar,#tabletBottomRightBar,#dynamicInput,#tabletNumericKeypad,#commandControls,#thinOffsetToolbar,header,[data-bar-pivot],[data-bar-rotation-handle],[data-endpoint] circle,[data-move-anchor],[data-joint-handle],[data-endpoint-grip]';
+ const result=[...document.querySelectorAll(controls)].flatMap(node=>{if(node===exclude)return [];const rect=penBubbleVisibleRect(node);return rect?[{rect,weight:4}]:[]});
+ // Radial roots fill the viewport; only their visible control sectors are obstacles.
+ for(const node of document.querySelectorAll('.semicircle-left-menu .semicircle-hit,.semicircle-right-menu .semicircle-hit,.semicircle-left-menu .semicircle-control,.semicircle-right-menu .semicircle-control')){
+  const rect=penBubbleVisibleRect(node);if(rect)result.push({rect,weight:1});
+ }
+ return result;
+}
+function localPenBubblePosition({anchor,size,viewport,drawing,obstacles,previous,preference=0,separation=20}){
+ const margin=8,{width,height}=size;
+ let bounds={left:Math.max(viewport.left,drawing.left)+margin,top:Math.max(viewport.top,drawing.top)+margin,right:Math.min(viewport.right,drawing.right)-margin,bottom:Math.min(viewport.bottom,drawing.bottom)-margin};
+ // If the drawing intersection cannot contain the measured Bubble, use visible space.
+ if(bounds.right-bounds.left<width||bounds.bottom-bounds.top<height)bounds={left:viewport.left+margin,top:viewport.top+margin,right:viewport.right-margin,bottom:viewport.bottom-margin};
+ const clamp=p=>({x:Math.max(bounds.left,Math.min(p.x,bounds.right-width)),y:Math.max(bounds.top,Math.min(p.y,bounds.bottom-height)),preference:p.preference,gap:p.gap});
+ const distance=p=>Math.hypot(Math.max(p.x-anchor.x,0,anchor.x-p.x-width),Math.max(p.y-anchor.y,0,anchor.y-p.y-height));
+ const obstruction=p=>obstacles.reduce((sum,{rect:r,weight})=>sum+weight*Math.max(0,Math.min(p.x+width,r.right+6)-Math.max(p.x,r.left-6))*Math.max(0,Math.min(p.y+height,r.bottom+6)-Math.max(p.y,r.top-6))/(width*height),0);
+ const candidates=[];
+ for(const gap of [20,44,76,108]){
+  const positions=[[anchor.x+gap,anchor.y-height-gap],[anchor.x+gap,anchor.y+gap],[anchor.x-width-gap,anchor.y-height-gap],[anchor.x-width-gap,anchor.y+gap],[anchor.x-width/2,anchor.y-height-gap],[anchor.x-width/2,anchor.y+gap],[anchor.x+gap,anchor.y-height/2],[anchor.x-width-gap,anchor.y-height/2]];
+  positions.forEach(([x,y],i)=>candidates.push(clamp({x,y,preference:i,gap})));
+ }
+ if(previous)candidates.push(clamp({x:previous.x+anchor.x-previous.anchor.x,y:previous.y+anchor.y-previous.anchor.y,preference:previous.preference,gap:previous.gap}));
+ // Keep fallback local: no unrelated viewport corners are candidates.
+ const closest=Math.min(...candidates.map(distance)),local=candidates.filter(p=>distance(p)<=closest+120);
+ const clear=p=>obstacles.filter(o=>o.weight>=4).every(o=>p.x+width<=o.rect.left-6||p.x>=o.rect.right+6||p.y+height<=o.rect.top-6||p.y>=o.rect.bottom+6);
+ const clearLocal=local.filter(clear),eligible=clearLocal.length?clearLocal:local;
+ const score=p=>obstruction(p)*120+distance(p)*.5+(p.preference===(previous?.preference??preference)?0:8)+(p.gap===(previous?.gap??separation)?0:40);
+ eligible.sort((a,b)=>score(a)-score(b));let best=eligible[0];
+ if(previous){const retained=candidates.at(-1);if((!clearLocal.length||clear(retained))&&distance(retained)<=closest+120&&score(retained)<=score(best)+10)best=retained}
+ return {...best,anchor:{x:anchor.x,y:anchor.y},bounds};
+}
 function positionPenConnectionBubble(){
+ if(penConnectionBubble.hidden||!penConnectionConfirming())return;
+ if(!matchMedia('(any-pointer: coarse)').matches){positionLegacyPenConnectionBubble();return}
+ const anchor=penBubbleClientAnchor();if(!anchor||![anchor.x,anchor.y].every(Number.isFinite))return;
+ const vv=window.visualViewport,left=vv?.offsetLeft||0,top=vv?.offsetTop||0,viewport={left,top,right:left+(vv?.width||document.documentElement.clientWidth),bottom:top+(vv?.height||innerHeight)};
+ const size=penConnectionBubble.getBoundingClientRect(),obstacles=penBubbleObstacles();
+ obstacles.push({rect:{left:anchor.x-12,top:anchor.y-12,right:anchor.x+12,bottom:anchor.y+12},weight:4});
+ // Preserve R2's normal menu clearance when a nearby placement can satisfy it.
+ if(penConnectionPlacement.rotationInput&&typeof tabletBarInputHorizontalBounds==='function'){
+  const space=tabletBarInputHorizontalBounds(left,viewport.right-left,size.width);
+  if(space)for(const rect of [{left,top,right:space.min,bottom:viewport.bottom},{left:space.max+size.width,top,right:viewport.right,bottom:viewport.bottom}])obstacles.push({rect,weight:1});
+ }
+ // Their first confirmation seeds the existing angle editor from the button contact.
+ // Prefer below/right so that editor does not sit on the principal upward pen ray.
+ const angleEditorNext=['support','force'].includes(penConnectionPlacement.type)&&penConnectionPlacement.state==='anchor-confirming';
+ const position=localPenBubblePosition({anchor,size,viewport,drawing:svg.getBoundingClientRect(),obstacles,previous:penBubblePositions.get(penConnectionPlacement),preference:angleEditorNext?1:0,separation:angleEditorNext?76:20});
+ penBubblePositions.set(penConnectionPlacement,position);
+ for(const [key,value]of [['left',position.x],['top',position.y]])if(Math.abs((parseFloat(penConnectionBubble.style[key])||0)-value)>.25)penConnectionBubble.style[key]=value+'px';
+}
+let penBubblePositionFrame=null;
+function schedulePenBubblePosition(){if(!matchMedia('(any-pointer: coarse)').matches||penBubblePositionFrame!==null)return;penBubblePositionFrame=requestAnimationFrame(()=>{penBubblePositionFrame=null;positionPenConnectionBubble()})}
+for(const type of ['resize','scroll']){window.addEventListener(type,schedulePenBubblePosition,true);window.visualViewport?.addEventListener(type,schedulePenBubblePosition)}
+const penBubbleOverlayObserver=new MutationObserver(records=>{if(records.some(r=>r.target!==penConnectionBubble&&r.target.closest?.('#dynamicInput,#tabletNumericKeypad,#commandControls,#tabletTopBar,#tabletBottomLeftBar,#tabletBottomRightBar,.semicircle-left-menu,.semicircle-right-menu')))schedulePenBubblePosition()});
+penBubbleOverlayObserver.observe(document.body,{subtree:true,attributes:true,attributeFilter:['hidden','style','class']});
+const penBubbleCameraObserver=new MutationObserver(schedulePenBubblePosition);
+penBubbleCameraObserver.observe(svg,{attributes:true,attributeFilter:['viewBox','width','height','style']});
+function positionLegacyPenConnectionBubble(){
  if(penConnectionBubble.hidden||!penConnectionConfirming())return;
  const matrix=svg.getScreenCTM();if(!matrix)return;
  const {x,y}=penConnectionPlacement.lockedCandidate,p=new DOMPoint(x,y).matrixTransform(matrix);
@@ -1074,8 +1206,8 @@ function positionPenConnectionBubble(){
  let bx=p.x+gap,by=p.y-height-margin;
  if(bx+width>right-margin)bx=p.x-gap-width;
  if(by<top+margin)by=p.y+margin;
- if(penConnectionPlacement.type==='bar'||penConnectionPlacement.rotationInput){
-  const rotation=penConnectionPlacement.rotationInput,space=rotation&&typeof tabletBarInputHorizontalBounds==='function'?tabletBarInputHorizontalBounds(left,right-left,width):null;
+ if(['bar','thin','dashed'].includes(penConnectionPlacement.type)||penConnectionPlacement.rotationInput){
+  const rotation=penConnectionPlacement.rotationInput,space=(rotation||['thin','dashed'].includes(penConnectionPlacement.type))&&typeof tabletBarInputHorizontalBounds==='function'?tabletBarInputHorizontalBounds(left,right-left,width):null;
   const clamp=([x,y])=>[Math.max(space?.min??left+margin,Math.min(x,space?.max??right-width-margin)),Math.max(top+margin,Math.min(y,bottom-height-margin))];
   const obstacles=[$('dynamicInput'),$('tabletNumericKeypad'),$('commandControls'),...(rotation?[svg.querySelector('[data-bar-pivot]'),svg.querySelector('[data-bar-rotation-handle]')]:[])].filter(node=>node&&!node.hidden).map(node=>node.getBoundingClientRect());
   const overlap=([x,y])=>obstacles.reduce((sum,r)=>sum+Math.max(0,Math.min(x+width,r.right+margin)-Math.max(x,r.left-margin))*Math.max(0,Math.min(y+height,r.bottom+margin)-Math.max(y,r.top-margin)),0);
@@ -1182,11 +1314,41 @@ function handlePenConnectionPlacement(e){
 }
 // Tablet Bar adapts point acquisition only; solvers, committed items and chaining stay shared.
 function tabletBarInteraction(e){return mode==='bar'&&matchMedia('(any-pointer: coarse)').matches&&['pen','touch'].includes(e.pointerType)}
+var tabletLineCommand=null;
+function tabletLineInteraction(e){return ['thin','dashed'].includes(mode)&&matchMedia('(any-pointer: coarse)').matches&&['pen','touch'].includes(e.pointerType)}
+function cancelTabletLineSegment(){
+ clearTabletBarCandidate();if(typeof endThinNumericInput==='function')endThinNumericInput();endThinReferenceSession();first=null;hover=null;render();
+}
 function clearTabletBarCandidate(){
- if(penConnectionPlacement?.type!=='bar')return;
+ if(!['bar','thin','dashed'].includes(penConnectionPlacement?.type))return;
  clearPenConnectionPlacement();hover=null;
 }
 function handleTabletBarPlacement(e){
+ if(['thin','dashed'].includes(mode)){
+  if(penConnectionButtonPointerId!==null||penConnectionPlacement?.type===mode&&penConnectionPlacement.state==='confirming')return true;
+  // PointerEvents identify the actual device. Compatibility MouseEvents do not
+  // reach this path; suppress only events explicitly marked as touch-generated.
+  if(e.pointerType==='mouse'){
+   if(e.sourceCapabilities?.firesTouchEvents)return true;
+   if(e.type==='pointerdown'&&e.button===0)tabletLineCommand=null;
+   return false;
+  }
+  if(!tabletLineInteraction(e))return false;
+  if(e.type!=='pointerdown')return false;
+  if(penConnectionPlacementBlocked(e)||!svg.contains(document.elementFromPoint(e.clientX,e.clientY)))return true;
+  if(e.button!==0||mode==='thin'&&dynamicInputUI.hasPendingEdit())return true;
+  const acquired=drawingPoint(e);let start=first,p=acquired;
+  if(first&&mode==='thin'){
+   updateThinReferenceSession(e);const reference=getThinReferenceBar(),geometry=reference?getThinConstrainedGeometry(reference,rawPoint(e)):null;
+   if(reference){if(!geometry)return true;start=geometry.drawStartPoint;p=geometry.endpoint}
+   else if(thinNumericSession?.valueMode==='locked')p=solveThinEndpointFromValue({startPoint:first,candidatePoint:acquired,internalForceValue:thinNumericSession.value,internalForceScale});
+  }
+  if(!p||![p.x,p.y,...(start?[start.x,start.y]:[])].every(v=>Number.isFinite(v)&&Math.abs(v)<=10000)||start&&Math.hypot(p.x-start.x,p.y-start.y)<=1e-9)return true;
+  tabletLineCommand=mode;
+  penConnectionPlacement={type:mode,state:'confirming',first,internalForceScale,lockedCandidate:Object.freeze({...p}),lockedStart:start&&Object.freeze({...start}),
+   anchor:{clientX:e.clientX,clientY:e.clientY,pointerType:e.pointerType},pointerId:e.pointerId};
+  if(first)hover={...acquired};render();positionPenConnectionBubble();return true;
+ }
  if(mode!=='bar')return false;
  if(penConnectionButtonPointerId!==null||penConnectionPlacement?.type==='bar')return true;
  if(!tabletBarInteraction(e))return false;
@@ -1207,6 +1369,7 @@ function handleTabletBarPlacement(e){
  render();positionPenConnectionBubble();return true;
 }
 function render(clean=false){
+ if(['thin','dashed'].includes(penConnectionPlacement?.type)&&(penConnectionPlacement.type!==mode||penConnectionPlacement.first!==first||mode==='thin'&&first&&penConnectionPlacement.internalForceScale!==internalForceScale))clearTabletBarCandidate();
  if(penConnectionPlacement?.type==='bar'&&(mode!=='bar'||penConnectionPlacement.first!==first))clearTabletBarCandidate();
  // A settings redraw must not preserve a Grid marker from an earlier spacing or disabled option.
  if(rigidSnapHint?.kind==='grid'&&(rigidSnapGridSize!==gridSize||!gridSnap(rigidSnapHint.point)))rigidSnapHint=null;
@@ -1253,6 +1416,7 @@ if(o.type==='thin'||o.type==='dashed'){
  let a={x,y},b={x:x2,y:y2};
  if(o.sectionMark){const len=Math.hypot(x2-x,y2-y);if(len>0&&len<64){const cx=(x+x2)/2,cy=(y+y2)/2,dx=(x2-x)/len*32,dy=(y2-y)/len*32;a={x:cx-dx,y:cy-dy};b={x:cx+dx,y:cy+dy}}}
  line(g,a.x,a.y,b.x,b.y,{'stroke-width':o.sectionMark?2.5:1,'stroke-dasharray':o.type==='dashed'?'8 5':'none'});
+ if(!clean&&transformableLine(o))line(g,a.x,a.y,b.x,b.y,{stroke:'transparent','stroke-width':18,'vector-effect':'non-scaling-stroke','pointer-events':'stroke','data-hit-area':'true'});
 }
 if(o.type==='linkBar'){line(g,x,y,x2,y2,{'stroke-width':3.5});for(const [cx,cy]of [[x,y],[x2,y2]])el('circle',{cx,cy,r:6,fill:'white','stroke-width':1.8},g)}
 if(o.type==='weld'){if(!clean)el('rect',{x:x-6,y:y-6,width:12,height:12,fill:'transparent',stroke:'transparent','stroke-width':18,'vector-effect':'non-scaling-stroke','pointer-events':'all','data-hit-area':'true'},g);el('rect',{x:x-6,y:y-6,width:12,height:12,fill:objectColor(o),stroke:'none'},g)}
@@ -1379,6 +1543,8 @@ if(!clean&&mode==='select'&&selectedObjectIds().size<2){
  if(!clean)renderRigidControls();
  if(!clean)paintPenConnectionPreview();
  if(!clean&&typeof renderSmartMove==='function')renderSmartMove();
+ if(!clean&&matchMedia('(any-pointer: coarse)').matches)positionPenConnectionBubble();
+ if(!clean&&typeof updateThinOffsetToolbar==='function')updateThinOffsetToolbar();
 }
 // Capture visible geometry once per rectangle, independently of selection/hit overlays.
 const selectionGeometry=(()=>{
@@ -1532,7 +1698,7 @@ function finishMulti(e){
 svg.addEventListener('pointerup',finishMulti,true);
 svg.addEventListener('pointercancel',finishMulti,true);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){extendBoundary=null;multiSelection.clear();boxSelect=null;groupDrag=null;render()}});
-function setMode(m){if(typeof cancelSmartMove==='function')cancelSmartMove();clearPenConnectionPlacement();clearSupportPlacement();if(m!=='select')rememberCancelSelection();else cancelSelection=null;cancelConnectionDrag();cancelRigidDrag();rigidPoints=[];if(typeof mirrorSelecting!=='undefined')mirrorSelecting=false;if(typeof cancelLoadPlacement==='function')cancelLoadPlacement();hatchPoints=[];extendBoundary=null;multiSelection.clear();mode=m;first=null;second=null;hover=null;for(const b of document.querySelectorAll('button[data-mode]')){const active=b.dataset.mode===m;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}if($('delete')){$('delete').classList.toggle('active',m==='erase');$('delete').setAttribute('aria-pressed',String(m==='erase'))}svg.classList.toggle('erase-cursor',m==='erase');svg.style.cursor='';$('help').textContent=m==='curve'?'Chọn điểm đầu, điểm đi qua, rồi điểm cuối.':m==='erase'?'Bấm trực tiếp vào đối tượng để xóa. Esc để thoát; Hoàn tác để khôi phục.':m==='hatch'?'Bấm các điểm bao vùng biểu đồ. Enter để hoàn tất; Esc để hủy.':m==='extend'?'Chọn đường biên, rồi bấm gần đầu nét cần kéo dài. Shift + bấm để đổi biên.':m==='dim'?'Chọn hai điểm trên thanh, sau đó bấm vị trí đặt đường kích thước.':m==='select'?'Bấm chọn hoặc kéo đối tượng.':['bar','udl','dim','thin','dashed'].includes(m)?'Bấm hai điểm để tạo đối tượng.':'';$('help').hidden=!$('help').textContent;render()}
+function setMode(m){tabletLineCommand=null;if(typeof cancelSmartMove==='function')cancelSmartMove();clearPenConnectionPlacement();clearSupportPlacement();if(m!=='select')rememberCancelSelection();else cancelSelection=null;cancelConnectionDrag();cancelRigidDrag();rigidPoints=[];if(typeof mirrorSelecting!=='undefined')mirrorSelecting=false;if(typeof cancelLoadPlacement==='function')cancelLoadPlacement();hatchPoints=[];extendBoundary=null;multiSelection.clear();mode=m;first=null;second=null;hover=null;for(const b of document.querySelectorAll('button[data-mode]')){const active=b.dataset.mode===m;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}if($('delete')){$('delete').classList.toggle('active',m==='erase');$('delete').setAttribute('aria-pressed',String(m==='erase'))}svg.classList.toggle('erase-cursor',m==='erase');svg.style.cursor='';$('help').textContent=m==='curve'?'Chọn điểm đầu, điểm đi qua, rồi điểm cuối.':m==='erase'?'Bấm trực tiếp vào đối tượng để xóa. Esc để thoát; Hoàn tác để khôi phục.':m==='hatch'?'Bấm các điểm bao vùng biểu đồ. Enter để hoàn tất; Esc để hủy.':m==='extend'?'Chọn đường biên, rồi bấm gần đầu nét cần kéo dài. Shift + bấm để đổi biên.':m==='dim'?'Chọn hai điểm trên thanh, sau đó bấm vị trí đặt đường kích thước.':m==='select'?'Bấm chọn hoặc kéo đối tượng.':['bar','udl','dim','thin','dashed'].includes(m)?'Bấm hai điểm để tạo đối tượng.':'';$('help').hidden=!$('help').textContent;render()}
 for(const [m,title]of Object.entries(modes)){const b=document.createElement('button');b.textContent=title;b.dataset.mode=m;b.onclick=()=>chooseToolOptions(m);$('tools').append(b)}
 function props(){return Object.fromEntries(['label','support','direction','rotation'].map(k=>[k,$(k).value]))}
 function make(type,x,y,x2,y2,p={}){if(type==='person')return {id:newId(),type,x,y,angle:p.angle??0,size:p.size??PERSON_DEFAULT_SIZE};return {id:newId(),type,x,y,...(x2===undefined?{}:{x2,y2}),...props(),label:({force:'P',moment:'M',udl:'q',dim:'L',text:'A',diagramM:'kN.m',diagramQ:'kN',diagramN:'kN'})[type]||'',...p}}
@@ -1594,6 +1760,7 @@ if(!resolved&&mode==='bar'&&first&&typeof barNumericSession!=='undefined'&&barNu
 // One event can visit capture, numeric confirmation and the canvas handler: consume it once.
 const thinReferenceConsumedEvents=new WeakSet();
 function consumeThinReferenceOverride(e){
+ if(penConnectionPlacement?.type==='thin'&&penConnectionPlacement.state==='confirming')return false;
  if(thinReferenceConsumedEvents.has(e))return true;
  if(!overrideThinReference(e))return false;
  thinReferenceConsumedEvents.add(e);
@@ -1601,12 +1768,12 @@ function consumeThinReferenceOverride(e){
 }
 svg.addEventListener('pointerdown',consumeThinReferenceOverride,true);
 // Shared thin-line commit: click/tap and keyboard retain one history/model path.
-function commitThinCandidate(candidate,anchor){
+function commitThinCandidate(candidate,anchor,{resolvedStart=null}={}){
  if(mode!=='thin'||!first)return false;
- updateThinReferenceSession(anchor);
+ if(!resolvedStart)updateThinReferenceSession(anchor);
  const referenceBar=getThinReferenceBar();
- let p=candidate,start=first;
- if(referenceBar){
+ let p=candidate,start=resolvedStart||first;
+ if(!resolvedStart&&referenceBar){
   // Recompute from this commit's raw event; an active but ambiguous normal is not free drawing.
   const raw=anchor&&[anchor.clientX,anchor.clientY].every(Number.isFinite)?rawPoint(anchor):null;
   const geometry=getThinConstrainedGeometry(referenceBar,raw);
@@ -1614,13 +1781,14 @@ function commitThinCandidate(candidate,anchor){
   start=geometry.drawStartPoint;p=geometry.endpoint;
   // Screen/model conversion can leave roundoff when the cursor lies exactly on the bar.
   if(Math.hypot(p.x-start.x,p.y-start.y)<=1e-9)return false;
- }else if(mode==='thin'&&first&&typeof thinNumericSession!=='undefined'&&thinNumericSession?.first===first&&thinNumericSession.valueMode==='locked'){
+ }else if(!resolvedStart&&mode==='thin'&&first&&typeof thinNumericSession!=='undefined'&&thinNumericSession?.first===first&&thinNumericSession.valueMode==='locked'){
  p=solveThinEndpointFromValue({startPoint:first,candidatePoint:p,internalForceValue:thinNumericSession.value,internalForceScale});
  if(!p)return;
 }
 
  if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||(p.x===start.x&&p.y===start.y))return false;
- checkpoint();items.push(make('thin',start.x,start.y,p.x,p.y));
+ const thinOffset=referenceBar?createThinOffsetMetadata(referenceBar,start,p):null;
+ checkpoint();items.push(make('thin',start.x,start.y,p.x,p.y,thinOffset?{thinOffset}:{}));
  if(typeof endThinNumericInput==='function')endThinNumericInput();
  first={...p};hover=null;
  beginThinReferenceSession();
@@ -1766,7 +1934,7 @@ function download(blob,name){const u=URL.createObjectURL(blob),a=document.create
 function exportSVG(){render(true);try{const out=svg.cloneNode(true);out.setAttribute('viewBox','0 0 1100 720');out.setAttribute('width','1100');out.setAttribute('height','720');return new XMLSerializer().serializeToString(out)}finally{render()}}
 const actions={undo:['↶ Hoàn tác',()=>{cancelConcentratedLoadPlacement();clearSupportPlacement();endThinReferenceSession();clearPersonPreview();if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!past.length)return;future.push(copy(items));items=past.pop();selected=null;first=null;second=null;hover=null;render()}],redo:['↷ Làm lại',()=>{cancelConcentratedLoadPlacement();clearSupportPlacement();endThinReferenceSession();clearPersonPreview();if(typeof finishObjectColorEdit==='function')finishObjectColorEdit();if(!future.length)return;past.push(copy(items));items=future.pop();selected=null;first=null;second=null;hover=null;render()}],delete:['Tẩy',()=>{selected=null;setMode(mode==='erase'?'select':'erase')}],clear:['Bản vẽ trống',()=>{clearSupportPlacement();checkpoint();items=[];restoreDrawingScales();selected=null;first=null;second=null;hover=null;render()}],save:['Lưu JSON',()=>download(new Blob([JSON.stringify({format:'ket-cau-studio',version:1,items,geometryScale,internalForceScale},null,2)],{type:'application/json'}),'ket-cau.json')],open:['Mở JSON',()=>$('file').click()],svg:['Xuất SVG',()=>download(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'}),'ket-cau.svg')],png:['Xuất PNG',()=>{const u=URL.createObjectURL(new Blob([exportSVG()],{type:'image/svg+xml;charset=utf-8'})),im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=3300;c.height=2160;c.getContext('2d').drawImage(im,0,0,3300,2160);URL.revokeObjectURL(u);c.toBlob(b=>b?download(b,'ket-cau.png'):msg('Không xuất được PNG.'))};im.onerror=()=>{URL.revokeObjectURL(u);msg('Không xuất được PNG. Hãy thử SVG.')};im.src=u}]};
 for(const [id,[title,fn]]of Object.entries(actions)){const b=document.createElement('button');b.id=id;b.textContent=title;b.onclick=fn;$('actions').append(b)}
-function validate(d){if(!d||d.format!=='ket-cau-studio'||d.version!==1||!Array.isArray(d.items)||d.items.length>2000)throw Error('Sai định dạng.');const ids=new Set();for(const o of d.items){if(!o||(!Object.hasOwn(modes,o.type)&&o.type!=='person')||['select','extend'].includes(o.type)||typeof o.id!=='string'||ids.has(o.id))throw Error('Đối tượng không hợp lệ.');ids.add(o.id);if(o.pivot!==undefined)validateBarPivot(o);if(o.type==='person'){validatePerson(o);continue}if(o.sectionVisible!==undefined&&(typeof o.sectionVisible!=='boolean'||!sectionForceAction(o)))throw Error('Invalid section visibility');if(drawingConnection(o))validateConnection(o);if(o.strokeColor!==undefined&&!validObjectColor(o.strokeColor))throw Error('Invalid object strokeColor');if(o.type==='rigidRegion')validateRigidRegion(o);if(o.loadAngle!==undefined&&(!Number.isFinite(o.loadAngle)||Math.abs(o.loadAngle)>360))throw Error('Invalid load angle');if(o.labelFormula!==undefined&&(typeof o.labelFormula!=='string'||o.labelFormula.length>500||!['deg','rad'].includes(o.labelAngle)))throw Error('Invalid label expression');if(o.type==='curve'&&(!Array.isArray(o.curvePoints)||o.curvePoints.length!==2||o.curvePoints.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)))throw Error('Đường cong không hợp lệ.');if(o.type==='hatch'&&(!Array.isArray(o.points)||o.points.length<3||o.points.length>1000||o.points.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)||!Number.isFinite(o.spacing)||o.spacing<3||o.spacing>50))throw Error('Invalid hatch');if(o.offset!==undefined&&(!Number.isFinite(o.offset)||Math.abs(o.offset)>10000))throw Error('Khoảng cách đường kích thước không hợp lệ.');for(const k of ['x','y',...(['bar','udl','dim','thin','dashed'].includes(o.type)?['x2','y2']:[])])if(!Number.isFinite(o[k])||Math.abs(o[k])>10000)throw Error('Tọa độ không hợp lệ.');if(typeof o.label!=='string'||o.label.length>100||!['pin','roller','fixed','pin-plain','roller-plain'].includes(o.support)||!['down','up','left','right'].includes(o.direction)||!['cw','ccw'].includes(o.rotation))throw Error('Thuộc tính không hợp lệ.')}return d.items}
+function validate(d){if(!d||d.format!=='ket-cau-studio'||d.version!==1||!Array.isArray(d.items)||d.items.length>2000)throw Error('Sai định dạng.');const ids=new Set();for(const o of d.items){if(!o||(!Object.hasOwn(modes,o.type)&&o.type!=='person')||['select','extend'].includes(o.type)||typeof o.id!=='string'||ids.has(o.id))throw Error('Đối tượng không hợp lệ.');ids.add(o.id);if(o.thinOffset!==undefined)validateThinOffsetMetadata(o);if(o.pivot!==undefined)validateBarPivot(o);if(o.type==='person'){validatePerson(o);continue}if(o.sectionVisible!==undefined&&(typeof o.sectionVisible!=='boolean'||!sectionForceAction(o)))throw Error('Invalid section visibility');if(drawingConnection(o))validateConnection(o);if(o.strokeColor!==undefined&&!validObjectColor(o.strokeColor))throw Error('Invalid object strokeColor');if(o.type==='rigidRegion')validateRigidRegion(o);if(o.loadAngle!==undefined&&(!Number.isFinite(o.loadAngle)||Math.abs(o.loadAngle)>360))throw Error('Invalid load angle');if(o.labelFormula!==undefined&&(typeof o.labelFormula!=='string'||o.labelFormula.length>500||!['deg','rad'].includes(o.labelAngle)))throw Error('Invalid label expression');if(o.type==='curve'&&(!Array.isArray(o.curvePoints)||o.curvePoints.length!==2||o.curvePoints.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)))throw Error('Đường cong không hợp lệ.');if(o.type==='hatch'&&(!Array.isArray(o.points)||o.points.length<3||o.points.length>1000||o.points.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>10000||Math.abs(p.y)>10000)||!Number.isFinite(o.spacing)||o.spacing<3||o.spacing>50))throw Error('Invalid hatch');if(o.offset!==undefined&&(!Number.isFinite(o.offset)||Math.abs(o.offset)>10000))throw Error('Khoảng cách đường kích thước không hợp lệ.');for(const k of ['x','y',...(['bar','udl','dim','thin','dashed'].includes(o.type)?['x2','y2']:[])])if(!Number.isFinite(o[k])||Math.abs(o[k])>10000)throw Error('Tọa độ không hợp lệ.');if(typeof o.label!=='string'||o.label.length>100||!['pin','roller','fixed','pin-plain','roller-plain'].includes(o.support)||!['down','up','left','right'].includes(o.direction)||!['cw','ccw'].includes(o.rotation))throw Error('Thuộc tính không hợp lệ.')}return d.items}
 $('file').onchange=async e=>{try{const f=e.target.files[0];if(!f)return;if(f.size>2000000)throw Error('Tệp quá lớn.');const data=JSON.parse(await f.text()),next=validate(data);checkpoint();items=next;restoreDrawingScales(data);selected=null;first=null;second=null;hover=null;render();msg('Đã mở bản vẽ.')}catch(err){msg('Không mở được: '+err.message)}e.target.value=''};
 let wordBridgeToken=null;
 const wordButton=document.createElement('button');wordButton.hidden=true;wordButton.textContent='Chèn vào Word';$('actions').append(wordButton);

@@ -3,11 +3,11 @@
 for(const touch of [false,true]){
  const c=await b.newContext({hasTouch:touch,viewport:{width:1400,height:1000}}),p=await c.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof beginThinNumericInput==='function');
  const coords=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});
- const click=async(x,y)=>{const q=await coords(x,y);if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
+ const click=async(x,y)=>{const q=await coords(x,y);if(touch){await p.touchscreen.tap(q.x,q.y);await require('./tablet-point-test-actions.cjs').confirmPoint(p)}else await p.mouse.click(q.x,q.y)};
  const move=async(x,y)=>{const q=await coords(x,y);await p.locator('#drawing').dispatchEvent('pointermove',{clientX:q.x,clientY:q.y,pointerType:touch?'touch':'mouse'})};
  await p.evaluate(()=>{items=[];past=[];setMode('thin');internalForceScale=10});await click(300,300);
  assert(await p.locator('#dynamicInput').isVisible());assert.equal(await p.locator('#dynamicInput input:visible').count(),1);assert.equal(await p.locator('#dynamicInput button:visible').count(),0);assert(await p.locator('#dynamicInput').evaluate(el=>el.classList.contains('dynamic-compact')));assert.notEqual(await p.evaluate(()=>document.activeElement.id),'dynamicInputValue');
- await move(311,300);assert.equal(await p.locator('#dynamicInputValue').inputValue(),'110');const before=await p.locator('#dynamicInput').boundingBox();await move(308,300);assert.equal(await p.locator('#dynamicInputValue').inputValue(),'80');const after=await p.locator('#dynamicInput').boundingBox();assert.notEqual(before.x,after.x);
+ await move(311,300);assert.equal(await p.locator('#dynamicInputValue').inputValue(),'110');const before=await p.locator('#dynamicInput').boundingBox();await move(308,300);assert.equal(await p.locator('#dynamicInputValue').inputValue(),'80');const after=await p.locator('#dynamicInput').boundingBox();if(touch)assert.deepEqual(before,after);else assert.notEqual(before.x,after.x);
  // Untouched LIVE data never becomes a constraint at canvas commit.
  await click(500,300);assert(Math.abs(await p.evaluate(()=>items[0].x2-items[0].x)-200)<.001);assert.equal(await p.evaluate(()=>thinNumericSession.valueMode),'live');assert(await p.locator('#dynamicInput').isVisible());assert.equal(await p.locator('#dynamicInputValue').inputValue(),'0');
  const input=p.locator('#dynamicInputValue');if(touch)await input.tap();else await input.click();await input.fill('110.123456789');

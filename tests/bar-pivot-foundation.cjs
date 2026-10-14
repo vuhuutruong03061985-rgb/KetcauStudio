@@ -39,7 +39,8 @@ const near=(a,b)=>assert(Math.abs(a-b)<1e-4,`${a} != ${b}`);
   const model=await p.evaluate(()=>{const o=make('bar',200,250,500,250,{pivot:{along:30,normal:70}}),q=objectPivot(o),translated={...o,x:o.x+70,y:o.y-40,x2:o.x2+70,y2:o.y2-40};const mirrored=mirroredObjects([o],{x:0,y:0},{x:0,y:1})[0];return {q,t:objectPivot(translated),r:objectPivot({...o,x:250,y:200,x2:250,y2:500}),m:objectPivot(mirrored),old:objectPivot(validate({format:'ket-cau-studio',version:1,items:[make('bar',200,250,500,250)]})[0])}});
   assert.deepEqual(model,{q:{x:380,y:320},t:{x:450,y:280},r:{x:180,y:380},m:{x:-380,y:320},old:{x:350,y:250}});
   for(const pivot of [null,{},[],{along:'1',normal:0},{along:Infinity,normal:0},{along:0,normal:NaN},{along:30001,normal:0}])assert(await p.evaluate(pivot=>{try{validate({format:'ket-cau-studio',version:1,items:[make('bar',0,0,200,0,{pivot})]});return false}catch{return true}},pivot));
-  for(const type of ['thin','force','support','text','rigidRegion'])assert.equal(await p.evaluate(type=>objectPivot({type,x:0,y:0,x2:100,y2:0}),type),null);
+  for(const type of ['thin','dashed'])assert.deepEqual(await p.evaluate(type=>objectPivot({type,x:0,y:0,x2:100,y2:0}),type),{x:50,y:0});
+  for(const type of ['force','support','text','rigidRegion'])assert.equal(await p.evaluate(type=>objectPivot({type,x:0,y:0,x2:100,y2:0}),type),null);
   await seed();assert.equal(await p.evaluate(()=>exportSVG().includes('data-bar-pivot')),false);
   for(const width of [550,2200]){await p.evaluate(width=>{camera.w=width;camera.h=width*720/1100;applyCamera();render()},width);const b=await p.locator('[data-pivot-hit]').boundingBox();assert(b.width>=43.99&&b.height>=43.99);assert.deepEqual(await geometry(),original)}
   assert.deepEqual(errors,[]);await p.close();console.log('PASS Pivot P1 '+pointer+': metadata, confirmation/cancel, persistence/history, group, projection, endpoint priority, transforms and clean export');
