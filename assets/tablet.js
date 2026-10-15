@@ -165,10 +165,15 @@ function applyCamera(){
  discardTabletBarPoint();
  clearPersonPreview();
  svg.setAttribute('viewBox',`${camera.x} ${camera.y} ${camera.w} ${camera.h}`);
+ refreshXLineClipping();
  updatePenConnectionLockHalo();
  $('zoomLevel').textContent=Math.round(1100/camera.w*100)+'%';
  if(['support','force','udl'].includes(mode))renderReferenceAnglePreview();
 }
+// A viewport/aspect change also changes the visible model rectangle, even when
+// camera coordinates stay fixed. Reclip guides without touching drawing state.
+const xlineCanvasResize=new ResizeObserver(()=>{if(items.some(o=>o.type==='xline')||mode==='xline')refreshXLineClipping()});
+xlineCanvasResize.observe(svg);
 function zoomAt(factor,anchor={x:camera.x+camera.w/2,y:camera.y+camera.h/2}){
  const w=Math.max(CAMERA_MIN_WIDTH,Math.min(CAMERA_MAX_WIDTH,camera.w/factor)),ratio=w/camera.w;
  camera={x:anchor.x-(anchor.x-camera.x)*ratio,y:anchor.y-(anchor.y-camera.y)*ratio,w,h:camera.h*ratio};
@@ -178,7 +183,7 @@ function getDrawingVisualBounds(){
  const committed=new Set(items.map(o=>o.id));let bounds=null;
  const groups=[...svg.querySelectorAll('g[data-id]')].filter(g=>{
   // Handles share the object's ID, but are camera-dependent editing overlays.
-  if(!committed.has(g.dataset.id)||g.matches('[data-move-anchor],[data-endpoint],[data-extend-end],[data-rigid-point],[data-rigid-action]'))return false;
+  if(g.hasAttribute('data-xline')||!committed.has(g.dataset.id)||g.matches('[data-move-anchor],[data-endpoint],[data-extend-end],[data-rigid-point],[data-rigid-action]'))return false;
   const style=getComputedStyle(g);
   return style.display!=='none'&&style.visibility!=='hidden'&&style.visibility!=='collapse'&&Number(style.opacity)!==0;
  });
@@ -218,6 +223,11 @@ function viewButton(id,label,handler){
  const button=document.createElement('button');button.id=id;button.textContent=label;button.type='button';button.onclick=handler;
  $('viewTools').append(button);return button;
 }
+const xlineVisibilityButton=viewButton('xlineVisibility','Đường gióng',()=>{
+ xlinesVisible=!xlinesVisible;xlineVisibilityButton.setAttribute('aria-pressed',String(xlinesVisible));
+ if(!xlinesVisible){const ids=[...selectedObjectIds()].filter(id=>items.find(o=>o.id===id)?.type!=='xline');updateSelection(ids,ids.includes(selected)?selected:null)}
+ render();
+});xlineVisibilityButton.setAttribute('aria-label','Hiện đường gióng XLine');xlineVisibilityButton.setAttribute('aria-pressed','true');
 viewButton('zoomOut','−',()=>zoomAt(1/1.25)).setAttribute('aria-label','Thu nhỏ');
 const zoomLabel=document.createElement('output');zoomLabel.id='zoomLevel';zoomLabel.textContent='100%';$('viewTools').append(zoomLabel);
 viewButton('zoomIn','+',()=>zoomAt(1.25)).setAttribute('aria-label','Phóng to');
@@ -433,7 +443,7 @@ document.addEventListener('pointerdown',e=>{
 if(!floatingToolsMedia.matches)paintToolbox();
 for(const [id,title,types]of [
  ['interactionTools','Thao tác',['select']],
- ['drawingTools','Vẽ',['bar','thin','dashed','curve','extend','hatch','rigidRegion']],
+ ['drawingTools','Vẽ',['bar','thin','dashed','xline','curve','extend','hatch','rigidRegion']],
  ['symbolTools','Tải trọng',['support','hinge','force','moment','udl']],
  ['annotationTools','Chú thích',['dim','text','person','positive','negative','diagramM','diagramQ','diagramN']]
 ]){
@@ -451,10 +461,11 @@ function captureDrawing(){
  return {items:copy(items),past:copy(past),future:copy(future),selected,first:copy(first),second:copy(second),hover:copy(hover),hatchPoints:copy(hatchPoints),rigidPoints:copy(rigidPoints),rigidPivot:copy(rigidPivot),extendBoundary,multiSelection:[...multiSelection]};
 }
 function restoreDrawing(snapshot,{preserveSupportAnchor=false}={}){
+ if(!preserveSupportAnchor)clearXLinePlacement();else if(penConnectionPlacement?.type==='xline'){clearPenConnectionPlacement();xlineHover=null}
  if(typeof cancelSmartMove==='function')cancelSmartMove();
  clearTabletBarCandidate();
  if(mode==='section'||mirrorSelecting)clearMultiPointCommand();
- cancelConcentratedLoadPlacement();
+ if(!preserveSupportAnchor||!hasConfirmedTabletForceAnchor())cancelConcentratedLoadPlacement();
  if(!preserveSupportAnchor||!hasConfirmedTabletSupportAnchor())clearSupportPlacement();
  if(!snapshot)return;
  jointDrag=null;rigidDrag=null;rigidPivot=snapshot.rigidPivot||null;rigidSnapHint=null;rigidPoints=snapshot.rigidPoints||[];
@@ -976,6 +987,8 @@ const toolIconPaths={
  bar:'M3 19L21 5M3 17L21 3M3 21L21 7',
  thin:'M3 21L21 3',
  dashed:'M3 21L7 17M10 14L14 10M17 7L21 3',
+ xline:'M2 22L6 18M9 15L15 9M18 6L22 2M2 6V2H6M18 22H22V18',
+ xlineVisibility:'M2 12H6M9 12H15M18 12H22M8 5L16 19',
  curve:'M3 20Q12 -8 21 20',
  extend:'M4 3V21M4 12H21M10 7L4 12L10 17',
  hatch:'M3 3H21V21H3ZM4 10L10 4M4 17L17 4M8 21L21 8M15 21L21 15',
@@ -1718,6 +1731,8 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
   if(owner.text||owner.selectionAware){
    // Bar opts in; retain a real selection even if a keypad contact changes browser focus.
    if(owner.selectionAware){
+    // Replace a new Force preview edit unless the user chose a selection.
+    if(owner.replaceOnType&&!['backspace','clear'].includes(key)&&!input.dataset.editing&&!(numericSelection?.input===input&&numericSelection.value===value))input.setSelectionRange(0,value.length);
     const saved=numericSelection?.input===input&&numericSelection.value===value?numericSelection:{start:input.selectionStart??value.length,end:input.selectionEnd??value.length};
     input.focus({preventScroll:true});input.setSelectionRange(saved.start,saved.end);
    }
@@ -1823,7 +1838,7 @@ const dynamicInputUI=(()=>{
    for(const el of fieldInputs)if(!el.hidden){if(!suppressedModes.has(el))suppressedModes.set(el,el.getAttribute('inputmode'));el.inputMode='none'}
   }
   if(tablet&&(!fields?.keypadOnEdit||activeInput().dataset.editing)){
-   keypad.show({input:activeInput(),confirm:confirmKeypad,avoid:keypadAvoid,selectionAware:fields?.tabletBarEdit===true||fields?.selectionAware===true,reserveMenus:fields?.tabletPlacement===true,commandExit:fields?.onCommandExit,commitTitle:fields?.commitTitle,exitTitle:fields?.exitTitle,confirmLabel:()=> (fields?.keypadCommitState?fields.keypadCommitState():fields?.canCommit?.())?'✓✓':'✓',canConfirm:()=>!fields?.keypadCommitState?.()||fields.canCommit?.()===true});
+   keypad.show({input:activeInput(),confirm:confirmKeypad,avoid:keypadAvoid,selectionAware:fields?.tabletBarEdit===true||fields?.selectionAware===true,replaceOnType:fields?.replaceOnType===true,reserveMenus:fields?.tabletPlacement===true,commandExit:fields?.onCommandExit,commitTitle:fields?.commitTitle,exitTitle:fields?.exitTitle,confirmLabel:()=> (fields?.keypadCommitState?fields.keypadCommitState():fields?.canCommit?.())?'✓✓':'✓',canConfirm:()=>!fields?.keypadCommitState?.()||fields.canCommit?.()===true});
   }else{keypad.hide();if(!tablet)restoreInputModes()}
  }
  const suppressedModes=new Map();
@@ -2222,29 +2237,38 @@ function endLoadNumericInput(){
  const session=loadNumericSession;loadNumericSession=null;
  if(session&&dynamicNumericCapture===session.capture)disarmDynamicNumericInput();
 }
-function lockLoadNumericAngle(value){
+function lockLoadNumericAngle(value,mode='locked'){
  if(!loadNumericSession||!Number.isFinite(value))return;
  const session=loadNumericSession.session;
  let angle=value%360;if(angle<=-180)angle+=360;if(angle>180)angle-=360;
- loadReferenceFrame();session.uiAngle.mode='locked';session.uiAngle.value=angle===0?0:angle;
+ loadReferenceFrame();session.uiAngle.mode=mode;session.uiAngle.value=angle===0?0:angle;
  resolveLoadUserAngle();if(lockedPenForcePlacement())freezePenForceAngle();paintLoadPreview();
 }
 function readLoadNumericEdit(){
  if(!loadNumericSession||!$('dynamicInputValue').dataset.editing)return;
  const text=getDynamicInputValue().trim().replace(',','.'),value=Number(text);
- if(text&&Number.isFinite(value))lockLoadNumericAngle(value);
+ if(loadNumericSession.tablet)loadNumericSession.session.uiAngle.mode='live';
+ if(text&&Number.isFinite(value))lockLoadNumericAngle(value,loadNumericSession.tablet?'live':'locked');
 }
 function beginLoadNumericInput(e){
  endLoadNumericInput();
  const session=loadPlacement,active=document.activeElement;
  if(!session?.uiAngle||active?.matches('input,textarea,select')||active?.isContentEditable||dynamicNumericCapture||dynamicInputUI.isOpen())return;
  armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onCancel:cancelToSelection});
- loadNumericSession={session,capture:dynamicNumericCapture,touch:e.pointerType==='touch',initialAnchor:{clientX:e.clientX,clientY:e.clientY},cursorAnchor:{clientX:e.clientX,clientY:e.clientY}};
+ const tablet=session.type==='force'&&session.tablet===true;
+ loadNumericSession={session,capture:dynamicNumericCapture,tablet,touch:e.pointerType==='touch',initialAnchor:{clientX:e.clientX,clientY:e.clientY},cursorAnchor:{clientX:e.clientX,clientY:e.clientY}};
  showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onConfirm:dynamicNumericCapture.confirm,onCancel:dynamicNumericCapture.cancel,
   tabletKeypad:mode==='force',keypadAvoid:()=>[penConnectionBubble],
-  fields:{label:'G\u00f3c',values:[session.uiAngle],validate:()=>true,onConfirm:(_,value)=>{
-   lockLoadNumericAngle(value);if(!loadNumericSession?.deferPenConfirmation)confirmPenForceAngle();
-  },onKeyboardCommit:()=>{if(!confirmPenForceAngle())placeLoadObject()}}});
+  fields:{label:'G\u00f3c',tabletPlacement:session.type==='force'&&session.tablet===true,tabletCanvasPlacement:session.type==='force'&&session.tablet===true,
+   labels:['Góc'],unitLocks:tablet,selectionAware:tablet,replaceOnType:tablet,keypadOnly:tablet,
+   invalidMessage:tablet?'Nhập góc hữu hạn hợp lệ.':undefined,
+   commitTitle:'Hoàn tất Lực tập trung',exitTitle:'Kết thúc lệnh Lực tập trung',
+   keypadCommitState:()=>tablet&&loadPlacement===session&&session.uiAngle.mode==='locked'&&!dynamicInputUI.hasPendingEdit(),
+   canCommit:canFinishLockedForce,onKeypadCommit:commitTabletForceKeypad,onCommandExit:tablet?cancelToSelection:null,
+   onEdit:()=>{if(tablet)session.uiAngle.mode='live'},
+   values:[session.uiAngle],validate:()=>true,onConfirm:(_,value)=>{
+   lockLoadNumericAngle(value);if(!tablet&&!loadNumericSession?.deferPenConfirmation)confirmPenForceAngle();
+  },onKeyboardCommit:()=>{if(!tablet&&!confirmPenForceAngle())placeLoadObject()}}});
 
 }
 function confirmLoadNumericInput(deferPenConfirmation=false){
@@ -2256,6 +2280,17 @@ function updateLoadNumericInput(e){
  if(!loadNumericSession)return;
  if(['force','udl'].includes(mode)&&updateReferenceAngleInputAnchor(activeReferenceAnglePreview(),e))return;
  updateDynamicInput(loadNumericSession.touch?{}:{clientX:e.clientX,clientY:e.clientY});
+}
+function canFinishLockedForce(){
+ const numeric=loadNumericSession,session=loadPlacement;
+ return !!(numeric?.tablet&&numeric.session===session&&hasConfirmedTabletForceAnchor()&&session.uiAngle.mode==='locked'&&
+  dynamicInputUI.owns(numeric.capture.confirm)&&!dynamicInputUI.hasPendingEdit()&&!penConnectionPlacement&&
+  !penConnectionPlacementBlocked({})&&!inlineEditor&&!document.querySelector('dialog[open]')&&items.length<2000&&
+  [session.a.x,session.a.y,session.uiAngle.value,session.angle].every(Number.isFinite)&&Math.abs(session.a.x)<=10000&&Math.abs(session.a.y)<=10000);
+}
+function commitTabletForceKeypad(){
+ if(!canFinishLockedForce())return false;
+ placeLoadObject({keypad:true});return true;
 }
 $('dynamicInputValue').addEventListener('input',readLoadNumericEdit);
 
@@ -3237,7 +3272,7 @@ const sharedOuterActions=[
  {id:'commandFinish',source:commandFinish,artwork:'M4 12L9 17L20 6',visible:()=>!commandControls.hidden&&!commandFinish.hidden}
 ];
 const leftDrawingGroups=[
- {id:'geometry',label:'Thanh',icon:'bar',tools:['bar','thin','dashed','curve','extend']},
+ {id:'geometry',label:'Thanh',icon:'bar',tools:['bar','thin','dashed','xline','curve','extend']},
  {id:'connections',label:'Liên kết',icon:'hinge',tools:['hinge','linkBar','weld','pin','roller','fixed']},
  // Add future real load controls here; source handlers remain authoritative.
  {id:'loads',label:'Tải trọng',icon:'force',tools:['force','moment','udl']},
@@ -3254,7 +3289,7 @@ const leftDiagramModes=['diagramM','diagramQ','diagramN','positive','negative'];
 const leftDiagramChildren=leftDiagramModes.map(id=>leftDrawingGroups.flatMap(g=>g.children).find(entry=>entry.id===id));
 const leftDiagramParent={id:'diagram',label:'Biểu đồ nội lực',icon:'diagramM',navigationOnly:true,children:leftDiagramChildren};
 const leftDrawingCategories=[
- {id:'geometry',label:'Vẽ',tools:['bar','thin','dashed','curve'],defaultTool:'bar',tint:leftDrawingGroups[0].tint},
+ {id:'geometry',label:'Vẽ',tools:['bar','thin','dashed','xline','curve'],defaultTool:'bar',tint:leftDrawingGroups[0].tint},
  {id:'supports',label:'Liên kết',tools:['hinge','linkBar','weld','pin','roller','fixed'],defaultTool:'pin',tint:leftDrawingGroups[1].tint},
  {id:'loads',label:'Tải trọng',tools:['force','moment','udl'],defaultTool:'force',tint:leftDrawingGroups[2].tint},
  {id:'annotation',label:'Chú thích / biểu diễn',tools:['dim','text','person','section','rigidRegion','hatch','joint','diagram'],defaultTool:'dim',tint:leftDrawingGroups[3].tint}
@@ -3399,14 +3434,14 @@ const rightCommandGroups=[
  {id:'history',label:'Lịch sử',icon:'undo',ids:['undo','redo']},
  {id:'edit',label:'Sao chép',icon:'copyObjects',ids:['copyObjects','pasteObjects','editSelected','delete']},
  {id:'view',label:'Chế độ xem',icon:'panView',ids:['resetView','panView','zoomOut','zoomIn']},
- {id:'snap',label:'Hiển thị',icon:'snapToggle',ids:['snapToggle','snapOptions']},
+ {id:'snap',label:'Hiển thị',icon:'snapToggle',ids:['snapToggle','snapOptions','xlineVisibility']},
  {id:'settings',label:'Cài đặt',icon:'drawingScalesToggle',ids:['drawingScalesToggle','openCalculator']}
 ].map((group,index)=>({...group,tint:leftDrawingGroups[index].tint,children:[]}));
 const rightOneShot=new Set(['clear','open','save','saveAs','svg','png','insertWord','undo','redo','copyObjects','pasteObjects','zoomOut','zoomIn']);
 // Compact production navigation/utilities, using the existing authoritative controls.
 const rightCommandRings=[
  {id:'R1',label:'Chỉnh sửa / Chọn',ids:['resetView','moveObjects','moveBasePoint','editSelected','copyObjects','pasteObjects','delete','extend'],defaultTool:'resetView',tint:'#edf2f6'},
- {id:'R2',label:'Điều hướng / Tiện ích',ids:['panView','snapOptions','openCalculator'],defaultTool:'panView',tint:'#edf2f4'}
+ {id:'R2',label:'Điều hướng / Tiện ích',ids:['panView','snapOptions','xlineVisibility','openCalculator'],defaultTool:'panView',tint:'#edf2f4'}
 ].map(ring=>({...ring,activeIndex:ring.ids.indexOf(ring.defaultTool),entries:[]}));
 function rightCommandSource(id){return id==='extend'?document.querySelector('button[data-mode="extend"]'):id==='insertWord'?wordButton:id==='snapOptions'?snapButton:$(id)}
 function refreshRightCommandEntries(){

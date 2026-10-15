@@ -7,6 +7,12 @@ const internal=a=>((90-a)%360+360)%360;
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
   for(const tablet of [false,true]){
+   if(tablet){
+    // Tablet semantics are now point Bubble -> numeric lock -> same-key commit.
+    // Keep the conventional desktop suite below and verify the new protocol for
+    // both actual tablet contact types, rather than asserting a final Bubble.
+    await require('./force-keypad-transitions.cjs').runTabletForceTransitions({browser,smoke:true,out:path.resolve(process.env.FORCE_KEYPAD_OUTPUT||'.test-tools/force-keypad-'+Date.now(),'pen-force-adapter')});continue;
+   }
    const context=await browser.newContext({viewport:{width:1280,height:800},hasTouch:tablet,isMobile:tablet}),page=await context.newPage(),errors=[];
    page.on('pageerror',e=>errors.push(e.message));await page.goto(pathToFileURL(path.resolve('index.html')).href);
    await page.waitForFunction(()=>typeof handlePenForcePlacement==='function');
@@ -107,9 +113,13 @@ const internal=a=>((90-a)%360+360)%360;
    await pen('pointermove',{x:330,y:300});await pen('pointerdown',{x:330,y:300});await pen('pointerup');assert.equal(await page.evaluate(()=>loadPlacement.referenceBarId),'reference-1');
    await edit('90');await validate();const global=await page.evaluate(()=>referenceAngleToGlobalPlacementAngle(90,loadReferenceFrame()));near((await pose()).loadAngle,internal(global));assert.deepEqual(await page.evaluate(()=>copy(loadReferenceFrame())),frame);assert.deepEqual(await doc(),before);
    await command('cancel');await pen('pointerdown',{x:330,y:300});assert.equal(await page.evaluate(()=>loadPlacement.referenceBarId),'reference-0');await pen('pointerup');assert.equal(await state(),'angle-tracking');
-   // Reset/cancel paths retire both load session and shared transient UI without mutations.
+   // Only explicit exit retires a confirmed tablet point. Desktop legacy cancel
+   // still retires its transient session; an unconfirmed contact remains cancelable.
    for(const action of ['pointercancel','mode','undo','reset']){
-    await reset();before=await trackAngle();await page.evaluate(action=>{if(action==='pointercancel')svg.dispatchEvent(new PointerEvent('pointercancel',{bubbles:true,pointerType:'pen',pointerId:71}));if(action==='mode')setMode('bar');if(action==='undo')actions.undo[1]();if(action==='reset')cancelToSelection()},action);
+    await reset();before=await trackAngle();const confirmedAnchor=await anchor();await page.evaluate(action=>{if(action==='pointercancel')svg.dispatchEvent(new PointerEvent('pointercancel',{bubbles:true,pointerType:'pen',pointerId:71}));if(action==='mode')setMode('bar');if(action==='undo')actions.undo[1]();if(action==='reset')cancelToSelection()},action);
+    if(tablet&&action==='pointercancel'){
+     assert.deepEqual(await anchor(),confirmedAnchor);assert.deepEqual(await page.evaluate(()=>loadPlacement.a),confirmedAnchor);assert.equal(await state(),'angle-tracking');assert.equal(await input.isVisible(),true);assert.deepEqual(await doc(),before);await page.evaluate(()=>cancelToSelection());
+    }
     assert.equal(await page.evaluate(()=>loadPlacement),null);assert.equal(await page.evaluate(()=>penConnectionPlacement),null);assert.equal(await bubble.isVisible(),false);assert.equal(await halo.isVisible(),false);assert.equal(await keypad.isVisible(),false);assert.equal((await doc()).items.length,before.items.length);assert.equal((await doc()).past.length,0);
    }
    // Ordinary mouse/finger Force retains its two-point and physical-keyboard commit paths.
