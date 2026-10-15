@@ -22,8 +22,8 @@ const overlap=(a,b)=>Math.max(0,Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b
     svg.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:71,pointerType:'pen',isPrimary:true,clientX:p.x,clientY:p.y,button:type==='pointermove'?-1:0,buttons:type==='pointerdown'?1:0,pressure:type==='pointerdown'?.22:0}));
    },{type,q});
    const doc=()=>page.evaluate(()=>({items:copy(items),past:copy(past),future:copy(future),selected,text:documentText()}));
-   const phase=()=>page.evaluate(()=>penConnectionPlacement?.state||'tracking');
-   const pose=()=>page.evaluate(()=>penConnectionPlacement?.lockedCandidate||null);
+   const phase=()=>page.evaluate(()=>penConnectionPlacement?.state||(supportPlacementSession?'angle-tracking':'tracking'));
+   const pose=()=>page.evaluate(()=>supportPlacementSession?{...supportPlacementSession.anchorPoint,supportAngle:supportPlacementSession.previewAngle}:null);
    async function command(action){
     const r=await page.locator(`#penConnectionBubble [data-pen-connection-action="${action}"]`).boundingBox();assert(r);
     if(tablet)await page.touchscreen.tap(r.x+24,r.y+24);else await page.mouse.click(r.x+24,r.y+24);
@@ -52,16 +52,15 @@ const overlap=(a,b)=>Math.max(0,Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b
    }
    assert.equal(await page.evaluate(()=>floatingToolsMedia.matches),tablet);assert.equal(await keypad.count(),1);assert.equal(await keypad.isVisible(),false);
    if(!tablet){
-    await reset();const before=await anchor();await input.fill('-90');await input.press('Enter');assert.equal(await phase(),'angle-confirming');assert.equal(await keypad.isVisible(),false);near((await pose()).supportAngle,-90);assert.deepEqual(await doc(),before);
-    await command('confirm');assert.equal((await doc()).past.length,1);assert.equal(await input.getAttribute('inputmode'),'decimal');
+    await reset();const before=await anchor();await input.fill('-90');await input.press('Enter');assert.equal(await phase(),'tracking');assert.equal(await keypad.isVisible(),false);near((await doc()).items[0].supportAngle,-90);assert.equal((await doc()).items.length,before.items.length+1);assert.equal(await bubble.isVisible(),false);assert.equal((await doc()).past.length,1);assert.equal(await input.getAttribute('inputmode'),'decimal');
     // Ordinary PC Support still uses its existing two-point/keyboard commit path.
     await reset();const q=await screen({x:300,y:300});await page.mouse.click(q.x,q.y);await page.keyboard.type('45.5');await page.keyboard.press('Enter');
     near((await doc()).items[0].supportAngle,45.5);assert.equal((await doc()).past.length,1);assert.equal(await keypad.isVisible(),false);
-    assert.deepEqual(errors,[]);console.log('PASS desktop: keypad inactive, decimal input mode, physical-keyboard Support and pen bubble semantics unchanged');await context.close();continue;
+    assert.deepEqual(errors,[]);console.log('PASS desktop: keypad inactive, decimal input mode, physical-keyboard Support and point-only pen Bubble');await context.close();continue;
    }
    for(const subtype of ['pin','pin-plain','roller','roller-plain','fixed']){
     await reset(subtype);const before=await anchor();await bounds();assert.equal(overlap(await keypad.boundingBox(),await page.locator('#dynamicInput').boundingBox()),0);
-    const rect=await keypad.boundingBox(),point=await page.evaluate(()=>({...penConnectionPlacement.lockedAnchor}));
+    const rect=await keypad.boundingBox(),point=await page.evaluate(()=>({...supportPlacementSession.anchorPoint}));
     for(const value of ['0','90','-90','180','45.5','-30.5']){
      await enter(value);assert.equal(await input.inputValue(),value);near(await page.evaluate(()=>supportPlacementSession.previewAngle),Number(value));
      assert.equal(await phase(),'angle-tracking');assert.deepEqual(await doc(),before);assert.equal(await page.evaluate(()=>supportPlacementSession===keypadSupportSession),true);
@@ -72,32 +71,33 @@ const overlap=(a,b)=>Math.max(0,Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b
     await key('confirm');assert.equal(await phase(),'angle-tracking');assert.equal(await input.getAttribute('aria-invalid'),'true');assert.deepEqual(await doc(),before);assert.equal(await input.getAttribute('inputmode'),'none');
     // Native keypad taps retain field focus and route through the original input/validation path.
     await input.tap();await key('9');assert.equal(await input.evaluate(el=>document.activeElement===el),true);assert.equal(await input.getAttribute('inputmode'),'none');
-    await enter('83');await key('confirm');assert.equal(await phase(),'angle-confirming');near((await pose()).supportAngle,83);assert.equal(await bubble.isVisible(),true);assert.equal(await keypad.isVisible(),true);assert.equal(await halo.isVisible(),true);assert.deepEqual(await doc(),before);
-    const fixedBubble=await bubble.boundingBox();assert.equal(overlap(await keypad.boundingBox(),fixedBubble),0);
-    await enter('90');near((await pose()).supportAngle,90);assert.equal(await page.locator('[data-support-preview] > g').getAttribute('transform'),`translate(${point.x} ${point.y}) rotate(90)`);
-    await key('confirm');assert.equal(await phase(),'angle-confirming');assert.deepEqual(await bubble.boundingBox(),fixedBubble);assert.deepEqual(await doc(),before);
+
+    await enter('83');assert.equal(await page.evaluate(()=>supportPlacementSession.angle.mode),'live');await key('confirm');assert.equal(await phase(),'angle-tracking');near((await pose()).supportAngle,83);assert.equal(await bubble.isVisible(),false);assert.equal(await keypad.isVisible(),true);assert.equal(await halo.isVisible(),false);assert.deepEqual(await doc(),before);
+    const confirmKey=page.locator('[data-numeric-key="confirm"]'),confirmRect=await confirmKey.boundingBox();assert.equal(await confirmKey.textContent(),'✓✓');await confirmKey.evaluate(el=>window.originalSupportKey=el);
+    await enter('90');near((await pose()).supportAngle,90);assert.equal(await page.evaluate(()=>supportPlacementSession.angle.mode),'live');assert.equal(await confirmKey.textContent(),'✓');assert.equal(await page.locator('[data-support-preview] > g').getAttribute('transform'),`translate(${point.x} ${point.y}) rotate(90)`);
+    await key('confirm');assert.equal(await confirmKey.textContent(),'✓✓');assert.deepEqual(await confirmKey.boundingBox(),confirmRect);assert(await confirmKey.evaluate(el=>el===originalSupportKey));assert.deepEqual(await doc(),before);
     await pen('pointermove',{x:440,y:430});near((await pose()).supportAngle,90);assert.deepEqual(await keypad.boundingBox(),rect);
     await page.evaluate(()=>{camera.x+=20;applyCamera()});assert.deepEqual(await keypad.boundingBox(),rect);assert.deepEqual(await doc(),before);
-    await command('cancel');assert.equal(await phase(),'angle-tracking');assert.equal(await keypad.isVisible(),true);assert.equal(await halo.isVisible(),true);assert.deepEqual(await page.evaluate(()=>({...penConnectionPlacement.lockedAnchor})),point);assert.deepEqual(await doc(),before);
-    await enter('-90');await key('confirm');const draft=await pose();await command('confirm');const after=await doc();
+    await enter('-90');await key('confirm');const draft=await pose();await key('confirm');const after=await doc();
     assert.equal(after.items.length,1);assert.equal(after.items[0].support,subtype);for(const field of ['x','y','supportAngle'])assert.equal(after.items[0][field],draft[field]);assert.deepEqual(after.past,[before.items]);
     assert.equal(await keypad.isVisible(),false);assert.equal(await bubble.isVisible(),false);assert.equal(await input.getAttribute('inputmode'),'decimal');assert.equal(await page.locator('#support').inputValue(),subtype);
-    console.log(`PASS tablet ${subtype}: digits/sign/decimal/backspace/clear, validation, 83→90 draft, two independent confirms, retry anchor, one commit and restored input mode`);
+    console.log(`PASS tablet ${subtype}: digits/sign/decimal/backspace/clear, validation, 83-to-90 draft, explicit lock and same-button commit, one commit and restored input mode`);
    }
    // Local/global conversion stays in the existing Support engine.
    await reset('fixed',[[200,300,500,300]]);const referenceBefore=await anchor();await enter('90');await key('confirm');near((await pose()).supportAngle,0);assert.deepEqual(await doc(),referenceBefore);
-   await enter('-90');await key('confirm');near((await pose()).supportAngle,180);assert.deepEqual(await doc(),referenceBefore);await command('confirm');near((await doc()).items.at(-1).supportAngle,180);
-   // A newly visible bubble near the default keypad corner must not cover its keys.
-   for(const canvasConfirm of [false,true]){
+   await enter('-90');await key('confirm');near((await pose()).supportAngle,180);assert.deepEqual(await doc(),referenceBefore);await key('confirm');near((await doc()).items.at(-1).supportAngle,180);
+
+   // Point-only Bubble is retired before the keypad opens near the corner.
+   for(const canvasContact of [false,true]){
     await reset();const before=await anchor({x:900,y:600});await enter('83');
-    if(canvasConfirm){await pen('pointerdown',{x:500,y:400});await pen('pointerup',{x:500,y:400})}else await key('confirm');
-    assert.equal(await phase(),'angle-confirming');assert.equal(overlap(await keypad.boundingBox(),await bubble.boundingBox()),0);
-    await enter('90');await key('confirm');near((await pose()).supportAngle,90);assert.deepEqual(await doc(),before);await command('confirm');assert.equal((await doc()).past.length,1);
+    if(canvasContact){await pen('pointerdown',{x:500,y:400});await pen('pointerup',{x:500,y:400});assert.equal(await page.evaluate(()=>supportPlacementSession.angle.mode),'live')}
+    await key('confirm');assert.equal(await bubble.isVisible(),false);assert.deepEqual(await doc(),before);
+    await enter('90');await key('confirm');near((await pose()).supportAngle,90);assert.deepEqual(await doc(),before);await key('confirm');assert.equal((await doc()).past.length,1);
    }
-   // Ordinary finger Support keeps its two-point commit path; keypad validation itself never commits.
-   await reset();let touchPoint=await screen({x:300,y:300});await page.touchscreen.tap(touchPoint.x,touchPoint.y);
+   // Native finger acquisition uses the same point Bubble and numeric lock/commit.
+   await reset();let touchPoint=await screen({x:300,y:300});await page.touchscreen.tap(touchPoint.x,touchPoint.y);assert.equal(await bubble.isVisible(),true);assert.equal(await keypad.isVisible(),false);await command('confirm');
    assert.equal(await keypad.isVisible(),true);const touchBefore=await doc();await enter('90');await key('confirm');assert.deepEqual(await doc(),touchBefore);
-   assert.equal(await page.evaluate(()=>!!supportPlacementSession),true);touchPoint=await screen({x:450,y:350});await page.touchscreen.tap(touchPoint.x,touchPoint.y);
+   assert.equal(await page.evaluate(()=>!!supportPlacementSession),true);touchPoint=await screen({x:450,y:350});await page.touchscreen.tap(touchPoint.x,touchPoint.y);assert.deepEqual(await doc(),touchBefore);assert.equal(await bubble.isVisible(),false);await key('confirm');
    near((await doc()).items[0].supportAngle,90);assert.equal((await doc()).past.length,1);assert.equal(await keypad.isVisible(),false);
    // Pen clicks activate a key once and cannot become drawing contacts.
    await reset();const nativeBefore=await anchor();await key('clear');const cdp=await context.newCDPSession(page);
@@ -105,7 +105,7 @@ const overlap=(a,b)=>Math.max(0,Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b
     const r=await page.locator(`[data-numeric-key="${value}"]`).boundingBox(),p={x:r.x+r.width/2,y:r.y+r.height/2};
     for(const type of ['mouseMoved','mousePressed','mouseReleased'])await cdp.send('Input.dispatchMouseEvent',{type,...p,pointerType:'pen',buttons:type==='mousePressed'?1:0,force:type==='mousePressed'?.22:0,...(type==='mouseMoved'?{}:{button:'left',clickCount:1})});
    }
-   assert.equal(await input.inputValue(),'90');assert.equal(await phase(),'angle-confirming');assert.deepEqual(await doc(),nativeBefore);await cdp.detach();
+   assert.equal(await input.inputValue(),'90');assert.equal(await phase(),'angle-tracking');assert.equal(await page.locator('[data-numeric-key=confirm]').textContent(),'✓✓');assert.equal(await bubble.isVisible(),false);assert.deepEqual(await doc(),nativeBefore);await cdp.detach();
    // Fixed screen-space positioning follows viewport changes, not the SVG camera.
    for(const viewport of [{width:1280,height:800},{width:800,height:1100},{width:1024,height:600}]){
     await page.setViewportSize(viewport);await bounds();const r=await keypad.boundingBox();await page.evaluate(()=>{camera.x+=10;applyCamera()});assert.deepEqual(await keypad.boundingBox(),r);
@@ -116,7 +116,8 @@ const overlap=(a,b)=>Math.max(0,Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b
    // Complete cancellation and editor/tool resets retire the keypad and suppression attribute.
    for(const action of ['cancel','tool','undo','reset','hide']){
     await reset();await anchor();await page.evaluate(action=>{if(action==='cancel')svg.dispatchEvent(new PointerEvent('pointercancel',{bubbles:true,pointerType:'pen',pointerId:71}));if(action==='tool')setMode('bar');if(action==='undo')actions.undo[1]();if(action==='reset')cancelToSelection();if(action==='hide')hideDynamicInput()},action);
-    assert.equal(await keypad.isVisible(),false);assert.equal(await input.getAttribute('inputmode'),'decimal');
+    if(action==='cancel'){assert(await keypad.isVisible());assert.equal(await input.getAttribute('inputmode'),'none');assert(await page.evaluate(()=>supportPlacementSession?.tablet&&supportNumericSession?.tablet));assert.equal(await phase(),'angle-tracking')}
+    else{assert.equal(await keypad.isVisible(),false);assert.equal(await input.getAttribute('inputmode'),'decimal')}
    }
    // No other editor opts in, even on a coarse device.
    for(const tool of ['bar','thin','force','moment','udl','text']){

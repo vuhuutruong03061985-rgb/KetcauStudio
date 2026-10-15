@@ -18,7 +18,7 @@ const {chromium}=require('../.test-tools/node_modules/playwright'),path=require(
 (async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});try{for(const touch of [false,true]){
  const p=await browser.newPage({viewport:{width:1500,height:1100},hasTouch:touch,isMobile:touch});const errors=[];p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.resolve('index.html')).href);
  const screen=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return{x:q.x,y:q.y}},{x,y});
- const tap=async(x,y)=>{const q=await screen(x,y);if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
+ const tap=async(x,y)=>{const q=await screen(x,y);if(touch){await p.touchscreen.tap(q.x,q.y);if(await p.evaluate(()=>mode==='support')&&await p.locator('#penConnectionBubble').isVisible())await p.locator('[data-pen-connection-action=confirm]').tap()}else await p.mouse.click(q.x,q.y)};
  const move=async(x,y)=>{const q=await screen(x,y);await p.mouse.move(q.x,q.y)};
  const seed=async(type,subtype='pin',bars=[[200,300,500,300]])=>{await p.evaluate(({type,subtype,bars})=>{document.activeElement.blur();setMode('select');items=bars.map((b,i)=>make('bar',...b,{id:'b'+i}));past=[];future=[];selected=null;snapEnabled=false;$('support').value=subtype;setMode(type)},{type,subtype,bars});await tap(300,300)};
  const lock=angle=>p.evaluate(angle=>{if(mode==='support')lockSupportNumericAngle(angle);else lockLoadNumericAngle(angle)},angle);
@@ -30,14 +30,19 @@ const {chromium}=require('../.test-tools/node_modules/playwright'),path=require(
    for(const angle of [0,30,-30,90,-90,180]){
     await lock(angle);assert.equal(await arc.count(),angle===0?0:1);near(Number(await input.inputValue()),angle);
     const result=await p.evaluate(()=>{const g=activeReferenceAnglePreview(),c=svg.getScreenCTM(),panel=$('dynamicInput').getBoundingClientRect(),pt=new DOMPoint(g.inputAnchor.x,g.inputAnchor.y).matrixTransform(c);return{direction:g.arcMidDirection,radius:g.radius*Math.hypot(c.a,c.b),inputX:pt.x,inputY:pt.y,rect:{x:panel.x,y:panel.y,width:panel.width,height:panel.height},text:svg.querySelectorAll('.reference-angle-preview text').length,global:mode==='support'?supportPlacementSession.previewAngle:loadPlacement.globalPlacementAngle,angle:g.signedAngle,fill:svg.querySelector('.reference-angle-preview')?.getAttribute('fill'),tail:mode==='force'?loadVector({loadAngle:loadPlacement.angle}).map(v=>-v):null}});
-    near(result.radius,30);near(result.global,angle===-90?180:angle-90);assert.equal(result.text,0);near(result.rect.x,result.inputX+(result.direction.x<0?-result.rect.width:0),.03);near(result.rect.y,result.inputY+(result.direction.y<0?-result.rect.height:0),.03);assert(result.rect.x>=0&&result.rect.x+result.rect.width<=1500);
+    near(result.radius,30);near(result.global,angle===-90?180:angle-90);assert.equal(result.text,0);
+    if(touch&&type==='support'){
+     // Tablet Support reserves radial space; the arc stays exact while its editor is clamped safely.
+     const free=await p.evaluate(()=>({left:leftDrawingMenu.layout.cx+leftDrawingMenu.layout.radius+8,right:rightCommandMenu.layout.cx-rightCommandMenu.layout.radius-8,top:svg.getBoundingClientRect().top,primary:document.body.dataset.radialPrimary}));
+     assert.equal(free.primary,'true');assert(result.rect.x>=free.left-.1&&result.rect.x+result.rect.width<=free.right+.1);assert(result.rect.y>=free.top);
+    }else{near(result.rect.x,result.inputX+(result.direction.x<0?-result.rect.width:0),.03);near(result.rect.y,result.inputY+(result.direction.y<0?-result.rect.height:0),.03)}assert(result.rect.x>=0&&result.rect.x+result.rect.width<=1500);
     if(result.tail){near(result.tail[0],Math.cos(angle*Math.PI/180));near(result.tail[1],Math.sin(angle*Math.PI/180))}
     if(angle){assert.equal(await arc.getAttribute('stroke'),'#14B8A6');assert.equal(await arc.getAttribute('pointer-events'),'none');assert.equal(await arc.getAttribute('stroke-dasharray'),'4 3');assert.equal(result.fill,'none')}
     await p.evaluate(()=>render());assert.equal(await arc.count(),angle===0?0:1);assert.equal(await p.locator('#dynamicInput').count(),1);assert.equal(await p.locator('#dynamicInput input:visible').count(),1);
    }
    assert.deepEqual(await p.evaluate(()=>({json:documentText(),history:past.length})),before);
    assert.equal(await p.evaluate(()=>{render(true);const has=!!svg.querySelector('.reference-angle-preview');render();return has}),false);
-   await input.focus();const box=await p.locator('#dynamicInput').boundingBox();await input.fill('30');await move(450,450);assert.deepEqual(await p.locator('#dynamicInput').boundingBox(),box);near(Number(await input.inputValue()),30);await input.press('Enter');assert.equal(await arc.count(),0);assert.equal(await p.locator('#dynamicInput').isVisible(),false);
+   await input.focus();const box=await p.locator('#dynamicInput').boundingBox();await input.fill('30');await move(450,450);assert.deepEqual(await p.locator('#dynamicInput').boundingBox(),box);near(Number(await input.inputValue()),30);if(touch&&type==='support'){await p.locator('[data-numeric-key=confirm]').tap();assert.equal(await p.evaluate(()=>items.filter(o=>o.type==='support').length),0);await p.locator('[data-numeric-key=confirm]').tap()}else await input.press('Enter');assert.equal(await arc.count(),0);assert.equal(await p.locator('#dynamicInput').isVisible(),false);
   }
   // LIVE and LOCKED override consumes click, and uses the same signed field value.
   for(const locked of [false,true]){
@@ -58,9 +63,9 @@ const {chromium}=require('../.test-tools/node_modules/playwright'),path=require(
   near(fallback.x,fallback.a.clientX+16,.03);near(fallback.y,fallback.a.clientY-16-fallback.h,.03);
   await seed(type,'pin',[]);await move(430,420);assert.equal(await arc.count(),0);
   // A final tap needs no pointermove and leaves no transient state in saved data.
-  await seed(type);await tap(450,450);assert.equal(await arc.count(),0);assert.equal(await p.evaluate(()=>items.length),2);assert.equal(await p.evaluate(()=>/reference-angle-preview|inputAnchor|arcMidPoint/.test(documentText())),false);
+  await seed(type);await tap(450,450);if(touch&&type==='support'){await p.locator('[data-numeric-key=confirm]').tap();await p.locator('[data-numeric-key=confirm]').tap()}assert.equal(await arc.count(),0);assert.equal(await p.evaluate(()=>items.length),2);assert.equal(await p.evaluate(()=>/reference-angle-preview|inputAnchor|arcMidPoint/.test(documentText())),false);
   for(const action of ['undo','redo','select','tool','new','open','rollback','pointercancel','escape']){
-   await seed(type);await lock(30);await p.evaluate(action=>{if(action==='undo'||action==='redo')actions[action][1]();if(action==='select')activateSelection();if(action==='tool')setMode('bar');if(action==='new'){savedDocument=documentText();newDocument()}if(action==='open'){openDocument();openDialog.close()}if(action==='rollback')restoreDrawing(captureDrawing());if(action==='pointercancel')svg.dispatchEvent(new PointerEvent('pointercancel',{bubbles:true,pointerType:'mouse',pointerId:1}));if(action==='escape')cancelToSelection()},action);assert.equal(await arc.count(),0,`${type} ${action}`);
+   await seed(type);await lock(30);await p.evaluate(action=>{if(action==='undo'||action==='redo')actions[action][1]();if(action==='select')activateSelection();if(action==='tool')setMode('bar');if(action==='new'){savedDocument=documentText();newDocument()}if(action==='open'){openDocument();openDialog.close()}if(action==='rollback')restoreDrawing(captureDrawing());if(action==='pointercancel')svg.dispatchEvent(new PointerEvent('pointercancel',{bubbles:true,pointerType:'mouse',pointerId:1}));if(action==='escape')cancelToSelection()},action);assert.equal(await arc.count(),touch&&type==='support'&&action==='pointercancel'?1:0,`${type} ${action}`);if(touch&&type==='support'&&action==='pointercancel'){assert(await p.evaluate(()=>supportPlacementSession?.tablet&&supportNumericSession?.tablet));assert.equal(await p.locator('[data-numeric-key=confirm]').textContent(),'\u2713\u2713')}
   }
  }
  const seedUDL=async(span=[200,300,400,300],bars=[[100,300,500,300]])=>{

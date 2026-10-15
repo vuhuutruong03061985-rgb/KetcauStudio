@@ -15,6 +15,8 @@ function solveSupportAngle(anchorPoint,cursorPoint){
  return angle===-180?180:angle===0?0:angle;
 }
 let supportPlacementSession=null;
+// Once the point Bubble has accepted P, contacts/editing own only transient intent.
+function hasConfirmedTabletSupportAnchor(){return mode==='support'&&supportPlacementSession?.tablet===true&&!penConnectionPlacement}
 function supportReferenceCandidates(){
  const session=supportPlacementSession;if(!session)return [];
  const ids=new Set(session.referenceCandidates.map(c=>c.barId));
@@ -57,7 +59,7 @@ function updateSupportOrientation(e){
   const candidate=resolveReferenceBar({candidates:supportReferenceCandidates(),anchorPoint:session.anchorPoint,cursorPoint:raw,screenScale:Math.abs(svg.getScreenCTM().a),activationThresholdPx:THIN_REFERENCE_ACTIVATION_PX});
   if(candidate)setSupportReference(candidate.barId);
  }
- if(session.angle.mode==='locked')return;
+ if(session.angle.mode==='locked'||session.tablet&&$('dynamicInputValue')?.dataset.editing)return;
  // Preserve drawing intent while approaching an explicit reference target.
  if(supportReferenceOverrideAt(raw))return;
  const angle=solveSupportAngle(session.anchorPoint,raw);if(angle===null)return;
@@ -76,10 +78,11 @@ function clearSupportPlacement(){
  svg.querySelector('[data-support-reference]')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));
  supportPlacementSession=null;svg.querySelector('[data-support-preview]')?.remove();svg.querySelector('.reference-angle-preview')?.remove();
 }
-function commitSupportPlacement(angle){
- // Numeric Enter may validate a pen angle, but only the floating confirm can create.
+function commitSupportPlacement(angle,{keypad=false}={}){
+ // Tablet creation belongs exclusively to the validated same-button keypad commit.
  if(penConnectionPlacement?.type==='support')return false;
  const session=supportPlacementSession;if(!session||!Number.isFinite(angle))return false;
+ if(session.tablet&&!keypad)return false;
  const o=make('support',session.anchorPoint.x,session.anchorPoint.y,undefined,undefined,{support:session.supportSubtype,direction:session.direction,supportAngle:angle});
  checkpoint();items.push(o);selected=o.id;clearSupportPlacement();render();return true;
 }
@@ -953,7 +956,8 @@ function lockedPenSupportPlacement(){
  return placement?.type==='support'&&['position-locked','angle-confirming'].includes(placement.state)?placement.lockedCandidate:null;
 }
 function penConnectionConfirming(placement=penConnectionPlacement){
- return ['support','force'].includes(placement?.type)?['anchor-confirming','angle-confirming'].includes(placement.state):placement?.state==='confirming';
+ if(placement?.type==='support')return placement.state==='anchor-confirming';
+ return placement?.type==='force'?['anchor-confirming','angle-confirming'].includes(placement.state):placement?.state==='confirming';
 }
 function lockedPenForcePlacement(){
  const placement=penConnectionPlacement;
@@ -970,23 +974,6 @@ function confirmPenForceAngle(){
  if(placement?.type!=='force'||!['angle-tracking','position-locked','angle-confirming'].includes(placement.state))return false;
  const alreadyConfirming=placement.state==='angle-confirming';
  freezePenForceAngle();placement.state='angle-confirming';placement.lockedPointerId=null;
- render();if(!alreadyConfirming)positionPenConnectionBubble();
- return true;
-}
-function freezePenSupportAngle(angle){
- const placement=penConnectionPlacement,session=supportPlacementSession;
- if(placement?.type!=='support'||!session||!Number.isFinite(angle))return;
- session.previewAngle=angle;const frame=supportReferenceFrame();
- if(session.angle.mode!=='locked')session.angle.value=frame?globalPlacementAngleToReferenceAngle(angle,frame):angle;
- placement.lockedCandidate=Object.freeze({...placement.lockedAnchor,support:session.supportSubtype,direction:session.direction,supportAngle:angle});
- placement.lockedReferenceFrame=frame?copy(frame):null;
-}
-function confirmPenSupportAngle(){
- const placement=penConnectionPlacement;
- if(placement?.type!=='support'||!['angle-tracking','position-locked','angle-confirming'].includes(placement.state))return false;
- const alreadyConfirming=placement.state==='angle-confirming';
- freezePenSupportAngle(supportGlobalAngle(true));
- placement.state='angle-confirming';placement.lockedPointerId=null;
  render();if(!alreadyConfirming)positionPenConnectionBubble();
  return true;
 }
@@ -1052,23 +1039,13 @@ function activatePenConnectionButton(action,e){
  if(placement?.type==='support'){
   if(placement.type!==mode||!penConnectionConfirming(placement)||penConnectionPlacementBlocked(e))return;
   if(action==='cancel'&&placement.state==='anchor-confirming'){clearPenConnectionPlacement();return}
-  if(placement.state==='anchor-confirming'||action==='cancel'){
-   const retryAngle=placement.state==='angle-confirming',angle=placement.lockedCandidate.supportAngle;
-   placement.state='angle-tracking';placement.lockedPointerId=null;placement.lockedCandidate=placement.lockedAnchor;
-   delete placement.lockedReferenceFrame;penConnectionBubble.hidden=true;
-   if(retryAngle)supportPlacementSession.angle.mode='live';
+  if(placement.state==='anchor-confirming'){
+   supportPlacementSession.tablet=matchMedia('(any-pointer: coarse)').matches;
+   clearPenConnectionPlacement(true); // Bubble owns only the insertion point, never the angle.
    if(typeof beginSupportNumericInput==='function')beginSupportNumericInput(e);
-   if(retryAngle){
-    const frame=supportReferenceFrame();
-    supportPlacementSession.angle.value=frame?globalPlacementAngleToReferenceAngle(angle,frame):angle;
-    supportPlacementSession.previewAngle=angle;
-   }
    render();return;
   }
-  if(typeof confirmSupportNumericInput==='function'&&!confirmSupportNumericInput(true))return;
-  const {supportAngle}=placement.lockedCandidate;
-  clearPenConnectionPlacement(true); // Only angle confirm reaches normal Support creation.
-  commitSupportPlacement(supportAngle);return;
+  return;
  }
  if(action==='cancel'){clearPenConnectionPlacement();return}
  if(!placement||placement.type!==mode||placement.state!=='confirming'||penConnectionPlacementBlocked(e))return;
@@ -1105,12 +1082,17 @@ for(const event of ['pointerup','pointercancel'])window.addEventListener(event,e
   return;
  }
  const placement=penConnectionPlacement;
- if(e.pointerType==='pen'&&['support','force'].includes(placement?.type)&&e.type==='pointercancel'){
-  if(placement.state!=='angle-confirming'&&(placement.lockedPointerId==null||placement.lockedPointerId===e.pointerId)){clearPenConnectionPlacement();render()}
-  e.stopImmediatePropagation(); // Do not let the legacy canvas cancel erase another pointer's lock.
+ const supportContact=placement?.type==='support'&&['pen','touch'].includes(e.pointerType);
+ if((e.pointerType==='pen'||supportContact)&&['support','force'].includes(placement?.type)&&e.type==='pointercancel'){
+  const ownsContact=supportContact?placement.state==='tracking'||placement.lockedPointerId===e.pointerId:
+   placement.state!=='angle-confirming'&&(placement.lockedPointerId==null||placement.lockedPointerId===e.pointerId);
+  if(ownsContact){clearPenConnectionPlacement();render()}
+  // A matching unconfirmed touch must still reach gesture cleanup/rollback.
+  // Other contacts cannot cancel a frozen candidate waiting for its point Bubble.
+  if(!supportContact||e.pointerType!=='touch'||!ownsContact)e.stopImmediatePropagation();
   return;
  }
- if(e.pointerType==='pen'&&['support','force'].includes(placement?.type)&&placement.state==='anchor-locked'&&placement.lockedPointerId===e.pointerId){
+ if((e.pointerType==='pen'||supportContact)&&['support','force'].includes(placement?.type)&&placement.state==='anchor-locked'&&placement.lockedPointerId===e.pointerId){
   placement.state='anchor-confirming';placement.lockedPointerId=null;
   paintPenConnectionPreview();positionPenConnectionBubble();return;
  }
@@ -1255,25 +1237,24 @@ function penConnectionPlacementBlocked(e){
  return drag||groupDrag||rigidDrag||(typeof jointDrag!=='undefined'&&jointDrag)||
   (typeof panEnabled!=='undefined'&&panEnabled)||(typeof gesture!=='undefined'&&gesture)||e.ctrlKey&&e.altKey;
 }
-// Support keeps its existing session/solver; this adapter only owns the two pen locks.
+// Support uses its existing session/solver; the Bubble owns only the insertion point.
 function handlePenSupportPlacement(e){
  const placement=penConnectionPlacement,down=e.type==='pointerdown'&&e.button===0&&(e.buttons&1)!==0;
- if(penConnectionButtonPointerId!==null||placement&&['anchor-locked','anchor-confirming','position-locked','angle-confirming'].includes(placement.state))return true;
- if(penConnectionPlacementBlocked(e)||!svg.contains(document.elementFromPoint(e.clientX,e.clientY)))return true;
- if(placement?.state==='angle-tracking'){
-  if(down){
-   const override=supportReferenceOverrideAt(rawPoint(e));
-   if(override){setSupportReference(override.id);if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);render();return true}
-   if(typeof confirmSupportNumericInput==='function'&&!confirmSupportNumericInput(true))return true;
-   const session=supportPlacementSession,angle=session.angle.mode==='locked'?supportGlobalAngle():solveSupportAngle(session.anchorPoint,rawPoint(e));
-   if(angle===null)return true;
-   freezePenSupportAngle(angle);
-   placement.state='position-locked';placement.lockedPointerId=e.pointerId;
-  }else{
-   updateSupportOrientation(e);if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);
-  }
+ if(supportPlacementSession&&!supportPlacementSession.tablet&&!placement){
+  if(penConnectionButtonPointerId!==null||penConnectionPlacementBlocked(e))return true;
+  if(down)placeSupport(e);else{updateSupportOrientation(e);if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);render()}
+  return true;
+ }
+ if(supportPlacementSession?.tablet&&!placement){
+  if(penConnectionButtonPointerId!==null||penConnectionPlacementBlocked(e)||!svg.contains(document.elementFromPoint(e.clientX,e.clientY)))return true;
+  // Contact may select an existing reference; only keypad ✓ locks, and ✓✓ creates.
+  const override=down&&supportReferenceOverrideAt(rawPoint(e));
+  if(override)setSupportReference(override.id);else updateSupportOrientation(e);
+  if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);
   render();return true;
  }
+ if(penConnectionButtonPointerId!==null||placement&&['anchor-locked','anchor-confirming','position-locked','angle-confirming'].includes(placement.state))return true;
+ if(penConnectionPlacementBlocked(e)||!svg.contains(document.elementFromPoint(e.clientX,e.clientY)))return true;
  if(down){
   // Reuse normal snapped-anchor initialization, then defer its numeric phase to release.
   clearSupportPlacement();placeSupport(e);
@@ -1290,6 +1271,8 @@ function handlePenConnectionPlacement(e){
  if(handleTabletBarPlacement(e))return true;
  if(!['hinge','weld','person','support'].includes(mode))return false;
  if(mode==='support'&&!['pin','pin-plain','roller','roller-plain','fixed'].includes($('support').value))return false;
+ if(mode==='support'&&(supportPlacementSession?.tablet||e.pointerType==='touch'&&matchMedia('(any-pointer: coarse)').matches))return handlePenSupportPlacement(e);
+ if(mode==='support'&&penConnectionPlacement?.type==='support'&&['anchor-locked','anchor-confirming'].includes(penConnectionPlacement.state))return true;
  if(e.pointerType!=='pen'){
   if(e.type==='pointerdown'&&e.button===0)clearPenConnectionPlacement();
   return false;
@@ -1888,7 +1871,7 @@ if(!drag.anchor&&o.type!=='dim'&&gridSnap(rawPoint(e))&&!translationWithinBounds
 drag.moved=drag.moved||!!(dx||dy);if(o.type==='dim'&&!drag.anchor){o.offset=snapDimensionOffset(drag.o,{x:drag.o.x2,y:drag.o.y2},(drag.o.offset??0)+offsetAt(drag.o,{x:drag.o.x2,y:drag.o.y2},{x:drag.o.x+dx,y:drag.o.y+dy}),o.id);render();return}o.x=drag.o.x+dx;o.y=drag.o.y+dy;if(o.x2!==undefined){o.x2=drag.o.x2+dx;o.y2=drag.o.y2+dy}render()};
 svg.addEventListener('pointerleave',clearPersonPreview);
 svg.addEventListener('pointercancel',clearPersonPreview);
-svg.onpointerup=svg.onpointercancel=e=>{if(e.type==='pointercancel')cancelConcentratedLoadPlacement();if(e.type==='pointercancel')clearSupportPlacement();if(e.type==='pointercancel'&&drag?.o.type==='person'){items=drag.before;drag=null;render();return}if(e.type==='pointercancel'&&drawingConnection(drag?.o)){cancelConnectionDrag();render();return}const rigid=drag?.o.type==='rigidRegion';if(e.type==='pointercancel'&&rigid){cancelRigidDrag();render();return}rigidSnapHint=null;if(drag?.moved){past.push(drag.before);if(rigid&&past.length>100)past.shift();future=[]}drag=null;if(rigid)render()};
+svg.onpointerup=svg.onpointercancel=e=>{if(e.type==='pointercancel')cancelConcentratedLoadPlacement();if(e.type==='pointercancel'&&!hasConfirmedTabletSupportAnchor())clearSupportPlacement();if(e.type==='pointercancel'&&drag?.o.type==='person'){items=drag.before;drag=null;render();return}if(e.type==='pointercancel'&&drawingConnection(drag?.o)){cancelConnectionDrag();render();return}const rigid=drag?.o.type==='rigidRegion';if(e.type==='pointercancel'&&rigid){cancelRigidDrag();render();return}rigidSnapHint=null;if(drag?.moved){past.push(drag.before);if(rigid&&past.length>100)past.shift();future=[]}drag=null;if(rigid)render()};
 function lengthValue(label){
  const m=label.trim().match(/(?:^|=)\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\s*$/i);
  return m?{value:Number(m[1].replace(',','.')),unit:(m[2]||'').toLowerCase()}:null;

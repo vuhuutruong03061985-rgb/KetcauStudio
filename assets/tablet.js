@@ -450,12 +450,12 @@ for(const id of ['support','direction','rotation'])$('symbolTools').append($(id)
 function captureDrawing(){
  return {items:copy(items),past:copy(past),future:copy(future),selected,first:copy(first),second:copy(second),hover:copy(hover),hatchPoints:copy(hatchPoints),rigidPoints:copy(rigidPoints),rigidPivot:copy(rigidPivot),extendBoundary,multiSelection:[...multiSelection]};
 }
-function restoreDrawing(snapshot){
+function restoreDrawing(snapshot,{preserveSupportAnchor=false}={}){
  if(typeof cancelSmartMove==='function')cancelSmartMove();
  clearTabletBarCandidate();
  if(mode==='section'||mirrorSelecting)clearMultiPointCommand();
  cancelConcentratedLoadPlacement();
- clearSupportPlacement();
+ if(!preserveSupportAnchor||!hasConfirmedTabletSupportAnchor())clearSupportPlacement();
  if(!snapshot)return;
  jointDrag=null;rigidDrag=null;rigidPivot=snapshot.rigidPivot||null;rigidSnapHint=null;rigidPoints=snapshot.rigidPoints||[];
  items=snapshot.items;past=snapshot.past;future=snapshot.future;selected=snapshot.selected;first=snapshot.first;second=snapshot.second;hover=snapshot.hover;
@@ -482,7 +482,7 @@ document.addEventListener('pointerdown',e=>{
   if(!contacts.size){touchSnapshot=captureDrawing();suppressTouch=false}
   contacts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   if(contacts.size>=2){
-   if(!suppressTouch)restoreDrawing(touchSnapshot);
+   if(!suppressTouch)restoreDrawing(touchSnapshot,{preserveSupportAnchor:true});
    suppressTouch=true;beginPinch();svg.setPointerCapture(e.pointerId);stopPointer(e);return;
   }
   if(suppressTouch){stopPointer(e);return}
@@ -512,7 +512,7 @@ document.addEventListener('pointermove',e=>{
 function finishGesture(e){
  const tracked=contacts.has(e.pointerId),blocked=(tracked&&suppressTouch)||(gesture?.kind==='pan'&&gesture.id===e.pointerId);
  if(tracked)contacts.delete(e.pointerId);
- if(e.type==='pointercancel'&&tracked&&!suppressTouch){restoreDrawing(touchSnapshot);stopPointer(e)}
+ if(e.type==='pointercancel'&&tracked&&!suppressTouch){restoreDrawing(touchSnapshot,{preserveSupportAnchor:true});stopPointer(e)}
  if(blocked)stopPointer(e);
  if(gesture?.id===e.pointerId||contacts.size<2)gesture=null;
  else if(suppressTouch)beginPinch();
@@ -1564,7 +1564,11 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
  const panel=document.createElement('div');panel.id='tabletNumericKeypad';panel.hidden=true;
  panel.setAttribute('role','group');panel.setAttribute('aria-label','Bàn phím số');document.body.append(panel);
  const rollers=document.createElement('div');rollers.className='tablet-text-rollers';rollers.hidden=true;
- const numbers=document.createElement('div');numbers.className='tablet-number-keys';panel.append(rollers,numbers);
+ const grip=document.createElement('div');grip.className='tablet-keypad-grip';grip.setAttribute('aria-label','Di chuyển bàn phím số');
+ // grip-horizontal, matching the existing 24px stroke icons; no visible label.
+ grip.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">'+[9,15].flatMap(y=>[5,12,19].map(x=>`<circle cx="${x}" cy="${y}" r="1.5"/>`)).join('')+'</svg>';
+ const content=document.createElement('div');content.className='tablet-keypad-content';
+ const numbers=document.createElement('div');numbers.className='tablet-number-keys';content.append(rollers,numbers);panel.append(grip,content);
  let caps=true;
  function updateCaps(){
   for(const button of rollers.querySelectorAll('[data-text-character]'))button.textContent=caps?button.dataset.textCharacter.toUpperCase():button.dataset.textCharacter;
@@ -1586,29 +1590,87 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
  }
  document.addEventListener('selectionchange',rememberNumericSelection);
  document.addEventListener('select',rememberNumericSelection,true);
- // Recheck only overlay visibility transitions, never canvas/camera movement.
- const overlayObserver=new MutationObserver(()=>position());
- function position(){
-  if(!owner||panel.hidden)return;
-  const vv=window.visualViewport,left=vv?.offsetLeft||0,top=vv?.offsetTop||0;
-  const width=vv?.width||document.documentElement.clientWidth,height=vv?.height||innerHeight,gap=8;
-  panel.style.maxWidth=Math.max(44,width-2*gap)+'px';panel.style.maxHeight=Math.max(44,height-2*gap)+'px';
-  const rect=panel.getBoundingClientRect(),right=left+width-gap-rect.width,bottom=top+height-gap-rect.height;
-  const obstacles=[owner.input.closest('#dynamicInput')||owner.input,...(owner.avoid?.()||[])].filter(el=>el&&!el.hidden&&el.getClientRects().length).map(el=>el.getBoundingClientRect());
-  // The Bar-only fifth row must clear the same normal menu envelopes as its editor.
-  const menuSpace=owner.commandExit||owner.reserveMenus?tabletBarInputHorizontalBounds(left,width,rect.width):null;
-  const rightX=menuSpace?Math.min(right,menuSpace.max):right,leftX=menuSpace?Math.max(left+gap,menuSpace.min):left+gap;
-  const candidates=[[rightX,bottom],[leftX,bottom],[rightX,top+gap],[leftX,top+gap]];
-  const overlap=([x,y])=>obstacles.reduce((sum,r)=>sum+Math.max(0,Math.min(x+rect.width,r.right+gap)-Math.max(x,r.left-gap))*Math.max(0,Math.min(y+rect.height,r.bottom+gap)-Math.max(y,r.top-gap)),0);
-  candidates.sort((a,b)=>overlap(a)-overlap(b));
-  panel.style.left=Math.max(left+gap,candidates[0][0])+'px';panel.style.top=Math.max(top+gap,candidates[0][1])+'px';
+ // Coalesce editor sizing/placement and overlay visibility, never canvas motion.
+ let manualPosition=null,lastPosition=null,drag=null,positionFrame=0;
+ const schedulePosition=()=>{if(!positionFrame)positionFrame=requestAnimationFrame(()=>{positionFrame=0;position()})};
+ const overlayObserver=new MutationObserver(schedulePosition),sizeObserver=new ResizeObserver(schedulePosition);
+ const clamp=(n,min,max)=>Math.max(min,Math.min(n,Math.max(min,max)));
+ const area=(a,b,gap=8)=>Math.max(0,Math.min(a.right,b.right+gap)-Math.max(a.left,b.left-gap))*Math.max(0,Math.min(a.bottom,b.bottom+gap)-Math.max(a.top,b.top-gap));
+ function bounds(){
+  const vv=window.visualViewport,valid=vv&&[vv.width,vv.height,vv.offsetLeft,vv.offsetTop].every(Number.isFinite)&&vv.width>0&&vv.height>0;
+  const left=valid?vv.offsetLeft:0,top=valid?vv.offsetTop:0;
+  return {left:left+8,top:top+8,right:left+(valid?vv.width:document.documentElement.clientWidth)-8,bottom:top+(valid?vv.height:innerHeight)-8};
  }
+ function setPosition(point){
+  if(panel.style.left!==point.x+'px')panel.style.left=point.x+'px';
+  if(panel.style.top!==point.y+'px')panel.style.top=point.y+'px';
+  lastPosition=point;
+ }
+ function obstacles(){
+  const nodes=[...(owner.avoid?.()||[]),...document.querySelectorAll('header,#tabletTopBar,#tabletBottomLeftBar,#tabletBottomRightBar,#commandControls,#thinOffsetToolbar,.semicircle-left-menu .semicircle-hit,.semicircle-right-menu .semicircle-hit,.semicircle-left-menu .semicircle-control,.semicircle-right-menu .semicircle-control')];
+  return [...new Set(nodes)].filter(node=>node&&!panel.contains(node)).map(penBubbleVisibleRect).filter(Boolean);
+ }
+ // Obstacle edges partition the free space. Project the preferred position onto
+ // every edge pair as well as around the editor, rather than trying four corners.
+ function candidates(size,b,rects,preferred){
+  const xs=[preferred.x,b.left,b.right-size.width],ys=[preferred.y,b.top,b.bottom-size.height];
+  for(const r of rects){xs.push(r.left-size.width-8,r.right+8);ys.push(r.top-size.height-8,r.bottom+8)}
+  return [...new Set(xs.map(x=>clamp(x,b.left,b.right-size.width)))].flatMap(x=>[...new Set(ys.map(y=>clamp(y,b.top,b.bottom-size.height)))].map(y=>({x,y,left:x,top:y,right:x+size.width,bottom:y+size.height})));
+ }
+ function position(){
+  if(!owner||panel.hidden||drag)return;
+  const b=bounds();
+  panel.style.maxWidth=Math.max(44,b.right-b.left)+'px';panel.style.maxHeight=Math.max(44,b.bottom-b.top)+'px';
+  const size=panel.getBoundingClientRect(),editor=owner.input.closest('#dynamicInput')||owner.input,editorRect=penBubbleVisibleRect(editor),avoid=obstacles();
+  const menuSpace=owner.commandExit||owner.reserveMenus?tabletBarInputHorizontalBounds(b.left-8,b.right-b.left+16,size.width):null;
+  if(menuSpace&&!manualPosition)avoid.push({left:b.left-8,right:menuSpace.min-8,top:b.top,bottom:b.bottom},{left:menuSpace.max+size.width+8,right:b.right+8,top:b.top,bottom:b.bottom});
+  const preferred=(!owner.text&&manualPosition)||lastPosition||{x:menuSpace?.max??b.right-size.width,y:b.bottom-size.height};
+  const choices=candidates(size,b,[...(editorRect?[editorRect]:[]),...avoid],preferred);
+  const distance=p=>Math.hypot(p.x-preferred.x,p.y-preferred.y);
+  choices.sort((a,c)=>(editorRect?area(a,editorRect)-area(c,editorRect):0)||avoid.reduce((sum,r)=>sum+area(a,r)-area(c,r),0)||distance(a)-distance(c));
+  let chosen=choices[0];
+  if(editorRect&&area(chosen,editorRect)>0){
+   // Only when no keypad-only placement clears the value, coordinate both UI
+   // rectangles. This never changes the model anchor, field value or focus.
+   let best=null;
+   for(const k of choices)for(const e of candidates(editorRect,b,[k,...avoid],{x:editorRect.left,y:editorRect.top})){
+    if(area(k,e)>0)continue;
+    const pair={k,e,score:avoid.reduce((sum,r)=>sum+area(k,r)+area(e,r),0),distance:distance(k)+Math.hypot(e.x-editorRect.left,e.y-editorRect.top)};
+    if(!best||pair.score<best.score||pair.score===best.score&&pair.distance<best.distance)best=pair;
+   }
+   if(best){chosen=best.k;const e=best.e;if(editor.style.left!==e.x+'px')editor.style.left=e.x+'px';if(editor.style.top!==e.y+'px')editor.style.top=e.y+'px'}
+  }
+  setPosition({x:chosen.x,y:chosen.y});
+  if(!owner.text&&manualPosition)manualPosition={...lastPosition};
+ }
+ function finishDrag(e){
+  if(!drag||e&&e.pointerId!==drag.id)return;
+  const id=drag.id,moved=drag.moved;drag=null;delete panel.dataset.dragging;
+  if(grip.hasPointerCapture(id))grip.releasePointerCapture(id);
+  if(moved)manualPosition={...lastPosition};
+  position();
+ }
+ grip.addEventListener('pointerdown',e=>{
+  if(!owner||owner.text||drag||e.button!==0)return;
+  rememberNumericSelection();e.preventDefault();e.stopPropagation();
+  const r=panel.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY,left:r.left,top:r.top,moved:false};
+  grip.setPointerCapture(e.pointerId);panel.dataset.dragging='true';
+ });
+ grip.addEventListener('pointermove',e=>{
+  if(!drag||e.pointerId!==drag.id)return;
+  e.preventDefault();e.stopPropagation();const b=bounds(),r=panel.getBoundingClientRect();
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.moved=drag.moved||Math.hypot(dx,dy)>2;
+  setPosition({x:clamp(drag.left+dx,b.left,b.right-r.width),y:clamp(drag.top+dy,b.top,b.bottom-r.height)});
+ });
+ for(const type of ['pointerup','pointercancel','lostpointercapture'])grip.addEventListener(type,finishDrag);
+ window.addEventListener('blur',()=>finishDrag());
  function hide(input){
   if(input&&owner?.input!==input)return;
+  finishDrag();if(positionFrame)cancelAnimationFrame(positionFrame);positionFrame=0;
   if(owner){if(previousInputMode===null)owner.input.removeAttribute('inputmode');else owner.input.setAttribute('inputmode',previousInputMode)}
   owner=null;numericSelection=null;panel.hidden=true;exitButton.hidden=true;delete document.body.dataset.barKeypadCommands;
   const confirmKey=numbers.querySelector('[data-numeric-key="confirm"]');confirmKey.disabled=false;confirmKey.textContent='✓';confirmKey.title='Xác nhận giá trị';confirmKey.setAttribute('aria-label',confirmKey.title);
-  overlayObserver.disconnect();
+  overlayObserver.disconnect();sizeObserver.disconnect();lastPosition=null;
   window.removeEventListener('resize',position);window.removeEventListener('scroll',position);
   viewport?.removeEventListener('resize',position);viewport?.removeEventListener('scroll',position);viewport=null;
  }
@@ -1616,22 +1678,28 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
   const confirmKey=numbers.querySelector('[data-numeric-key="confirm"]'),commit=adapter.confirmLabel?.()==='✓✓';
   const disabled=commit&&adapter.canConfirm?.()===false;
   confirmKey.disabled=disabled;
-  confirmKey.textContent=commit?'✓✓':'✓';confirmKey.title=commit?'Hoàn tất Thanh':'Xác nhận giá trị';confirmKey.setAttribute('aria-label',confirmKey.title);
+  confirmKey.textContent=commit?'✓✓':'✓';confirmKey.title=commit?(adapter.commitTitle||'Hoàn tất Thanh'):'Xác nhận giá trị';confirmKey.setAttribute('aria-label',confirmKey.title);
   const commandExit=!adapter.text&&typeof adapter.commandExit==='function';
+  exitButton.title=adapter.exitTitle||'Kết thúc lệnh Thanh';exitButton.setAttribute('aria-label',exitButton.title);
   exitButton.hidden=!commandExit;
   document.body.dataset.barKeypadCommands=String(commandExit);
   if(owner?.input===adapter.input&&owner.text===adapter.text){const changed=!!owner.commandExit!==commandExit;owner=adapter;if(changed)position();return}
   hide();owner=adapter;previousInputMode=owner.input.getAttribute('inputmode');owner.input.inputMode='none';panel.hidden=false;
   confirmKey.disabled=disabled;
   exitButton.hidden=!commandExit;document.body.dataset.barKeypadCommands=String(commandExit);
-  confirmKey.textContent=commit?'✓✓':'✓';confirmKey.title=commit?'Hoàn tất Thanh':'Xác nhận giá trị';confirmKey.setAttribute('aria-label',confirmKey.title);
+  confirmKey.textContent=commit?'✓✓':'✓';confirmKey.title=commit?(adapter.commitTitle||'Hoàn tất Thanh'):'Xác nhận giá trị';confirmKey.setAttribute('aria-label',confirmKey.title);
   panel.classList.toggle('tablet-text-mode',!!owner.text);rollers.hidden=capsButton.hidden=spaceButton.hidden=!owner.text;
+  grip.hidden=!!owner.text;
   const signButton=numbers.querySelector('[data-numeric-key="sign"]'),clearButton=numbers.querySelector('[data-numeric-key="clear"]');
   signButton.hidden=!!owner.text;
   numbers.insertBefore(clearButton,owner.text?signButton:numbers.querySelector('[data-numeric-key="confirm"]'));
   panel.setAttribute('aria-label',owner.text?'Bàn phím chữ và số':'Bàn phím số');
   if(owner.text){caps=true;updateCaps();for(const roller of rollers.querySelectorAll('.tablet-text-roller'))roller.scrollTop=0}
   for(const el of owner.avoid?.()||[])if(el)overlayObserver.observe(el,{attributes:true,attributeFilter:['hidden']});
+  const editor=owner.input.closest('#dynamicInput')||owner.input;
+  sizeObserver.observe(panel);sizeObserver.observe(editor);
+  overlayObserver.observe(editor,{attributes:true,attributeFilter:['style','class','hidden']});
+  for(const node of document.querySelectorAll('header,#tabletTopBar,#tabletBottomLeftBar,#tabletBottomRightBar,#commandControls,#thinOffsetToolbar,.semicircle-left-menu,.semicircle-right-menu'))overlayObserver.observe(node,{attributes:true,attributeFilter:['hidden','class'],childList:true});
   viewport=window.visualViewport;window.addEventListener('resize',position);window.addEventListener('scroll',position);
   viewport?.addEventListener('resize',position);viewport?.addEventListener('scroll',position);position();
  }
@@ -1755,7 +1823,7 @@ const dynamicInputUI=(()=>{
    for(const el of fieldInputs)if(!el.hidden){if(!suppressedModes.has(el))suppressedModes.set(el,el.getAttribute('inputmode'));el.inputMode='none'}
   }
   if(tablet&&(!fields?.keypadOnEdit||activeInput().dataset.editing)){
-   keypad.show({input:activeInput(),confirm:confirmKeypad,avoid:keypadAvoid,selectionAware:fields?.tabletBarEdit===true||fields?.selectionAware===true,reserveMenus:fields?.tabletPlacement===true,commandExit:fields?.onCommandExit,confirmLabel:()=> (fields?.keypadCommitState?fields.keypadCommitState():fields?.canCommit?.())?'✓✓':'✓',canConfirm:()=>!fields?.keypadCommitState?.()||fields.canCommit?.()===true});
+   keypad.show({input:activeInput(),confirm:confirmKeypad,avoid:keypadAvoid,selectionAware:fields?.tabletBarEdit===true||fields?.selectionAware===true,reserveMenus:fields?.tabletPlacement===true,commandExit:fields?.onCommandExit,commitTitle:fields?.commitTitle,exitTitle:fields?.exitTitle,confirmLabel:()=> (fields?.keypadCommitState?fields.keypadCommitState():fields?.canCommit?.())?'✓✓':'✓',canConfirm:()=>!fields?.keypadCommitState?.()||fields.canCommit?.()===true});
   }else{keypad.hide();if(!tablet)restoreInputModes()}
  }
  const suppressedModes=new Map();
@@ -1852,9 +1920,10 @@ const dynamicInputUI=(()=>{
   e.stopImmediatePropagation();
   if(e.isComposing||e.keyCode===229)return;
   e.preventDefault();
+  if(e.key==='Enter'&&fields?.keypadOnly)return;
   if(e.repeat&&fields?.onKeyboardCommit)return;
   if(e.key==='Tab'){
-   if(fields.onKeyboardCommit&&activeInput().dataset.editing&&!confirm())return;
+   if(fields.onKeyboardCommit&&!fields.keypadOnly&&activeInput().dataset.editing&&!confirm())return;
    selectField((activeIndex+1)%fields.values.length,true);return;
   }
   if(e.key==='Enter'&&fields?.onKeyboardCommit&&e.target!==cancelButton){
@@ -2034,13 +2103,12 @@ function endSupportNumericInput(){
  const session=supportNumericSession;supportNumericSession=null;
  if(session&&dynamicNumericCapture===session.capture)disarmDynamicNumericInput();
 }
-function lockSupportNumericAngle(value){
+function lockSupportNumericAngle(value,mode='locked'){
  const session=supportPlacementSession;if(!session||!Number.isFinite(value))return;
  // Same SVG +Y convention and canonical range as the pure direction solver.
  const wrapped=value%360,r=wrapped*Math.PI/180;
  const angle=solveSupportAngle({x:0,y:0},{x:-Math.sin(r),y:Math.cos(r)});
- supportReferenceFrame();session.angle.mode='locked';session.angle.value=angle;session.previewAngle=supportGlobalAngle(true);
- if(lockedPenSupportPlacement())freezePenSupportAngle(session.previewAngle);
+ supportReferenceFrame();session.angle.mode=mode;session.angle.value=angle;session.previewAngle=supportGlobalAngle(true);
  render();
 }
 function beginSupportNumericInput(e){
@@ -2050,25 +2118,30 @@ function beginSupportNumericInput(e){
  const global={down:0,up:180,left:90,right:-90}[session.direction]||0,frame=supportReferenceFrame();
  session.angle.value=frame?globalPlacementAngleToReferenceAngle(global,frame):global;
  armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onCancel:cancelToSelection});
- supportNumericSession={session,capture:dynamicNumericCapture,touch:e.pointerType==='touch',initialAnchor:{clientX:e.clientX,clientY:e.clientY},cursorAnchor:{clientX:e.clientX,clientY:e.clientY}};
+ supportNumericSession={session,capture:dynamicNumericCapture,tablet:session.tablet===true,touch:e.pointerType==='touch',initialAnchor:{clientX:e.clientX,clientY:e.clientY},cursorAnchor:{clientX:e.clientX,clientY:e.clientY}};
  showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onConfirm:dynamicNumericCapture.confirm,onCancel:dynamicNumericCapture.cancel,
   tabletKeypad:mode==='support'&&['pin','pin-plain','roller','roller-plain','fixed'].includes(session.supportSubtype),keypadAvoid:()=>[penConnectionBubble],
-  fields:{label:'G\u00f3c',values:[session.angle],validate:()=>true,onConfirm:(_,value)=>{
+  fields:{label:'G\u00f3c',labels:['Góc'],unitLocks:session.tablet===true,selectionAware:session.tablet===true,keypadOnly:session.tablet===true,
+   // Reserve the same radial envelopes as Bar/Thin before this editor is an obstacle.
+   tabletPlacement:session.tablet===true,tabletCanvasPlacement:session.tablet===true,
+   commitTitle:'Hoàn tất Gối tựa',exitTitle:'Kết thúc lệnh Gối tựa',
+   keypadCommitState:()=>session.tablet&&supportPlacementSession===session&&session.angle.mode==='locked'&&!dynamicInputUI.hasPendingEdit(),
+   canCommit:canFinishLockedSupport,onKeypadCommit:commitTabletSupportKeypad,onCommandExit:session.tablet?cancelToSelection:null,
+   onEdit:()=>{if(session.tablet)session.angle.mode='live'},
+   invalidMessage:'Nhập góc hữu hạn hợp lệ.',values:[session.angle],validate:()=>true,onConfirm:(_,value)=>{
     lockSupportNumericAngle(value);
-    if(!supportNumericSession?.deferPenConfirmation)confirmPenSupportAngle();
-   },onKeyboardCommit:()=>{if(!confirmPenSupportAngle())commitSupportPlacement(supportGlobalAngle())}}});
+   },onKeyboardCommit:()=>{if(!session.tablet)commitSupportPlacement(supportGlobalAngle())}}});
 }
-function confirmSupportNumericInput(deferPenConfirmation=false){
+function confirmSupportNumericInput(){
  const numeric=supportNumericSession;if(!numeric)return true;
- // Canvas contact validates the field now; its matching release exposes the bubble.
- numeric.deferPenConfirmation=deferPenConfirmation;
- try{return dynamicInputUI.confirmPending()}finally{delete numeric.deferPenConfirmation}
+ if(numeric.tablet)return canFinishLockedSupport();
+ return dynamicInputUI.confirmPending();
 }
 function updateSupportNumericInput(e){
  if(!supportNumericSession)return;
  if($('dynamicInputValue').dataset.editing){
   const text=getDynamicInputValue().trim().replace(',','.'),value=Number(text);
-  if(text&&Number.isFinite(value))lockSupportNumericAngle(value);
+  if(text&&Number.isFinite(value))lockSupportNumericAngle(value,supportNumericSession.tablet?'live':'locked');
  }
  if(updateReferenceAngleInputAnchor(activeReferenceAnglePreview(),e))return;
  if(supportNumericSession.touch)updateDynamicInput();
@@ -2077,8 +2150,20 @@ function updateSupportNumericInput(e){
 $('dynamicInputValue').addEventListener('input',()=>{
  if(!supportNumericSession)return;
  const text=getDynamicInputValue().trim().replace(',','.'),value=Number(text);
- if(text&&Number.isFinite(value))lockSupportNumericAngle(value);
+ if(text&&Number.isFinite(value))lockSupportNumericAngle(value,supportNumericSession.tablet?'live':'locked');
 });
+function canFinishLockedSupport(){
+ const numeric=supportNumericSession,session=supportPlacementSession;
+ return !!(mode==='support'&&numeric?.tablet&&numeric.session===session&&session?.angle.mode==='locked'&&
+  dynamicInputUI.owns(numeric.capture.confirm)&&!dynamicInputUI.hasPendingEdit()&&!penConnectionPlacement&&
+  !penConnectionPlacementBlocked({})&&!inlineEditor&&!document.querySelector('dialog[open]')&&
+  ['pin','pin-plain','roller','roller-plain','fixed'].includes(session.supportSubtype)&&
+  [session.anchorPoint.x,session.anchorPoint.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=10000)&&Number.isFinite(supportGlobalAngle(true)));
+}
+function commitTabletSupportKeypad(){
+ if(!canFinishLockedSupport())return false;
+ return commitSupportPlacement(supportGlobalAngle(true),{keypad:true});
+}
 
 // Moment reuses Snap's palette, radio selected styling and dismissal lifecycle.
 let currentMomentRotation='cw';
