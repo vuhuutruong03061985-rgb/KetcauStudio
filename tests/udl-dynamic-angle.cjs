@@ -1,11 +1,55 @@
 const {chromium}=require('../.test-tools/node_modules/playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
 const near=(a,b)=>assert(Math.abs(a-b)<.001,`${a} != ${b}`);
+async function checkTabletDynamic(p){
+ const d=await require('./udl-tablet-driver.cjs')(p),input=d.field;
+ const reset=async(end={x:400,y:300})=>{
+  await p.evaluate(()=>{document.activeElement.blur();setMode('select');items=[];past=[];future=[];selected=null;snapEnabled=false;leftDrawingMenu.close();rightCommandMenu.close();setMode('udl')});
+  await d.span({x:200,y:300},end);
+  assert.equal(await p.evaluate(()=>document.body.dataset.radialPrimary),'true');
+  assert.equal(await input.getAttribute('inputmode'),'none');
+  assert(await p.locator('#tabletNumericKeypad').isVisible());
+  assert.equal(await p.locator('#loadAngleInput').count(),0);
+  assert.equal(await p.locator('#dynamicInput button:visible').count(),0);
+  assert(await p.locator('#dynamicInput .dynamic-unit-lock').first().isVisible());
+  assert(await p.locator('#penConnectionBubble').isHidden());
+ };
+ let cases=0;
+ for(const [text,angle]of [['30',30],['-30',-30],['30,5',30.5],['37.25',37.25],['270',-90],['-180',180]]){
+  await reset();assert(await p.evaluate(()=>isDynamicNumericInputArmed()));
+  // Set a nonzero preview through the canvas, then type without C.
+  const q=await d.screen({x:450,y:410});await p.mouse.move(q.x,q.y);assert(Math.abs(Number(await input.inputValue()))>1);
+  await d.enter(text);assert.equal(await input.inputValue(),text.replace(',','.'));
+  near(await p.evaluate(()=>loadPlacement.uiAngle.value),angle);assert.equal(await p.evaluate(()=>loadPlacement.uiAngle.mode),'live');
+  await p.keyboard.press('Enter');await d.noCommit();assert.equal(await p.evaluate(()=>loadPlacement.uiAngle.mode),'live');
+  await d.lock();near(await p.evaluate(()=>loadPlacement.uiAngle.value),angle);near(await p.evaluate(()=>loadPlacement.angle),((90-angle)%360+360)%360);
+  await p.mouse.move(q.x+20,q.y+20);near(await p.evaluate(()=>loadPlacement.uiAngle.value),angle);await p.keyboard.press('Enter');await d.noCommit();
+  await d.commit();const result=await p.evaluate(()=>({items:copy(items),past:past.length,session:loadPlacement,armed:isDynamicNumericInputArmed()}));
+  assert.equal(result.items.length,1);assert.equal(result.past,1);assert.equal(result.items[0].type,'udl');near(result.items[0].loadAngle,((90-angle)%360+360)%360);assert.equal(result.session,null);assert.equal(result.armed,false);assert(await p.locator('#dynamicInput').isHidden());cases++;
+ }
+ for(const end of [{x:200,y:500},{x:500,y:450}]){
+  await reset(end);await d.enter('37.25');await d.lock();await d.commit();const item=await p.evaluate(()=>items[0]);near(item.loadAngle,52.75);near(item.x,200);near(item.y,300);near(item.x2,end.x);near(item.y2,end.y);cases++;
+ }
+ // Malformed strings cannot all be produced by numeric keys; inject only DOM input to test validation.
+ for(const text of ['', '-', 'NaN','Infinity','1.2.3','1,2,3']){
+  await reset();await input.fill(text);await d.key('confirm');await d.noCommit();assert.equal(await p.evaluate(()=>loadPlacement.uiAngle.mode),'live');assert.equal(await p.evaluate(()=>canFinishLockedUDL()),false);assert(await p.locator('#tabletNumericKeypad').isVisible());await p.keyboard.press('Enter');await d.noCommit();cases++;
+ }
+ // Editing after a lock must return the same key to check and disable object creation.
+ await reset();await d.enter('30');await d.lock();await d.key('clear');await d.key('4');assert.equal(await p.evaluate(()=>loadPlacement.uiAngle.mode),'live');assert.equal(await p.locator('[data-numeric-key=confirm]').textContent(),'\u2713');await d.noCommit();await d.lock();await d.commit();near(await p.evaluate(()=>items[0].loadAngle),86);cases++;
+ for(const action of ['escape','tool','undo','redo','new','open','rollback','select']){
+  await reset();if(action==='escape')await p.keyboard.press('Escape');
+  else await p.evaluate(action=>{if(action==='tool')setMode('bar');if(action==='undo'||action==='redo')actions[action][1]();if(action==='new')newDocument();if(action==='open'){openDocument();openDialog.close()}if(action==='rollback')restoreDrawing(captureDrawing());if(action==='select')activateSelection()},action);
+  assert.equal(await p.evaluate(()=>loadPlacement),null);assert.equal(await p.evaluate(()=>isDynamicNumericInputArmed()),false);assert(await p.locator('#dynamicInput').isHidden());assert(await p.locator('#tabletNumericKeypad').isHidden());assert.equal(await p.evaluate(()=>items.length),0);cases++;
+ }
+ await reset();const q=await d.screen({x:400,y:400});await p.mouse.move(q.x,q.y);near(Number(await input.inputValue()),-45);await d.lock();await d.commit();near(await p.evaluate(()=>items[0].loadAngle),135);cases++;
+ console.log('PASS UDL dynamic angle touch: '+cases+' native keypad/replace/LIVE/LOCKED/Enter/invalid/cleanup cases');
+}
 (async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});try{
  for(const touch of [false,true]){
   const context=await browser.newContext({viewport:{width:1500,height:1100},hasTouch:touch,isMobile:touch}),p=await context.newPage(),errors=[];
   p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());
   await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof beginLoadNumericInput==='function');
+  if(touch){await checkTabletDynamic(p);assert.deepEqual(errors,[]);await context.close();continue}
   const screen=(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return {x:q.x,y:q.y}},{x,y});
   const tap=async(x,y)=>{const q=await screen(x,y);if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
   const reset=async(type='udl')=>{await p.evaluate(()=>{setMode('select');items=[];past=[];future=[];selected=null;snapEnabled=false;render();document.activeElement?.blur()});await p.locator('[data-mode=udl]').click();await tap(200,300);assert.equal(await p.evaluate(()=>isDynamicNumericInputArmed()),false);await tap(400,300)};

@@ -465,8 +465,9 @@ function restoreDrawing(snapshot,{preserveSupportAnchor=false}={}){
  if(typeof cancelSmartMove==='function')cancelSmartMove();
  clearTabletBarCandidate();
  if(mode==='section'||mirrorSelecting)clearMultiPointCommand();
- if(!preserveSupportAnchor||!hasConfirmedTabletForceAnchor()&&!hasConfirmedTabletMomentAnchor())cancelConcentratedLoadPlacement();
+ if(!preserveSupportAnchor||!hasConfirmedTabletForceAnchor()&&!hasConfirmedTabletMomentAnchor()&&!hasConfirmedTabletUDLAnchor())cancelConcentratedLoadPlacement();
  if(!preserveSupportAnchor||!hasConfirmedTabletSupportAnchor())clearSupportPlacement();
+ if(preserveSupportAnchor&&hasConfirmedTabletUDLAnchor()&&penConnectionPlacement?.type==='udl'){clearPenConnectionPlacement(true);delete loadPlacement.hover;loadPlacement.phase='b'}
  if(!snapshot)return;
  jointDrag=null;rigidDrag=null;rigidPivot=snapshot.rigidPivot||null;rigidSnapHint=null;rigidPoints=snapshot.rigidPoints||[];
  items=snapshot.items;past=snapshot.past;future=snapshot.future;selected=snapshot.selected;first=snapshot.first;second=snapshot.second;hover=snapshot.hover;
@@ -1760,7 +1761,22 @@ function createTabletNumericKeypad(characterGroups=['abcdefghi','jklmnopqr','stu
  const keys=[['7','7'],['8','8'],['9','9'],['backspace','⌫','Xóa ký tự cuối'],['4','4'],['5','5'],['6','6'],['sign','±','Đổi dấu'],['1','1'],['2','2'],['3','3'],['.','.'],['0','0'],['clear','C','Xóa giá trị'],['confirm','✓','Xác nhận giá trị']];
  for(const [key,label,title=label]of keys){
   const button=document.createElement('button');button.type='button';button.dataset.numericKey=key;button.textContent=label;
-  button.title=title;button.setAttribute('aria-label',title);button.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();press(key)});numbers.append(button);
+  button.title=title;button.setAttribute('aria-label',title);
+  // UDL touch release remains reliable after dragging the keypad; consume its compatibility click.
+  let contact=null,consumed=false;
+  button.addEventListener('pointerdown',e=>{
+   consumed=false;
+   if(owner?.touchRelease&&e.pointerType==='touch'&&e.button===0){contact={id:e.pointerId,owner};button.setPointerCapture(e.pointerId)}
+  });
+  button.addEventListener('pointerup',e=>{
+   if(contact?.id!==e.pointerId)return;
+   const sameOwner=contact.owner===owner;contact=null;consumed=true;
+   const hit=document.elementFromPoint(e.clientX,e.clientY);
+   if(button.hasPointerCapture(e.pointerId))button.releasePointerCapture(e.pointerId);
+   if(sameOwner&&(button===hit||button.contains(hit)))press(key);
+  });
+  button.addEventListener('pointercancel',()=>{contact=null;consumed=true});
+  button.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();if(consumed&&e.detail!==0){consumed=false;return}press(key)});numbers.append(button);
  }
  const exitButton=document.createElement('button');exitButton.type='button';exitButton.dataset.numericKey='exit';exitButton.textContent='×';exitButton.hidden=true;
  exitButton.title='Kết thúc lệnh Thanh (Esc)';exitButton.setAttribute('aria-label',exitButton.title);
@@ -1838,7 +1854,7 @@ const dynamicInputUI=(()=>{
    for(const el of fieldInputs)if(!el.hidden){if(!suppressedModes.has(el))suppressedModes.set(el,el.getAttribute('inputmode'));el.inputMode='none'}
   }
   if(tablet&&(!fields?.keypadOnEdit||activeInput().dataset.editing)){
-   keypad.show({input:activeInput(),confirm:confirmKeypad,avoid:keypadAvoid,selectionAware:fields?.tabletBarEdit===true||fields?.selectionAware===true,replaceOnType:fields?.replaceOnType===true,reserveMenus:fields?.tabletPlacement===true,commandExit:fields?.onCommandExit,commitTitle:fields?.commitTitle,exitTitle:fields?.exitTitle,confirmLabel:()=> (fields?.keypadCommitState?fields.keypadCommitState():fields?.canCommit?.())?'✓✓':'✓',canConfirm:()=>!fields?.keypadCommitState?.()||fields.canCommit?.()===true});
+   keypad.show({touchRelease:fields?.tabletUDL===true,input:activeInput(),confirm:confirmKeypad,avoid:keypadAvoid,selectionAware:fields?.tabletBarEdit===true||fields?.selectionAware===true,replaceOnType:fields?.replaceOnType===true,reserveMenus:fields?.tabletPlacement===true,commandExit:fields?.onCommandExit,commitTitle:fields?.commitTitle,exitTitle:fields?.exitTitle,confirmLabel:()=> (fields?.keypadCommitState?fields.keypadCommitState():fields?.canCommit?.())?'✓✓':'✓',canConfirm:()=>!fields?.keypadCommitState?.()||fields.canCommit?.()===true});
   }else{keypad.hide();if(!tablet)restoreInputModes()}
  }
  const suppressedModes=new Map();
@@ -2238,7 +2254,7 @@ function syncMomentToolPresentation(){
 }
 floatingToolsMedia.addEventListener('change',syncMomentToolPresentation);syncMomentToolPresentation();
 
-// Force/moment use the shared angle field; UDL retains its legacy panel.
+// Loads share angle input; confirmed tablet UDL spans use the same keypad transaction.
 var loadNumericSession=null;
 function endLoadNumericInput(){
  const session=loadNumericSession;loadNumericSession=null;
@@ -2263,16 +2279,16 @@ function beginLoadNumericInput(e){
  const session=loadPlacement,active=document.activeElement;
  if(!session?.uiAngle||active?.matches('input,textarea,select')||active?.isContentEditable||dynamicNumericCapture||dynamicInputUI.isOpen())return;
  armDynamicNumericInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onCancel:cancelToSelection});
- const tablet=session.type==='force'&&session.tablet===true;
+ const tablet=session.type==='force'&&session.tablet===true||session.tabletUDL===true;
  loadNumericSession={session,capture:dynamicNumericCapture,tablet,touch:e.pointerType==='touch',initialAnchor:{clientX:e.clientX,clientY:e.clientY},cursorAnchor:{clientX:e.clientX,clientY:e.clientY}};
  showDynamicInput({clientX:e.clientX,clientY:e.clientY,suffix:'\u00b0',compact:true,onConfirm:dynamicNumericCapture.confirm,onCancel:dynamicNumericCapture.cancel,
-  tabletKeypad:mode==='force',keypadAvoid:()=>[penConnectionBubble],
-  fields:{label:'G\u00f3c',tabletPlacement:session.type==='force'&&session.tablet===true,tabletCanvasPlacement:session.type==='force'&&session.tablet===true,
+  tabletKeypad:mode==='force'||tablet,keypadAvoid:()=>[penConnectionBubble],
+  fields:{tabletUDL:session.tabletUDL===true,label:'G\u00f3c',tabletPlacement:tablet,tabletCanvasPlacement:tablet,
    labels:['Góc'],unitLocks:tablet,selectionAware:tablet,replaceOnType:tablet,keypadOnly:tablet,
    invalidMessage:tablet?'Nhập góc hữu hạn hợp lệ.':undefined,
-   commitTitle:'Hoàn tất Lực tập trung',exitTitle:'Kết thúc lệnh Lực tập trung',
+   commitTitle:session.tabletUDL?'Ho\u00e0n t\u1ea5t T\u1ea3i \u0111\u1ec1u':'Ho\u00e0n t\u1ea5t L\u1ef1c t\u1eadp trung',exitTitle:session.tabletUDL?'K\u1ebft th\u00fac l\u1ec7nh T\u1ea3i \u0111\u1ec1u':'K\u1ebft th\u00fac l\u1ec7nh L\u1ef1c t\u1eadp trung',
    keypadCommitState:()=>tablet&&loadPlacement===session&&session.uiAngle.mode==='locked'&&!dynamicInputUI.hasPendingEdit(),
-   canCommit:canFinishLockedForce,onKeypadCommit:commitTabletForceKeypad,onCommandExit:tablet?cancelToSelection:null,
+   canCommit:()=>session.tabletUDL?canFinishLockedUDL():canFinishLockedForce(),onKeypadCommit:()=>session.tabletUDL?commitTabletUDLKeypad():commitTabletForceKeypad(),onCommandExit:tablet?cancelToSelection:null,
    onEdit:()=>{if(tablet)session.uiAngle.mode='live'},
    values:[session.uiAngle],validate:()=>true,onConfirm:(_,value)=>{
    lockLoadNumericAngle(value);if(!tablet&&!loadNumericSession?.deferPenConfirmation)confirmPenForceAngle();
@@ -2289,6 +2305,14 @@ function updateLoadNumericInput(e){
  if(['force','udl'].includes(mode)&&updateReferenceAngleInputAnchor(activeReferenceAnglePreview(),e))return;
  updateDynamicInput(loadNumericSession.touch?{}:{clientX:e.clientX,clientY:e.clientY});
 }
+function canFinishLockedUDL(){
+ const n=loadNumericSession,s=loadPlacement;
+ return !!(n?.tablet&&n.session===s&&s.tabletUDL&&s.phase==='angle'&&s.anchorConfirmed&&s.b&&
+  s.uiAngle.mode==='locked'&&dynamicInputUI.owns(n.capture.confirm)&&!dynamicInputUI.hasPendingEdit()&&
+  !penConnectionPlacement&&!penConnectionPlacementBlocked({})&&!inlineEditor&&!document.querySelector('dialog[open]')&&items.length<2000&&
+  [s.a.x,s.a.y,s.b.x,s.b.y,s.uiAngle.value,s.angle].every(Number.isFinite)&&Math.hypot(s.b.x-s.a.x,s.b.y-s.a.y)>=1);
+}
+function commitTabletUDLKeypad(){if(!canFinishLockedUDL())return false;placeLoadObject({keypad:true});return true}
 function canFinishLockedForce(){
  const numeric=loadNumericSession,session=loadPlacement;
  return !!(numeric?.tablet&&numeric.session===session&&hasConfirmedTabletForceAnchor()&&session.uiAngle.mode==='locked'&&
