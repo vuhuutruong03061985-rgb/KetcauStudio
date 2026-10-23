@@ -465,7 +465,7 @@ function restoreDrawing(snapshot,{preserveSupportAnchor=false}={}){
  if(typeof cancelSmartMove==='function')cancelSmartMove();
  clearTabletBarCandidate();
  if(mode==='section'||mirrorSelecting)clearMultiPointCommand();
- if(!preserveSupportAnchor||!hasConfirmedTabletForceAnchor())cancelConcentratedLoadPlacement();
+ if(!preserveSupportAnchor||!hasConfirmedTabletForceAnchor()&&!hasConfirmedTabletMomentAnchor())cancelConcentratedLoadPlacement();
  if(!preserveSupportAnchor||!hasConfirmedTabletSupportAnchor())clearSupportPlacement();
  if(!snapshot)return;
  jointDrag=null;rigidDrag=null;rigidPivot=snapshot.rigidPivot||null;rigidSnapHint=null;rigidPoints=snapshot.rigidPoints||[];
@@ -2213,7 +2213,7 @@ for(const [rotation,title]of [['cw','M\u00f4men thu\u1eadn chi\u1ec1u'],['ccw','
 }
 momentButton.setAttribute('aria-controls',momentPalette.id);momentButton.setAttribute('aria-haspopup','true');momentButton.setAttribute('aria-expanded','false');
 let momentHoldTimer=null,momentHoldOpened=false;
-function openMomentChoices(){closeSecondaryTools();snapPanel.open=false;syncMomentDirection();momentPalette.open=true;momentButton.setAttribute('aria-expanded','true');positionMomentPalette()}
+function openMomentChoices(e){if(floatingToolsMedia.matches&&e?.pointerType!=='mouse')return;closeSecondaryTools();snapPanel.open=false;syncMomentDirection();momentPalette.open=true;momentButton.setAttribute('aria-expanded','true');positionMomentPalette()}
 momentButton.title+=' ? CW/CCW: right-click / hold / ?';
 momentButton.onclick=()=>{
  if(momentHoldOpened){momentHoldOpened=false;return}
@@ -2221,8 +2221,8 @@ momentButton.onclick=()=>{
  closeMomentPalette();
 };
 momentButton.addEventListener('keydown',e=>{if(e.key==='ArrowDown'){e.preventDefault();openMomentChoices();momentChoices.querySelector('input:checked')?.focus()}});
-momentButton.addEventListener('contextmenu',e=>{e.preventDefault();openMomentChoices()});
-momentButton.addEventListener('pointerdown',e=>{momentHoldOpened=false;if(e.pointerType==='touch'||e.pointerType==='pen')momentHoldTimer=setTimeout(()=>{momentHoldOpened=true;openMomentChoices()},500)});
+momentButton.addEventListener('contextmenu',e=>{e.preventDefault();openMomentChoices(e)});
+momentButton.addEventListener('pointerdown',e=>{momentHoldOpened=false;if(!floatingToolsMedia.matches&&['touch','pen'].includes(e.pointerType))momentHoldTimer=setTimeout(()=>{momentHoldOpened=true;openMomentChoices()},500)});
 for(const event of ['pointerup','pointercancel','pointerleave'])momentButton.addEventListener(event,()=>clearTimeout(momentHoldTimer));
 momentPalette.addEventListener('toggle',()=>{momentButton.setAttribute('aria-expanded',String(momentPalette.open));positionMomentPalette()});
 autoHideSecondary(momentPalette,()=>[momentButton],()=>momentPalette.open,closeMomentPalette);
@@ -2230,6 +2230,13 @@ window.addEventListener('resize',positionMomentPalette);
 document.addEventListener('scroll',e=>{if(!momentChoices.contains(e.target))closeMomentPalette()},true);
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMomentPalette()});
 syncMomentDirection();
+const desktopMomentTitle=momentButton.title;
+function syncMomentToolPresentation(){
+ momentButton.title=floatingToolsMedia.matches?modes.moment:desktopMomentTitle;
+ momentButton.setAttribute('aria-haspopup',String(!floatingToolsMedia.matches));
+ if(floatingToolsMedia.matches)closeMomentPalette();
+}
+floatingToolsMedia.addEventListener('change',syncMomentToolPresentation);syncMomentToolPresentation();
 
 // Force/moment use the shared angle field; UDL retains its legacy panel.
 var loadNumericSession=null;
@@ -2251,6 +2258,7 @@ function readLoadNumericEdit(){
  if(text&&Number.isFinite(value))lockLoadNumericAngle(value,loadNumericSession.tablet?'live':'locked');
 }
 function beginLoadNumericInput(e){
+ if(loadPlacement?.tabletMoment)return;
  endLoadNumericInput();
  const session=loadPlacement,active=document.activeElement;
  if(!session?.uiAngle||active?.matches('input,textarea,select')||active?.isContentEditable||dynamicNumericCapture||dynamicInputUI.isOpen())return;
@@ -2509,7 +2517,8 @@ function updateCommandControls(){
  const barInputEditing=lockedBar&&barNumericSession?.tablet&&!inlineEditor&&!document.querySelector('dialog[open]')&&$('dynamicInput').contains(document.activeElement);
  const rotationInputEditing=rotationSession&&typeof ownsRotationNumericInput==='function'&&ownsRotationNumericInput()&&!inlineEditor&&!document.querySelector('dialog[open]')&&$('dynamicInput').contains(document.activeElement);
  const lineInputEditing=lineCommand&&$('dynamicInput').contains(document.activeElement);
- commandControls.hidden=(!touch&&!lockedBar&&!rotationSession)||!!editing&&!barInputEditing&&!rotationInputEditing&&!lineInputEditing||!active;
+ const tabletMoment=touch&&mode==='moment'&&loadPlacement?.tabletMoment!==false;
+ commandControls.hidden=tabletMoment||(!touch&&!lockedBar&&!rotationSession)||!!editing&&!barInputEditing&&!rotationInputEditing&&!lineInputEditing||!active;
  commandFinish.hidden=!finish;
  // Keep clear of the existing numeric editor; do not create a second confirmation UI.
  const input=$('dynamicInput');
@@ -3145,7 +3154,7 @@ const semicircleEngine=(()=>{
    g.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation()});
    g.addEventListener('click',e=>{e.stopPropagation();invoke()});
    g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(!e.repeat)invoke()}});
-   if(source?.dataset.mode==='moment'&&!options.navigationOnly){
+   if(source?.dataset.mode==='moment'&&!options.navigationOnly&&!(production&&floatingToolsMedia.matches)){
     g.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();if(options.disabled)return;source.dispatchEvent(new MouseEvent('contextmenu'));state.open=false;state.activeGroup=null;stopRollers();paint()});
     g.addEventListener('keydown',e=>{if(e.key==='ArrowDown'&&!options.disabled){e.preventDefault();e.stopPropagation();source.dispatchEvent(new KeyboardEvent('keydown',{key:e.key}));state.open=false;state.activeGroup=null;stopRollers();paint()}});
    }
@@ -3310,7 +3319,6 @@ let leftDrawingMenu=null,rightCommandMenu=null,radialPrimaryQueued=false;
 // Children retain their authoritative controls; no alternate activation path.
 const leftContextOptions={
  diagram:leftDiagramChildren.map(entry=>({...entry,isSelected:()=>entry.source.classList.contains('active'),closeOnActivate:true})),
- moment:['cw','ccw'].map(rotation=>({id:'moment-'+rotation,source:momentChoices.querySelector(`input[value="${rotation}"]`),label:rotation.toUpperCase(),imageHref:'data:image/svg+xml,'+encodeURIComponent(momentIcon(rotation)),isSelected:()=>currentMomentRotation===rotation,closeOnActivate:true})),
  ...Object.fromEntries(['pin','roller'].map(parent=>{const id=parent+'-plain';return [parent,[{id,source:document.querySelector(`button[data-support-type="${id}"]`),isSelected:()=>$('support').value===id,closeOnActivate:true}]]}))
 };
 const leftContextEntries=focused=>leftContextOptions[focused?.id]||[];
@@ -3382,6 +3390,7 @@ function forwardLeftMomentPointer(e,type=e.type){
  finally{leftDrawingForwarding=false}
 }
 function leftRingGesturePointer(e,entry,{centered,dragging}){
+ if(floatingToolsMedia.matches)return false;
  if(entry?.id!=='moment')return false;
  if(e.type==='pointerdown'){
   if(centered){leftDrawingMomentPointer=e.pointerId;forwardLeftMomentPointer(e)}
@@ -3406,7 +3415,7 @@ window.addEventListener('pointerdown',e=>{
  if(rightCommandMenu?.host.contains(e.target))return;
  if(leftDrawingMenu.host.contains(e.target)){
   const control=e.target.closest('[data-demo-id]');
-  if(leftDrawingMenu.state.rings.length===1&&control?.dataset.demoId==='moment'&&control.getAttribute('aria-disabled')!=='true'){
+  if(!floatingToolsMedia.matches&&leftDrawingMenu.state.rings.length===1&&control?.dataset.demoId==='moment'&&control.getAttribute('aria-disabled')!=='true'){
    leftDrawingMomentPointer=e.pointerId;forwardLeftMomentPointer(e);
   }
   e.preventDefault();e.stopImmediatePropagation();return;

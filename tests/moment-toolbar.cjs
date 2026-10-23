@@ -2,6 +2,7 @@
 const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
 (async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});try{
  for(const touch of [false,true]){
+  if(touch){await require('./moment-tablet-placement.cjs').runTabletMoment({browser,smoke:true,out:path.resolve(process.env.MOMENT_OUTPUT||'.test-tools/moment-'+Date.now(),'toolbar-tablet')});continue;}
   const context=await browser.newContext({viewport:{width:1400,height:1000},hasTouch:touch,isMobile:touch}),p=await context.newPage();
   await p.goto(pathToFileURL(path.resolve('index.html')).href);await p.waitForFunction(()=>typeof currentMomentRotation!=='undefined');
   // Exercise the actual legacy touch presentation through its supported fallback.
@@ -10,6 +11,20 @@ const assert=require('node:assert/strict'),path=require('node:path'),{pathToFile
   const activate=async locator=>{if(touch&&!await locator.isVisible()&&await locator.evaluate(el=>!!el.closest('#toolPanel')))await p.locator('#toggleTools').tap();return touch?locator.tap():locator.click()};
   const tap=async(x,y)=>{const q=await p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return{x:q.x,y:q.y}},{x,y});if(touch)await p.touchscreen.tap(q.x,q.y);else await p.mouse.click(q.x,q.y)};
   await p.evaluate(()=>{setMode('select');items=[];past=[];future=[];selected=null;snapEnabled=false;render();savedDocument=documentText()});
+  if(!touch){
+   await p.evaluate(()=>{items=[make('bar',180,180,380,180)];snapEnabled=true;setMode('moment');render();savedDocument=documentText()});
+   const at=async(x,y)=>p.evaluate(({x,y})=>{const q=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());return{x:q.x,y:q.y}},{x,y});
+   const previewPoint=()=>p.locator('[data-load-preview] > circle').first().evaluate(el=>({x:Number(el.getAttribute('cx')),y:Number(el.getAttribute('cy'))}));
+   await p.mouse.move(...Object.values(await at(180,180)));await p.waitForFunction(()=>!!document.querySelector('[data-load-preview]'));
+   assert.equal((await previewPoint()).x,180);assert.equal((await previewPoint()).y,180);assert.equal(await p.locator('[data-load-preview] [data-moment-snap="endpoint"]').count(),1);
+   await p.mouse.move(...Object.values(await at(280,181)));assert.equal((await previewPoint()).x,280);assert.equal((await previewPoint()).y,180);assert.equal(await p.locator('[data-load-preview] [data-moment-snap="midpoint"]').count(),1);
+   await p.evaluate(()=>render());assert.equal(await p.locator('[data-load-preview] path[marker-end]').count(),1);
+   const before=await p.evaluate(()=>({items:documentText(),history:past.length,placement:loadPlacement}));assert.equal(before.history,0);assert.equal(before.placement,null);assert.equal(await p.locator('#dynamicInput').isHidden(),true);
+   const pen=await at(460,420);await p.locator('#drawing').dispatchEvent('pointermove',{pointerType:'pen',pointerId:42,clientX:pen.x,clientY:pen.y,buttons:0});
+   const penPreview=await previewPoint();assert(Math.abs(penPreview.x-460)<1e-8);assert(Math.abs(penPreview.y-420)<1e-8);assert.equal(await p.locator('[data-load-preview] [data-moment-snap]').count(),0);
+   await p.locator('#drawing').dispatchEvent('pointerleave',{pointerType:'pen',pointerId:42});assert.equal(await p.locator('[data-load-preview]').count(),0);assert.deepEqual(await p.evaluate(()=>({items:documentText(),history:past.length,placement:loadPlacement})),before);
+   await p.evaluate(()=>{setMode('select');items=[];past=[];future=[];selected=null;snapEnabled=false;render();savedDocument=documentText()});
+  }
   const parent=p.locator('[data-mode=moment]'),panel=p.locator('#momentDirectionPalette'),options=panel.locator('input');
   assert.equal(await p.evaluate(()=>currentMomentRotation),'cw');assert.equal(await panel.locator('input:checked').inputValue(),'cw');assert.equal(await p.locator('#momentDirectionOptions').count(),0);assert.equal(await p.locator('[data-mode=moment]').count(),1);
   await activate(parent);assert.equal(await panel.evaluate(el=>el.open),false);

@@ -1048,6 +1048,7 @@ function lockedPenSupportPlacement(){
  return placement?.type==='support'&&['position-locked','angle-confirming'].includes(placement.state)?placement.lockedCandidate:null;
 }
 function penConnectionConfirming(placement=penConnectionPlacement){
+ if(placement?.type==='moment')return ['anchor-confirming','orienting'].includes(placement.state);
  if(placement?.type==='support')return placement.state==='anchor-confirming';
  return placement?.type==='force'?['anchor-confirming','angle-confirming'].includes(placement.state):placement?.state==='confirming';
 }
@@ -1078,7 +1079,7 @@ penConnectionLockHalo.id='penConnectionLockHalo';penConnectionLockHalo.hidden=tr
 document.body.append(penConnectionLockHalo);
 function updatePenConnectionLockHalo(){
  const placement=penConnectionPlacement;
- penConnectionLockHalo.hidden=!placement||placement.type!==mode||!['position-locked','confirming',...(['support','force'].includes(placement.type)?['anchor-locked','anchor-confirming','angle-tracking','angle-confirming']:[])].includes(placement.state);
+ penConnectionLockHalo.hidden=!placement||placement.type!==mode||!['position-locked','confirming',...(['support','force','moment'].includes(placement.type)?['anchor-locked','anchor-confirming','angle-tracking','angle-confirming']:[])].includes(placement.state);
  if(penConnectionLockHalo.hidden)return;
  const matrix=svg.getScreenCTM();if(!matrix){penConnectionLockHalo.hidden=true;return}
  const {x,y}=placement.lockedCandidate,p=new DOMPoint(x,y).matrixTransform(matrix);
@@ -1089,10 +1090,41 @@ window.addEventListener('scroll',updatePenConnectionLockHalo,true);
 window.visualViewport?.addEventListener('resize',updatePenConnectionLockHalo);
 window.visualViewport?.addEventListener('scroll',updatePenConnectionLockHalo);
 let penConnectionButtonPointerId=null,penConnectionSuppressClick=false;
+let momentBubbleTouch=null;
+function clearMomentBubbleContact(){
+ const touch=momentBubbleTouch;momentBubbleTouch=null;
+ if(touch?.button.hasPointerCapture(touch.id))touch.button.releasePointerCapture(touch.id);
+}
+function syncMomentBubbleControls(){
+ const placement=penConnectionPlacement,moment=placement?.type==='moment',orienting=moment&&placement.state==='orienting';
+ const toggle=penConnectionBubble.querySelector('[data-pen-connection-action="moment-rotation"]');if(!toggle)return;
+ toggle.hidden=!orienting;
+ if(!moment&&placement)return;
+ if(orienting){const ccw=loadPlacement.rotation==='ccw';toggle.textContent=ccw?'↺ CCW':'↻ CW';toggle.setAttribute('aria-pressed',String(ccw));toggle.title='Đổi chiều Mômen (hiện tại '+(ccw?'CCW':'CW')+')';toggle.setAttribute('aria-label',toggle.title)}
+ for(const action of ['confirm','cancel']){const button=penConnectionBubble.querySelector('[data-pen-connection-action="'+action+'"]');button.title=moment?(action==='confirm'?(orienting?'Hoàn tất Mômen':'Xác nhận điểm đặt Mômen'):'Hủy Mômen đang vẽ'):(action==='confirm'?'Xác nhận đặt liên kết':'Hủy điểm đặt');button.setAttribute('aria-label',button.title)}
+ penConnectionBubble.setAttribute('aria-label',moment?'Đặt Mômen':'Đặt liên kết bằng bút');
+}
 function activatePenConnectionButton(action,e){
  if(penConnectionBubble.hidden)return;
  if(penConnectionPlacement?.type==='move'){if(!penConnectionPlacementBlocked(e))confirmSmartMovePoint(action);return}
  const placement=penConnectionPlacement;
+ if(placement?.type==='moment'){
+  const session=loadPlacement;
+  if(mode!=='moment'||!session?.tabletMoment||!penConnectionConfirming(placement)||penConnectionPlacementBlocked(e))return;
+  if(action==='cancel'){clearPenConnectionPlacement();render();return}
+  if(placement.state==='anchor-confirming'){
+   if(action!=='confirm')return;
+   session.anchorConfirmed=true;placement.state='orienting';placement.lockedPointerId=null;
+   render();positionPenConnectionBubble();return;
+  }
+  if(action==='moment-rotation'){
+   session.rotation=session.rotation==='cw'?'ccw':'cw';
+   session.angle=loadUIToInternal('moment',session.globalPlacementAngle,session.rotation);
+   currentMomentRotation=session.rotation;syncMomentDirection();paintLoadPreview();syncMomentBubbleControls();positionPenConnectionBubble();return;
+  }
+  if(action!=='confirm'||!hasConfirmedTabletMomentAnchor()||items.length>=2000||![session.a.x,session.a.y,session.angle].every(Number.isFinite))return;
+  clearPenConnectionPlacement(true);placeLoadObject({momentBubble:true});return;
+ }
  if(placement?.type==='xline'){
   if(mode!=='xline'||placement.first!==xlineFirst||penConnectionPlacementBlocked(e))return;
   const p=placement.lockedCandidate;clearPenConnectionPlacement();xlineHover=null;
@@ -1158,8 +1190,9 @@ function activatePenConnectionButton(action,e){
  checkpoint();items.push(type==='person'?make(type,candidate.x,candidate.y,undefined,undefined,{angle:candidate.angle,size:candidate.size}):make(type,candidate.x,candidate.y));selected=items.at(-1).id;
  render();msg('Đã thêm đối tượng.');
 }
-for(const [action,label,symbol]of [['confirm','Xác nhận đặt liên kết','✓'],['cancel','Hủy điểm đặt','×']]){
+for(const [action,label,symbol]of [['confirm','Xác nhận đặt liên kết','✓'],['moment-rotation','Đổi chiều Mômen','↻ CW'],['cancel','Hủy điểm đặt','×']]){
  const button=document.createElement('button');button.type='button';button.dataset.penConnectionAction=action;
+ if(action==='moment-rotation')button.hidden=true;
  button.textContent=symbol;button.title=label;button.setAttribute('aria-label',label);penConnectionBubble.append(button);
  button.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')penConnectionSuppressClick=false});
  button.addEventListener('click',e=>{
@@ -1171,6 +1204,17 @@ for(const [action,label,symbol]of [['confirm','Xác nhận đặt liên kết','
 }
 for(const event of ['pointerdown','pointermove','pointerup','pointercancel'])penConnectionBubble.addEventListener(event,e=>{
  e.stopPropagation();
+ if(e.pointerType==='touch'&&penConnectionPlacement?.type==='moment'){
+  e.preventDefault();
+  if(e.type==='pointerdown'&&!momentBubbleTouch){
+   const button=e.target.closest('[data-pen-connection-action]');if(!button)return;
+   momentBubbleTouch={id:e.pointerId,button};penConnectionSuppressClick=true;button.setPointerCapture(e.pointerId);
+  }else if(['pointerup','pointercancel'].includes(e.type)&&momentBubbleTouch?.id===e.pointerId){
+   const {button}=momentBubbleTouch;clearMomentBubbleContact();const target=document.elementFromPoint(e.clientX,e.clientY);
+   if(e.type==='pointerup'&&(target===button||button.contains(target)))activatePenConnectionButton(button.dataset.penConnectionAction,e);
+  }
+  return;
+ }
  // Touch may omit its compatibility click after a deliberate canvas drag.
  // XLine owns this one Bubble contact, never the underlying drawing contact.
  if(e.pointerType==='touch'&&penConnectionPlacement?.type==='xline'){
@@ -1194,6 +1238,7 @@ for(const event of ['pointerdown','pointermove','pointerup','pointercancel'])pen
  activatePenConnectionButton(button.dataset.penConnectionAction,e);
 });
 penConnectionBubble.addEventListener('lostpointercapture',e=>{if(xlineBubbleTouch?.id===e.pointerId)xlineBubbleTouch=null});
+penConnectionBubble.addEventListener('lostpointercapture',e=>{if(momentBubbleTouch?.id===e.pointerId)clearMomentBubbleContact()});
 // Hiding the bubble changes the release target. Retire ownership even outside the UI,
 // but retain click suppression until a fresh mouse/touch press or keyboard command.
 for(const event of ['pointerup','pointercancel'])window.addEventListener(event,e=>{
@@ -1202,6 +1247,14 @@ for(const event of ['pointerup','pointercancel'])window.addEventListener(event,e
   return;
  }
  const placement=penConnectionPlacement;
+ if(placement?.type==='moment'){
+  if(e.type==='pointercancel'){
+   if(!hasConfirmedTabletMomentAnchor()&&placement.state==='anchor-locked'&&placement.lockedPointerId===e.pointerId){clearPenConnectionPlacement();render()}
+  }else if(placement.state==='anchor-locked'&&placement.lockedPointerId===e.pointerId){
+   placement.state='anchor-confirming';placement.lockedPointerId=null;paintPenConnectionPreview();positionPenConnectionBubble();
+  }
+  return;
+ }
  if(placement?.type==='xline'&&e.type==='pointercancel'){if(placement.pointerId===e.pointerId){clearPenConnectionPlacement();xlineHover=null;render()}return}
  // A confirmed point belongs to the command, not a later pointer contact.
  if(e.type==='pointercancel'&&hasConfirmedTabletForceAnchor()){
@@ -1325,6 +1378,7 @@ function positionLegacyPenConnectionBubble(){
  penConnectionBubble.style.top=Math.max(top+margin,Math.min(by,bottom-height-margin))+'px';
 }
 function clearPenConnectionPlacement(preservePlacementSession=false){
+ const moment=penConnectionPlacement?.type==='moment';if(moment)clearMomentBubbleContact();
  if(penConnectionPlacement?.type==='xline')xlineBubbleTouch=null;
  if(penConnectionPlacement?.type==='bar')for(const selector of ['[data-bar-preview]','[data-extra-snap-hint]','[data-midpoint-hint]','[data-endpoint-hint]','[data-intersection-hint]'])svg.querySelector(selector)?.remove();
  const support=penConnectionPlacement?.type==='support';
@@ -1332,9 +1386,11 @@ function clearPenConnectionPlacement(preservePlacementSession=false){
  if(penConnectionPlacement?.type==='person')clearPersonPreview(true);
  penConnectionPlacement=null;penConnectionBubble.hidden=true;penConnectionLockHalo.hidden=true;svg.querySelector('[data-pen-connection-preview]')?.remove();svg.querySelector('[data-bar-point]')?.remove();
  if(support&&!preservePlacementSession)clearSupportPlacement();
- if(force&&!preservePlacementSession)cancelLoadPlacement();
+ if((force||moment)&&!preservePlacementSession)cancelLoadPlacement();
+ syncMomentBubbleControls();
 }
 function paintPenConnectionPreview(){
+ syncMomentBubbleControls();
  updatePenConnectionLockHalo();
  svg.querySelector('[data-pen-connection-preview]')?.remove();
  if(!penConnectionPlacement||penConnectionPlacement.type!==mode)return;
@@ -1351,7 +1407,7 @@ function paintPenConnectionPreview(){
    drawSupport(g,{x,y,support:penConnectionPlacement.supportSubtype,direction:penConnectionPlacement.direction});
   }
  }else if(type==='xline')paintXLinePreview();
- else if(type==='force')paintLoadPreview();
+ else if(type==='force'||type==='moment')paintLoadPreview();
  else if(type==='person')paintPersonPreview(null,state==='tracking'?hoverCandidate:lockedCandidate);
  else{
   const g=el('g',{'data-pen-connection-preview':type,'pointer-events':'none',stroke:'#087d95','stroke-width':1.8,opacity:.6});
@@ -1650,7 +1706,7 @@ if(!clean&&mode==='select'&&selectedObjectIds().size<2){
  if(!clean&&mode==='xline')paintXLinePreview();
  if(!clean&&mode==='support')renderSupportPlacement();
  if(!clean&&mode==='bar')renderBarConstraintPreview();
- if(!clean){renderThinReferenceHighlight();if(mode==='thin')renderThinConstraintPreview();renderSupportReference();renderLoadReference();if(['force','moment','udl'].includes(mode)&&loadPlacement?.type===mode)paintLoadPreview();renderReferenceAnglePreview()}
+ if(!clean){renderThinReferenceHighlight();if(mode==='thin')renderThinConstraintPreview();renderSupportReference();renderLoadReference();if(['force','moment','udl'].includes(mode)&&loadPlacement?.type===mode)paintLoadPreview();else if(mode==='moment'&&momentHover)paintLoadPreview(momentHover);renderReferenceAnglePreview()}
  if(!clean&&first&&hover&&['dashed','udl','linkBar'].includes(mode)){const g=el('g',{'pointer-events':'none',stroke:'#087d95','stroke-dasharray':'5 4'});line(g,first.x,first.y,hover.x,hover.y);}
  if(!clean&&mode==='joint'&&typeof drawJointHandles==='function')drawJointHandles();
  if(!clean)renderRigidControls();
@@ -1975,7 +2031,7 @@ if(mode==='select'){selected=e.target.closest('[data-id]')?.dataset.id||null;con
  checkpoint();items.push(make('dim',first.x,first.y,second.x,second.y,{offset:snapDimensionOffset(first,second,offsetAt(first,second,point(e)))}));
  first=null;second=null;hover=null;selected=items.at(-1).id;render();msg('Đã tạo kích thước.');return;
  }if(mode==='linkBar'){if(!first){first=p;render();return}if(Math.hypot(p.x-first.x,p.y-first.y)<1)return;const o=make('linkBar',first.x,first.y,p.x,p.y);try{validateConnection(o)}catch{return}checkpoint();items.push(o);first=null;hover=null;selected=o.id;render();return}if(['bar','udl','thin','dashed'].includes(mode)){if(!first){first=p;if(mode==='bar'&&typeof beginBarNumericInput==='function')beginBarNumericInput(e);if(mode==='thin'){beginThinReferenceSession();if(typeof beginThinNumericInput==='function')beginThinNumericInput(e)}render();msg('Bấm điểm thứ hai.');return}if(first.x===p.x&&first.y===p.y)return;checkpoint();items.push(make(mode,first.x,first.y,p.x,p.y));first={...p};hover=null}else{checkpoint();items.push(make(mode,p.x,p.y))}selected=items.at(-1).id;render();msg('Đã thêm đối tượng.');if(mode==='text'){e.preventDefault();editObjectLabel(items.at(-1))}};
-svg.onpointermove=e=>{if(handlePenConnectionPlacement(e))return;if(mode==='support'&&supportPlacementSession&&!drag){updateSupportOrientation(e);if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);render();return}if(mode==='thin'&&!drag)updateThinReferenceSession(e);if(mode==='person'&&!drag){paintPersonPreview(e);return}if(!drag){if(first&&['bar','thin','dashed','udl','linkBar'].includes(mode)){hover=drawingPoint(e);render();return;}if(mode==='dim'||mode==='moment'){hover=second?point(e):(snapToBar(rawPoint(e))||point(e));render()}return;}const o=items.find(o=>o.id===selected);if(!o)return;
+svg.onpointermove=e=>{if(loadPlacement?.tabletMoment)return;if(handlePenConnectionPlacement(e))return;if(mode==='support'&&supportPlacementSession&&!drag){updateSupportOrientation(e);if(typeof updateSupportNumericInput==='function')updateSupportNumericInput(e);render();return}if(mode==='thin'&&!drag)updateThinReferenceSession(e);if(mode==='person'&&!drag){paintPersonPreview(e);return}if(!drag){if(first&&['bar','thin','dashed','udl','linkBar'].includes(mode)){hover=drawingPoint(e);render();return;}if(mode==='dim'||mode==='moment'){hover=second?point(e):(snapToBar(rawPoint(e))||point(e));render()}return;}const o=items.find(o=>o.id===selected);if(!o)return;
 if(o.type==='person'){
  const p=rawPoint(e),x=drag.o.x+p.x-drag.p.x,y=drag.o.y+p.y-drag.p.y;
  try{validatePerson({...o,x,y})}catch{return}
@@ -2002,7 +2058,7 @@ if(!drag.anchor&&o.type!=='dim'&&gridSnap(rawPoint(e))&&!translationWithinBounds
 drag.moved=drag.moved||!!(dx||dy);if(o.type==='dim'&&!drag.anchor){o.offset=snapDimensionOffset(drag.o,{x:drag.o.x2,y:drag.o.y2},(drag.o.offset??0)+offsetAt(drag.o,{x:drag.o.x2,y:drag.o.y2},{x:drag.o.x+dx,y:drag.o.y+dy}),o.id);render();return}o.x=drag.o.x+dx;o.y=drag.o.y+dy;if(o.x2!==undefined){o.x2=drag.o.x2+dx;o.y2=drag.o.y2+dy}render()};
 svg.addEventListener('pointerleave',clearPersonPreview);
 svg.addEventListener('pointercancel',clearPersonPreview);
-svg.onpointerup=svg.onpointercancel=e=>{if(e.type==='pointercancel'&&!hasConfirmedTabletForceAnchor())cancelConcentratedLoadPlacement();if(e.type==='pointercancel'&&!hasConfirmedTabletSupportAnchor())clearSupportPlacement();if(e.type==='pointercancel'&&drag?.o.type==='person'){items=drag.before;drag=null;render();return}if(e.type==='pointercancel'&&drawingConnection(drag?.o)){cancelConnectionDrag();render();return}const rigid=drag?.o.type==='rigidRegion';if(e.type==='pointercancel'&&rigid){cancelRigidDrag();render();return}rigidSnapHint=null;if(drag?.moved){past.push(drag.before);if(rigid&&past.length>100)past.shift();future=[]}drag=null;if(rigid)render()};
+svg.onpointerup=svg.onpointercancel=e=>{if(e.type==='pointercancel'&&!hasConfirmedTabletForceAnchor()&&!hasConfirmedTabletMomentAnchor())cancelConcentratedLoadPlacement();if(e.type==='pointercancel'&&!hasConfirmedTabletSupportAnchor())clearSupportPlacement();if(e.type==='pointercancel'&&drag?.o.type==='person'){items=drag.before;drag=null;render();return}if(e.type==='pointercancel'&&drawingConnection(drag?.o)){cancelConnectionDrag();render();return}const rigid=drag?.o.type==='rigidRegion';if(e.type==='pointercancel'&&rigid){cancelRigidDrag();render();return}rigidSnapHint=null;if(drag?.moved){past.push(drag.before);if(rigid&&past.length>100)past.shift();future=[]}drag=null;if(rigid)render()};
 function lengthValue(label){
  const m=label.trim().match(/(?:^|=)\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\s*$/i);
  return m?{value:Number(m[1].replace(',','.')),unit:(m[2]||'').toLowerCase()}:null;
@@ -2426,7 +2482,7 @@ function constructionSnap(e){
 }
 autoHideSecondary(secondaryTools,()=>[$('tools').querySelector(`[data-mode="${secondaryTools.dataset.anchorMode}"]`)],()=>!secondaryTools.hidden,closeSecondaryTools);
 
-var loadPlacement=null;
+var loadPlacement=null,momentHover=null;
 function loadReferenceCandidates(){
  const session=loadPlacement;if(!session?.referenceCandidates)return [];
  const ids=new Set(session.referenceCandidates.map(c=>c.barId));
@@ -2478,7 +2534,7 @@ function renderLoadReference(){
  const bar=items.find(o=>o.id===loadPlacement.referenceBarId);
  line(svg,bar.x,bar.y,bar.x2,bar.y2,{class:'thin-reference-highlight','data-load-reference':'true','pointer-events':'none','aria-hidden':'true'});
 }
-function cancelLoadPlacement(){if(penConnectionPlacement?.type==='force')clearPenConnectionPlacement(true);svg.querySelector('.reference-angle-preview')?.remove();svg.querySelector('[data-load-reference]')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));if(typeof endLoadNumericInput==='function')endLoadNumericInput();loadPlacement=null;svg.querySelector('[data-load-preview]')?.remove()}
+function cancelLoadPlacement(){if(['force','moment'].includes(penConnectionPlacement?.type))clearPenConnectionPlacement(true);svg.querySelector('.reference-angle-preview')?.remove();svg.querySelector('[data-load-reference]')?.remove();svg.querySelectorAll('.reference-override').forEach(marker=>marker.classList.remove('reference-override'));if(typeof endLoadNumericInput==='function')endLoadNumericInput();loadPlacement=null;momentHover=null;svg.querySelector('[data-load-preview]')?.remove()}
 // UI ray follows the visible body. Force tail = anchor - 75 * loadVector,
 // so its internal tail-to-head vector is opposite the ray; moment uses SVG rotation.
 function loadUIToInternal(type,angle,rotation='cw'){
@@ -2520,7 +2576,8 @@ function updateUDLOrientation(e){
  session.angle=((90-angle)%360+360)%360;
  return true;
 }
-function placeLoadObject({keypad=false}={}){
+function placeLoadObject({keypad=false,momentBubble=false}={}){
+ if(loadPlacement?.tabletMoment&&!momentBubble)return;
  if(loadPlacement?.type==='force'&&loadPlacement.tablet&&!keypad)return;
  // Pen Force creation is released only by the final explicit bubble command.
  if(penConnectionPlacement?.type==='force')return;
@@ -2529,10 +2586,12 @@ function placeLoadObject({keypad=false}={}){
  checkpoint();const o=make(p.type,a.x,a.y,b?.x,b?.y,{loadAngle:p.angle,rotation:p.rotation});
  items.push(o);selected=o.id;cancelLoadPlacement();render();
 }
-function paintLoadPreview(){renderLoadReference();renderReferenceAnglePreview();
- svg.querySelector('[data-load-preview]')?.remove();if(!loadPlacement)return;
- const p=loadPlacement,g=el('g',{'data-load-preview':'true','pointer-events':'none',stroke:'#087d95',fill:'none','stroke-width':1.5});
+function paintLoadPreview(session=loadPlacement){
+ if(session===loadPlacement){renderLoadReference();renderReferenceAnglePreview()}
+ svg.querySelector('[data-load-preview]')?.remove();if(!session)return;
+ const p=session,g=el('g',{'data-load-preview':'true','pointer-events':'none',stroke:'#087d95',fill:'none','stroke-width':1.5});
  const {x,y}=p.a;el('circle',{cx:x,cy:y,r:4,fill:'white'},g);
+ if(p.snapKind){const scale=Math.abs(svg.getScreenCTM().a)||1;el('circle',{cx:x,cy:y,r:9/scale,stroke:'#d06a00','stroke-width':1.8/scale,'data-moment-snap':p.snapKind},g);line(g,x-5/scale,y,x+5/scale,y,{stroke:'#d06a00','stroke-width':1.4/scale});line(g,x,y-5/scale,x,y+5/scale,{stroke:'#d06a00','stroke-width':1.4/scale})}
  if(p.type==='udl'&&!p.b){if(p.hover)line(g,x,y,p.hover.x,p.hover.y);return}
  const [dx,dy]=loadVector({loadAngle:p.angle});
  if(p.type==='moment'){
@@ -2542,12 +2601,53 @@ function paintLoadPreview(){renderLoadReference();renderReferenceAnglePreview();
  else{const b=p.b;line(g,x-dx*55,y-dy*55,b.x-dx*55,b.y-dy*55);const n=Math.max(2,Math.ceil(Math.hypot(b.x-x,b.y-y)/25));for(let i=0;i<=n;i++){const xx=x+(b.x-x)*i/n,yy=y+(b.y-y)*i/n;arrow(g,xx-dx*55,yy-dy*55,xx,yy)}}
 }
 function beginLoadPlacement(e,numeric=true){
- loadPlacement={type:mode,a:snapToBar(rawPoint(e))||point(e),angle:mode==='moment'?0:270,rotation:mode==='moment'?currentMomentRotation:$('rotation').value};
+ const momentCandidate=mode==='moment'?momentPlacementCandidate(e):null;
+ loadPlacement={type:mode,a:momentCandidate?.point||(snapToBar(rawPoint(e))||point(e)),angle:mode==='moment'?0:270,rotation:mode==='moment'?currentMomentRotation:$('rotation').value,...(momentCandidate?.kind?{snapKind:momentCandidate.kind}:{})};
  if(mode==='force')loadPlacement.tablet=matchMedia('(any-pointer: coarse)').matches&&['pen','touch'].includes(e.pointerType);
+ if(mode==='moment')loadPlacement.tabletMoment=matchMedia('(any-pointer: coarse)').matches&&['pen','touch'].includes(e.pointerType);
  if(mode!=='udl'){
   loadPlacement.uiAngle={mode:'live',value:0};loadPlacement.angle=loadUIToInternal(mode,0,loadPlacement.rotation);
-  beginLoadReference();if(numeric)beginLoadNumericInput(e);
+  beginLoadReference();if(numeric&&!loadPlacement.tabletMoment)beginLoadNumericInput(e);
  }
+}
+function hasConfirmedTabletMomentAnchor(){
+ return mode==='moment'&&loadPlacement?.type==='moment'&&loadPlacement.tabletMoment===true&&loadPlacement.anchorConfirmed===true;
+}
+function momentPlacementCandidate(e){
+ const raw=rawPoint(e),bar=snapToBar(raw);if(bar){
+  const kind=intersectionSnap(raw)?'intersection':endpointSnap(raw)?'endpoint':midpointSnap(raw)?'midpoint':'member';
+  return {point:bar,kind};
+ }
+ const geometric=geometricSnap(raw);if(geometric)return geometric;
+ const grid=gridSnap(raw);if(grid)return {point:grid,kind:'grid'};
+ const limit=value=>Math.max(-10000,Math.min(10000,value));return {point:{x:limit(raw.x),y:limit(raw.y)},kind:null};
+}
+function updateMomentHover(e){
+ if(mode!=='moment'||loadPlacement||e.buttons)return false;
+ const candidate=momentPlacementCandidate(e);momentHover={type:'moment',a:candidate.point,angle:loadUIToInternal('moment',0,currentMomentRotation),rotation:currentMomentRotation,...(candidate.kind?{snapKind:candidate.kind}:{})};
+ paintLoadPreview(momentHover);return true;
+}
+svg.addEventListener('pointerenter',e=>{if(['mouse','pen'].includes(e.pointerType)&&!loadPlacement)updateMomentHover(e)});
+svg.addEventListener('pointerleave',()=>{momentHover=null;if(!loadPlacement)svg.querySelector('[data-load-preview]')?.remove()});
+function handleTabletMomentPlacement(e){
+ if(mode!=='moment')return false;
+ const contact=['pen','touch'].includes(e.pointerType)&&matchMedia('(any-pointer: coarse)').matches;
+ if(!loadPlacement?.tabletMoment&&!contact)return false;
+ // A Mouse-owned desktop transaction is not replaced by incidental tablet hover.
+ if(loadPlacement&&!loadPlacement.tabletMoment)return true;
+ const placement=penConnectionPlacement,down=e.type==='pointerdown'&&e.button===0&&(e.buttons&1)!==0;
+ if(penConnectionButtonPointerId!==null||penConnectionPlacementBlocked(e)||!svg.contains(document.elementFromPoint(e.clientX,e.clientY)))return true;
+ if(hasConfirmedTabletMomentAnchor()){
+  const override=down&&loadReferenceOverrideAt(rawPoint(e));
+  if(override)setLoadReference(override.id);else if(e.type==='pointermove')updateLoadOrientation(e);
+  paintLoadPreview();return true;
+ }
+ if(placement||!down||!contact)return true;
+ beginLoadPlacement(e,false);const anchor=Object.freeze({...loadPlacement.a});
+ if(![anchor.x,anchor.y].every(v=>Number.isFinite(v)&&Math.abs(v)<=10000)){cancelLoadPlacement();return true}
+ loadPlacement.a=anchor;
+ penConnectionPlacement={type:'moment',state:'anchor-locked',lockedAnchor:anchor,lockedCandidate:anchor,lockedPointerId:e.pointerId};
+ render();return true;
 }
 // Force intercepts the existing load capture path; shared bubble ownership handles release.
 function handleTabletForcePlacement(e){
@@ -2596,6 +2696,8 @@ function handlePenForcePlacement(e){
  render();return true;
 }
 svg.addEventListener('pointerdown',e=>{
+ if(mode==='moment')momentHover=null;
+ if(handleTabletMomentPlacement(e)){e.preventDefault();e.stopImmediatePropagation();return}
  if(handlePenForcePlacement(e)){e.preventDefault();e.stopImmediatePropagation();return}
  if(e.button!==0||!['force','moment','udl'].includes(mode)||typeof panEnabled!=='undefined'&&panEnabled)return;
  e.preventDefault();e.stopImmediatePropagation();
@@ -2606,6 +2708,8 @@ svg.addEventListener('pointerdown',e=>{
  paintLoadPreview();
 },true);
 svg.addEventListener('pointermove',e=>{
+ if(['mouse','pen'].includes(e.pointerType)&&!loadPlacement&&updateMomentHover(e))return;
+ if(handleTabletMomentPlacement(e)){if(!hasConfirmedTabletMomentAnchor())e.stopImmediatePropagation();return}
  if(handlePenForcePlacement(e)){if(!hasConfirmedTabletForceAnchor())e.stopImmediatePropagation();return}
  if(!loadPlacement)return;if(loadPlacement.type==='udl'&&!loadPlacement.b)e.stopImmediatePropagation();
  if(loadPlacement.uiAngle){updateLoadOrientation(e);updateLoadNumericInput(e);paintLoadPreview();return}

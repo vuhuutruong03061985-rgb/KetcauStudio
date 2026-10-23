@@ -33,6 +33,7 @@ const internal=(type,a)=>(((type==='force'?90:Math.atan2(34,-18)*180/Math.PI)-a)
    const stem=group.querySelector('line');const anchor=new DOMPoint(Number(stem.getAttribute('x1')),Number(stem.getAttribute('y1'))).matrixTransform(transform);
    return {x:mid.x-anchor.x,y:mid.y-anchor.y,ax:anchor.x,ay:anchor.y};
   });
+  if(!touch){
   for(const angle of [0,90,-90,180,30,-30,45,-135.5]){
    const r=angle*Math.PI/180,dx=-Math.sin(r),dy=Math.cos(r);
    let cw;
@@ -49,13 +50,14 @@ const internal=(type,a)=>(((type==='force'?90:Math.atan2(34,-18)*180/Math.PI)-a)
     if(cw){near(cw.x,numeric.x);near(cw.y,numeric.y)}else cw=numeric;
    }
   }
+  }else await require('./moment-tablet-placement.cjs').runTabletMoment({browser,smoke:true,out:path.resolve(process.env.MOMENT_OUTPUT||'.test-tools/moment-'+Date.now(),'mixed-tablet')});
   for(const rotation of ['cw','ccw'])for(const angle of [0,37.5,180,270]){
    await p.evaluate(({rotation,angle})=>{setMode('select');items=validate({format:'ket-cau-studio',version:1,items:[make('moment',300,300,undefined,undefined,{rotation,loadAngle:angle})]});selected=null;render()},{rotation,angle});
    const body=await momentBody('g[data-id]'),r=-angle*Math.PI/180,x=rotation==='cw'?-34:34,y=-18;
    // SVG path-length sampling approximates the exact semicircle midpoint.
    assert(Math.abs(body.x-(x*Math.cos(r)-y*Math.sin(r)))<.025);assert(Math.abs(body.y-(x*Math.sin(r)+y*Math.cos(r)))<.025);
   }
-  for(const type of ['force','moment']){
+  for(const type of (touch?['force']:['force','moment'])){
    for(const [text,angle] of [['30',30],['-30',-30],['30,5',30.5],['37.5',37.5],['270',-90],['-180',180]]){
     await reset(type);assert.equal(await p.locator('#loadAngleInput').count(),0);assert(await p.locator('#dynamicInput').isVisible());
     if(touch){await input.tap();await input.fill(text)}else await p.keyboard.type(text);
@@ -72,7 +74,7 @@ const internal=(type,a)=>(((type==='force'?90:Math.atan2(34,-18)*180/Math.PI)-a)
     await reset(type);await input.fill(text);await confirmAngle();assert.equal(await p.evaluate(()=>items.length),0);assert.equal(await p.evaluate(()=>past.length),0);assert(await p.locator('#dynamicInput').isVisible());
    }
    for(const action of ['escape','tool','undo','redo','new','open','rollback','select','pointercancel']){
-    await reset(type);
+    await reset(type);const anchor=await p.evaluate(()=>copy(loadPlacement.a));
     if(action==='escape')await p.keyboard.press('Escape');
     else await p.evaluate(action=>{if(action==='tool')setMode('bar');if(action==='undo'||action==='redo')actions[action][1]();if(action==='new')newDocument();if(action==='open'){openDocument();openDialog.close()}if(action==='rollback')restoreDrawing(captureDrawing());if(action==='select')activateSelection();if(action==='pointercancel')svg.dispatchEvent(new PointerEvent('pointercancel',{bubbles:true,pointerId:1,pointerType:'mouse'}))},action);
     if(touch&&type==='force'&&action==='pointercancel'){assert.deepEqual(await p.evaluate(()=>loadPlacement.a),anchor);assert.equal(await p.evaluate(()=>isDynamicNumericInputArmed()),true);await p.keyboard.press('Escape')}
@@ -97,8 +99,10 @@ const internal=(type,a)=>(((type==='force'?90:Math.atan2(34,-18)*180/Math.PI)-a)
    const round=await p.evaluate(()=>{const original=copy(items[0]);const restored=validate(JSON.parse(documentText()))[0];objectClipboard=[copy(original)];clipboardBase={x:original.x,y:original.y};placeClipboard({x:600,y:400});const pasted=copy(items[1]);const mirrored=mirroredObjects([original],{x:550,y:0},{x:550,y:700})[0];actions.undo[1]();const undone=items.length;actions.redo[1]();return {original,restored,pasted,mirrored,undone,redone:items.length}});
    near(round.restored.loadAngle,round.original.loadAngle);near(round.pasted.loadAngle,round.original.loadAngle);assert.equal(round.undone,1);assert.equal(round.redone,2);assert(Number.isFinite(round.mirrored.loadAngle));if(type==='moment')assert.notEqual(round.mirrored.rotation,round.original.rotation);
   }
+  if(!touch){
   await reset('moment');await p.locator('[data-mode=moment]').press('ArrowDown');await p.locator('input[name=momentDirection][value=ccw]').click();await tap(300,300);await input.fill('30');await confirmAngle();assert.equal(await p.evaluate(()=>items[0].rotation),'ccw');
   await reset('moment');for(const [x,y]of [[400,300],[300,400]]){const q=await screen(x,y);await p.mouse.move(q.x,q.y)}assert.equal(await p.evaluate(()=>loadPlacement.rotation),'cw');
+  }
   await p.evaluate(()=>setMode('udl'));await tap(200,400);await tap(500,400);assert(await p.locator('#dynamicInputValue').isVisible());await p.locator('#dynamicInputValue').fill('45');await p.locator('#dynamicInputValue').press('Enter');assert.equal(await p.evaluate(()=>items.at(-1).loadAngle),45);
   assert.deepEqual(errors,[]);console.log(`PASS force/moment dynamic angles ${touch?'touch emulated':'mouse'}: LIVE/LOCKED, adapters, invalid, lifecycle, history, serialization, copy/mirror, CW/CCW and legacy UDL`);await context.close();
  }
