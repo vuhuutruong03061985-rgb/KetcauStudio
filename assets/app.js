@@ -1583,7 +1583,7 @@ if(gridVisible&&!clean){
  el('rect',{x:-10000,y:-10000,width:20000,height:20000,fill:'url(#drawingGridPattern)','data-grid-layer':'true','pointer-events':'none','aria-hidden':'true'});
 }
 if(items.some(o=>o.type==='person'))definePersonSymbol(defs);
-for(const o of [...items].sort((a,b)=>Number(a.type!=='xline')-Number(b.type!=='xline')||Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(a.type))-Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(b.type)))){if(o.type==='person'){try{validatePerson(o)}catch{continue}}if(hiddenSectionAction(o)||o.type==='xline'&&(clean||!xlinesVisible))continue;const {x,y,x2,y2}=o,g=el('g',{'data-id':o.id,...(validObjectColor(o.strokeColor)?{'data-object-color':o.strokeColor}:{}),stroke:objectColor(o),'stroke-width':1.8,fill:'none'});
+for(const source of [...items].sort((a,b)=>Number(a.type!=='xline')-Number(b.type!=='xline')||Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(a.type))-Number(['positive','negative','diagramM','diagramQ','diagramN'].includes(b.type)))){const o=!clean&&typeof anchorRotationPreview==='function'?anchorRotationPreview(source):source;if(o.type==='person'){try{validatePerson(o)}catch{continue}}if(hiddenSectionAction(o)||o.type==='xline'&&(clean||!xlinesVisible))continue;const {x,y,x2,y2}=o,g=el('g',{'data-id':o.id,...(validObjectColor(o.strokeColor)?{'data-object-color':o.strokeColor}:{}),stroke:objectColor(o),'stroke-width':1.8,fill:'none'});
 if(o.type==='person'){
  const instance=el('g',{transform:personTransform(o)},g);
  el('use',{href:'#personSymbol'},instance);
@@ -1734,6 +1734,7 @@ if(!clean&&mode==='select'&&selectedObjectIds().size<2){
  if(!clean)renderRigidControls();
  if(!clean)paintPenConnectionPreview();
  if(!clean&&typeof renderSmartMove==='function')renderSmartMove();
+ if(!clean&&typeof renderAnchorRotation==='function')renderAnchorRotation();
  if(!clean&&matchMedia('(any-pointer: coarse)').matches)positionPenConnectionBubble();
  if(!clean&&typeof updateThinOffsetToolbar==='function')updateThinOffsetToolbar();
 }

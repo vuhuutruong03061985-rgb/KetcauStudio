@@ -52,11 +52,11 @@ function movableBars(ids){return ids.size>0&&[...ids].every(id=>items.some(o=>o.
 function rotationBar(){
  const ids=selectedObjectIds();return mode==='select'&&ids.size===1&&movableBars(ids)?items.find(o=>ids.has(o.id)):null;
 }
-function barRotationHandlePoint(o,pivot){
+function barRotationHandlePoint(o,pivot,extraObstacles=[]){
  const matrix=svg.getScreenCTM(),p=new DOMPoint(pivot.x,pivot.y).matrixTransform(matrix),box=svg.getBoundingClientRect();
  const vv=window.visualViewport,left=Math.max(box.left,vv?.offsetLeft||0),top=Math.max(box.top,vv?.offsetTop||0),
   right=Math.min(box.right,(vv?.offsetLeft||0)+(vv?.width||innerWidth)),bottom=Math.min(box.bottom,(vv?.offsetTop||0)+(vv?.height||innerHeight));
- const obstacles=[{x:p.x,y:p.y,r:22}];
+ const obstacles=[{x:p.x,y:p.y,r:22},...extraObstacles];
  for(const node of svg.querySelectorAll('[data-endpoint] circle,[data-move-anchor],[data-pivot-hit]')){
   const r=node.getBoundingClientRect();obstacles.push({x:r.x+r.width/2,y:r.y+r.height/2,r:Math.hypot(r.width,r.height)/2});
  }
@@ -376,6 +376,7 @@ function releaseSmartMovePointer(){
  if(id!==null&&id!==undefined&&svg.hasPointerCapture(id))svg.releasePointerCapture(id);
 }
 function cancelSmartMove(){
+ cancelAnchorRotation();
  smartMoveMenuPointer=null;smartMoveMenuClickPointer=null;
  releaseSmartMovePointer();
  const s=smartMoveSession,primary=selected;if(ownsRotationNumericInput(s))hideDynamicInput();clearSmartMovePoint();smartMoveSession=null;
@@ -578,3 +579,92 @@ new MutationObserver(()=>{if(rotationBar()&&!smartMoveSession)render()}).observe
 window.visualViewport?.addEventListener('resize',()=>{if(smartMoveSession){cancelSmartMove();render()}});
 floatingToolsMedia.addEventListener('change',()=>{cancelSmartMove();render()});
 syncSmartMoveControls();
+
+// Force/support rotate about their immutable insertion point. Like Bar rotation,
+// the transaction owns a preview, but release commits directly without placement UI.
+var anchorRotationSession=null;
+function rotatableAnchorObject(){
+ const ids=selectedObjectIds();
+ if(mode!=='select'||ids.size!==1)return null;
+ return items.find(o=>ids.has(o.id)&&!hiddenSectionAction(o)&&
+  (o.type==='force'&&!o.sectionAction||o.type==='support'&&['fixed','pin','pin-plain','roller','roller-plain'].includes(o.support)))||null;
+}
+function anchorObjectAngle(o){
+ if(o.type==='support')return Number.isFinite(o.supportAngle)?o.supportAngle:({down:0,up:180,right:-90,left:90}[o.direction]??0);
+ const [dx,dy]=loadVector(o);return Math.atan2(-dy,dx)*180/Math.PI;
+}
+function anchorRotationPreview(o){
+ const s=anchorRotationSession;
+ return s&&s.original.id===o.id&&rotatableAnchorObject()?.id===o.id&&JSON.stringify(items)===s.document?{...o,[s.field]:s.angle}:o;
+}
+function cancelAnchorRotation(){
+ const s=anchorRotationSession;anchorRotationSession=null;
+ if(s&&svg.hasPointerCapture(s.pointerId))svg.releasePointerCapture(s.pointerId);
+}
+function beginAnchorRotation(e){
+ const o=rotatableAnchorObject();
+ if(!o||e.button!==0||e.ctrlKey||e.altKey||panEnabled||gesture||drag||groupDrag||rigidDrag||jointDrag||smartMoveSession||inlineEditor||dynamicInputUI.isOpen()||document.querySelector('dialog[open]'))return false;
+ const p=rawPoint(e),angle=anchorObjectAngle(o);
+ anchorRotationSession={pointerId:e.pointerId,original:copy(o),document:JSON.stringify(items),
+  field:o.type==='force'?'loadAngle':'supportAngle',angle,initialAngle:angle,
+  lastRay:Math.atan2(p.y-o.y,p.x-o.x),delta:0,handle:p,screenStart:{x:e.clientX,y:e.clientY},moved:false};
+ render();svg.setPointerCapture(e.pointerId);return true;
+}
+function updateAnchorRotation(e){
+ const s=anchorRotationSession;if(!s)return;
+ const p=rawPoint(e),o=s.original;
+ if(Math.hypot(p.x-o.x,p.y-o.y)<1e-8)return;
+ if(!s.moved&&Math.hypot(e.clientX-s.screenStart.x,e.clientY-s.screenStart.y)<4)return;
+ s.moved=true;
+ const ray=Math.atan2(p.y-o.y,p.x-o.x),step=ray-s.lastRay;
+ s.delta+=Math.atan2(Math.sin(step),Math.cos(step));s.lastRay=ray;
+ // SVG support rotation is clockwise-positive; Force loadVector is y-up.
+ const degrees=s.initialAngle+(o.type==='force'?-1:1)*s.delta*180/Math.PI;
+ s.angle=((degrees%360)+360)%360;
+}
+function renderAnchorRotation(){
+ let s=anchorRotationSession;const o=rotatableAnchorObject();
+ if(s&&(!o||o.id!==s.original.id||JSON.stringify(items)!==s.document)){cancelAnchorRotation();s=null}
+ if(!o||smartMoveSession||inlineEditor||dynamicInputUI.isOpen())return;
+ const scale=Math.hypot(svg.getScreenCTM().a,svg.getScreenCTM().b)||1;
+ let point;
+ if(s){point=rotateAround(s.handle,s.original,s.delta)}
+ else{
+  const angle=anchorObjectAngle(o)*Math.PI/180;
+  const ray=o.type==='force'?{x:-Math.cos(angle),y:Math.sin(angle)}:{x:-Math.sin(angle),y:Math.cos(angle)};
+  const box=svg.querySelector(`[data-id="${o.id}"]`)?.getBoundingClientRect();
+  const obstacles=box?[{x:box.x+box.width/2,y:box.y+box.height/2,r:Math.hypot(box.width,box.height)/2}]:[];
+  point=barRotationHandlePoint({x:o.x,y:o.y,x2:o.x+ray.x,y2:o.y+ray.y},o,obstacles);
+ }
+ if(!point)return;
+ line(svg,o.x,o.y,point.x,point.y,{stroke:'#c66b08','stroke-dasharray':'3 4','vector-effect':'non-scaling-stroke','pointer-events':'none','data-anchor-rotation-guide':'true'});
+ const h=el('g',{'data-anchor-rotation-handle':o.id,transform:`translate(${point.x} ${point.y}) scale(${1/scale})`,role:'button','aria-label':o.type==='force'?'Xoay l\u1ef1c quanh \u0111i\u1ec3m \u0111\u1eb7t':'Xoay g\u1ed1i quanh \u0111i\u1ec3m \u0111\u1eb7t',cursor:s?'grabbing':'grab'});
+ el('rect',{x:-22,y:-22,width:44,height:44,fill:'transparent','data-anchor-rotation-hit':'true'},h);
+ el('circle',{r:15,fill:'white',stroke:'#c66b08','stroke-width':1.8,'pointer-events':'none'},h);
+ el('path',{d:'M9 -4A10 10 0 1 0 8 7 M9 -11V-3H1',fill:'none',stroke:'#c66b08','stroke-width':2,'stroke-linecap':'round','stroke-linejoin':'round','pointer-events':'none'},h);
+ el('title',{},h).textContent='Rotate about insertion point';
+}
+// Acquire after shared document touch tracking, before Select canvas handlers.
+document.addEventListener('pointerdown',e=>{
+ if(anchorRotationSession){if(e.pointerId!==anchorRotationSession.pointerId){cancelAnchorRotation();render();e.preventDefault();e.stopImmediatePropagation()}return}
+ if(e.target.closest?.('[data-anchor-rotation-handle]')&&beginAnchorRotation(e)){e.preventDefault();e.stopImmediatePropagation()}
+},true);
+for(const type of ['pointermove','pointerup','pointercancel'])document.addEventListener(type,e=>{
+ const s=anchorRotationSession;if(!s||s.pointerId!==e.pointerId)return;
+ e.preventDefault();e.stopImmediatePropagation();
+ if(type==='pointercancel'){cancelAnchorRotation();render();return}
+ if(gesture||panEnabled||e.ctrlKey&&e.altKey||JSON.stringify(items)!==s.document||rotatableAnchorObject()?.id!==s.original.id){cancelAnchorRotation();render();return}
+ updateAnchorRotation(e);
+ if(type==='pointerup'){
+  const change=Math.atan2(Math.sin((s.angle-s.initialAngle)*Math.PI/180),Math.cos((s.angle-s.initialAngle)*Math.PI/180));
+  const o=items.find(o=>o.id===s.original.id);cancelAnchorRotation();
+  // Ignore round-trip pointer quantization below 0.00006 degrees.
+  if(o&&Math.abs(change)>1e-6){checkpoint();o[s.field]=s.angle}
+ }
+ render();
+},true);
+svg.addEventListener('lostpointercapture',e=>{if(anchorRotationSession?.pointerId===e.pointerId){cancelAnchorRotation();render()}});
+svg.addEventListener('wheel',()=>{if(anchorRotationSession){cancelAnchorRotation();render()}},true);
+for(const type of ['blur','resize','scroll'])window.addEventListener(type,()=>{if(anchorRotationSession){cancelAnchorRotation();render()}},type==='scroll');
+new MutationObserver(()=>{if(anchorRotationSession)cancelAnchorRotation();if(rotatableAnchorObject())render()}).observe(svg,{attributes:true,attributeFilter:['viewBox']});
+new ResizeObserver(()=>{if(rotatableAnchorObject()&&!anchorRotationSession)render()}).observe(svg);
